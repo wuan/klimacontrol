@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ledz LED controller</title>
+    <link rel="stylesheet" href="/common.css">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 id="pageTitle">ledz</h1>
+            <div class="device-id">
+                <span id="deviceId">Loading...</span>
+                <span id="firmwareVersion" style="opacity: 0.7; font-size: 0.9em; margin-left: 10px;"></span>
+                <span id="otaPartition" style="opacity: 0.6; font-size: 0.85em; margin-left: 5px;"></span>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="status-bar">
+                <div class="status-item">
+                    <div class="status-label">Current Show</div>
+                    <div class="status-value" id="currentShow">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Brightness</div>
+                    <div class="status-value" id="currentBrightness">-</div>
+                </div>
+                <div class="status-item" id="timerStatusItem" style="display: none;">
+                    <div class="status-label">Timers</div>
+                    <div class="status-value" id="timerStatus">-</div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="brightnessSlider">Brightness</label>
+                <input type="range" id="brightnessSlider" min="0" max="255" value="128">
+                <div class="brightness-value">
+                    <span id="brightnessValue">128</span> / 255
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label" for="showSelect">Select Show</label>
+                <select id="showSelect">
+                    <option value="">Loading shows...</option>
+                </select>
+                <div class="show-description" id="showDescription"></div>
+
+                <!-- Parameter controls (shown based on selected show) -->
+                <div id="mandelbrotParams" class="params-section">
+                    <div class="param-row">
+                        <label class="param-label" for="mandelbrotCre0">Cre0 (Real min)</label>
+                        <input type="number" id="mandelbrotCre0" step="0.01" value="-1.05">
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="mandelbrotCim0">Cim0 (Imaginary min)</label>
+                        <input type="number" id="mandelbrotCim0" step="0.01" value="-0.3616">
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="mandelbrotCim1">Cim1 (Imaginary max)</label>
+                        <input type="number" id="mandelbrotCim1" step="0.01" value="-0.3156">
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="mandelbrotScale">Scale</label>
+                        <input type="number" id="mandelbrotScale" min="1" max="20" value="5">
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="mandelbrotMaxIter">Max Iterations</label>
+                        <input type="number" id="mandelbrotMaxIter" min="10" max="200" value="50">
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="mandelbrotColorScale">Color Scale</label>
+                        <input type="number" id="mandelbrotColorScale" min="1" max="50" value="10">
+                    </div>
+                    <button class="apply-button" onclick="applyMandelbrotParams()">Apply Parameters</button>
+                </div>
+
+                <div id="chaosParams" class="params-section">
+                    <div class="param-row">
+                        <label class="param-label" for="chaosRmin">Rmin (Start)</label>
+                        <input type="number" id="chaosRmin" step="0.01" value="2.95">
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="chaosRmax">Rmax (Maximum)</label>
+                        <input type="number" id="chaosRmax" step="0.01" value="4.0">
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="chaosRdelta">Rdelta (Increment)</label>
+                        <input type="number" id="chaosRdelta" step="0.0001" value="0.0002">
+                    </div>
+                    <button class="apply-button" onclick="applyChaosParams()">Apply Parameters</button>
+                </div>
+
+                <div id="colorRangesParams" class="params-section">
+                    <small style="display:block; margin-bottom:8px; color:#666;">
+                        Single color, multi-color patterns (flags), or smooth gradients between colors.
+                    </small>
+                    <div style="margin-bottom: 12px;">
+                        <strong>Presets:</strong>
+                        <button class="preset-button" onclick="loadWarmWhite()">💡 Warm White</button>
+                        <button class="preset-button" onclick="loadGradient()">🌈 Gradient</button>
+                        <button class="preset-button" onclick="loadUkraineFlag()">🇺🇦 Ukraine</button>
+                        <button class="preset-button" onclick="loadItalianFlag()">🇮🇹 Italy</button>
+                        <button class="preset-button" onclick="loadFrenchFlag()">🇫🇷 France</button>
+                    </div>
+                    <div id="colorRangesColorInputs">
+                        <div class="param-row">
+                            <label class="param-label" for="colorRangesColor1">Color 1</label>
+                            <input type="color" id="colorRangesColor1" value="#fffae6">
+                        </div>
+                    </div>
+                    <div class="param-row">
+                        <button class="small-button" onclick="addColorRangesColor()">+ Add Color</button>
+                        <button class="small-button" onclick="removeColorRangesColor()">- Remove Color</button>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label">
+                            <input type="checkbox" id="colorRangesLinearBlend" style="margin-right: 6px;">
+                            Gradient mode (smooth transitions between colors)
+                        </label>
+                        <small style="display:block; margin-top:4px; color:#666;">
+                            When enabled, colors blend smoothly. When disabled, colors have sharp transitions.
+                        </small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="colorRangesRanges">Ranges (%) [optional]</label>
+                        <input type="text" id="colorRangesRanges" placeholder="e.g., 33.3, 66.6" value="">
+                        <small style="display:block; margin-top:4px; color:#666;">
+                            Leave empty for equal distribution.<br>
+                            For N colors, enter N-1 boundary percentages.
+                        </small>
+                    </div>
+                    <button class="apply-button" onclick="applyColorRangesParams()">Apply Pattern</button>
+                </div>
+
+                <div id="fireParams" class="params-section">
+                    <div class="param-row">
+                        <label class="param-label" for="cooling">Cooling</label>
+                        <input type="number" id="cooling" step="0.1" min="0.0" max="1.0" value="0.1">
+                        <small style="display:block; margin-top:4px; color:#666;">Cooling rate</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="spread">Spread</label>
+                        <input type="number" id="spread" step="0.1" min="0.0" max="1.0" value="10.0">
+                        <small style="display:block; margin-top:4px; color:#666;">Spread rate</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="ignition">Ignition</label>
+                        <input type="number" id="ignition" step="0.1" min="0.0" max="1.0" value="0.5">
+                        <small style="display:block; margin-top:4px; color:#666;">Ignition rate</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="sparkAmount">Spark Amount</label>
+                        <input type="number" id="sparkAmount" step="0.05" min="0.0" max="1.0" value="0.5">
+                        <small style="display:block; margin-top:4px; color:#666;">Brightness of new sparks</small>
+                    </div>
+                    <button class="apply-button" onclick="applyFireParams()">Apply Parameters</button>
+                </div>
+
+                <div id="starlightParams" class="params-section">
+                    <div class="param-row">
+                        <label class="param-label" for="starlightProbability">Spawn Probability (0.0-1.0)</label>
+                        <input type="number" id="starlightProbability" step="0.01" min="0" max="1" value="0.01">
+                        <small style="display:block; margin-top:4px; color:#666;">Higher = more stars spawn per frame</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="starlightLength">Hold Time (ms)</label>
+                        <input type="number" id="starlightLength" step="100" min="100" max="30000" value="5000">
+                        <small style="display:block; margin-top:4px; color:#666;">Duration at full brightness</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="starlightFade">Fade Time (ms)</label>
+                        <input type="number" id="starlightFade" step="100" min="100" max="10000" value="1000">
+                        <small style="display:block; margin-top:4px; color:#666;">Fade-in and fade-out duration</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="starlightColor">Star Color</label>
+                        <input type="color" id="starlightColor" value="#ffb432">
+                        <small style="display:block; margin-top:4px; color:#666;">Default: warm white (255, 180, 50)</small>
+                    </div>
+                    <button class="apply-button" onclick="applyStarlightParams()">Apply Parameters</button>
+                </div>
+
+                <div id="waveParams" class="params-section">
+                    <div class="param-row">
+                        <label class="param-label" for="waveSpeed">Wave Speed</label>
+                        <input type="number" id="waveSpeed" step="0.1" min="0.1" max="10" value="1.0">
+                        <small style="display:block; margin-top:4px; color:#666;">Higher = faster wave propagation</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="waveDecay">Decay Rate</label>
+                        <input type="number" id="waveDecay" step="0.1" min="0" max="10" value="2.0">
+                        <small style="display:block; margin-top:4px; color:#666;">Higher = faster brightness fade towards ends</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="waveBrightnessFreq">Brightness Frequency</label>
+                        <input type="number" id="waveBrightnessFreq" step="0.01" min="0.01" max="1" value="0.1">
+                        <small style="display:block; margin-top:4px; color:#666;">Frequency of source brightness pulsation</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="waveWavelength">Wavelength</label>
+                        <input type="number" id="waveWavelength" step="0.5" min="1" max="20" value="6.0">
+                        <small style="display:block; margin-top:4px; color:#666;">Higher = longer, more spread out waves</small>
+                    </div>
+                    <button class="apply-button" onclick="applyWaveParams()">Apply Parameters</button>
+                </div>
+
+                <div id="morseCodeParams" class="params-section">
+                    <div class="param-row">
+                        <label class="param-label" for="morseMessage">Message</label>
+                        <input type="text" id="morseMessage" value="HELLO WORLD!" style="width:100%; padding:8px;">
+                        <small style="display:block; margin-top:4px; color:#666;">Text to encode in Morse code (letters, numbers, basic punctuation)</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="morseSpeed">Scroll Speed</label>
+                        <input type="number" id="morseSpeed" step="0.1" min="0.1" max="5" value="0.2">
+                        <small style="display:block; margin-top:4px; color:#666;">Higher = faster scrolling (LEDs per frame)</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="morseDotLength">Dot Length</label>
+                        <input type="number" id="morseDotLength" step="1" min="1" max="10" value="1">
+                        <small style="display:block; margin-top:4px; color:#666;">Number of LEDs per dot</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="morseDashLength">Dash Length</label>
+                        <input type="number" id="morseDashLength" step="1" min="1" max="20" value="3">
+                        <small style="display:block; margin-top:4px; color:#666;">Number of LEDs per dash (typically 2-3x dot length)</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="morseSymbolSpace">Symbol Space</label>
+                        <input type="number" id="morseSymbolSpace" step="1" min="1" max="10" value="2">
+                        <small style="display:block; margin-top:4px; color:#666;">Dark LEDs between dots/dashes within letters</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="morseLetterSpace">Letter Space</label>
+                        <input type="number" id="morseLetterSpace" step="1" min="1" max="10" value="3">
+                        <small style="display:block; margin-top:4px; color:#666;">Dark LEDs between letters</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="morseWordSpace">Word Space</label>
+                        <input type="number" id="morseWordSpace" step="1" min="1" max="20" value="5">
+                        <small style="display:block; margin-top:4px; color:#666;">Dark LEDs between words</small>
+                    </div>
+                    <button class="apply-button" onclick="applyMorseCodeParams()">Apply Parameters</button>
+                </div>
+
+                <div id="theaterChaseParams" class="params-section">
+                    <div class="param-row">
+                        <label class="param-label" for="theaterStepsPerCycle">Steps per Color Cycle</label>
+                        <input type="number" id="theaterStepsPerCycle" step="7" min="7" max="140" value="21">
+                        <small style="display:block; margin-top:4px; color:#666;">Number of steps for one complete rainbow cycle (multiple of 7 recommended)</small>
+                    </div>
+                    <button class="apply-button" onclick="applyTheaterChaseParams()">Apply Parameters</button>
+                </div>
+
+                <div id="stroboscopeParams" class="params-section">
+                    <div class="param-row">
+                        <label class="param-label" for="stroboscopeColor">Flash Color</label>
+                        <input type="color" id="stroboscopeColor" value="#ffffff">
+                        <small style="display:block; margin-top:4px; color:#666;">Color to flash (default: white)</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="stroboscopeOnCycles">On Cycles</label>
+                        <input type="number" id="stroboscopeOnCycles" step="1" min="1" max="20" value="1">
+                        <small style="display:block; margin-top:4px; color:#666;">Number of frames to flash the color</small>
+                    </div>
+                    <div class="param-row">
+                        <label class="param-label" for="stroboscopeOffCycles">Off Cycles</label>
+                        <input type="number" id="stroboscopeOffCycles" step="1" min="1" max="100" value="10">
+                        <small style="display:block; margin-top:4px; color:#666;">Number of frames to stay black</small>
+                    </div>
+                    <button class="apply-button" onclick="applyStroboscopeParams()">Apply Parameters</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">Strip Layout</label>
+                <select id="layoutMode" style="margin-bottom: 10px;">
+                    <option value="normal">Normal</option>
+                    <option value="reverse">Reversed</option>
+                    <option value="mirror">Mirrored</option>
+                    <option value="reverse_mirror">Reversed + Mirrored</option>
+                </select>
+                <label class="control-label" for="deadLeds" style="margin-top: 15px;">Dead LEDs</label>
+                <input type="number" id="deadLeds" min="0" max="100" value="0" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;">
+                <button class="apply-button" onclick="applyLayout()" style="margin-top: 15px;">Apply Layout</button>
+            </div>
+
+            <div class="control-group">
+                <label class="control-label">Presets</label>
+                <div id="presetsSection">
+                    <select id="presetSelect" style="margin-bottom: 10px;">
+                        <option value="">No presets saved</option>
+                    </select>
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <button class="small-button" style="flex: 1;" onclick="loadSelectedPreset()">Load</button>
+                        <button class="small-button" style="flex: 1; color: #d9534f;" onclick="deleteSelectedPreset()">Delete</button>
+                    </div>
+                    <div style="border-top: 1px solid #e9ecef; padding-top: 15px;">
+                        <label class="control-label" for="presetName">Save Current as Preset</label>
+                        <input type="text" id="presetName" placeholder="Enter preset name" style="margin-bottom: 10px;">
+                        <button class="apply-button" onclick="savePreset()">Save Preset</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <a href="/settings" class="about-link" style="flex: 1; text-align: center;">Settings</a>
+            <a href="/timers" class="about-link" style="flex: 1; text-align: center;">Timers</a>
+            <a href="/about" class="about-link" style="flex: 1; text-align: center;">Device Info</a>
+        </div>
+    </div>
+
+    <script>
+        let shows = [];
+        let currentStatus = {};
+        let pendingParameterConfig = false;  // Track if user is configuring parameters
+        let lastPopulatedShow = null;  // Track which show we've populated params for
+
+        // Show/hide parameter sections based on selected show
+        function updateParameterVisibility(showName) {
+            document.getElementById('mandelbrotParams').classList.remove('visible');
+            document.getElementById('chaosParams').classList.remove('visible');
+            document.getElementById('colorRangesParams').classList.remove('visible');
+            document.getElementById('fireParams').classList.remove('visible');
+            document.getElementById('starlightParams').classList.remove('visible');
+            document.getElementById('waveParams').classList.remove('visible');
+            document.getElementById('morseCodeParams').classList.remove('visible');
+            document.getElementById('theaterChaseParams').classList.remove('visible');
+            document.getElementById('stroboscopeParams').classList.remove('visible');
+
+            if (showName === 'Mandelbrot') {
+                document.getElementById('mandelbrotParams').classList.add('visible');
+            } else if (showName === 'Chaos') {
+                document.getElementById('chaosParams').classList.add('visible');
+            } else if (showName === 'Solid') {
+                document.getElementById('colorRangesParams').classList.add('visible');
+            } else if (showName === 'Fire') {
+                document.getElementById('fireParams').classList.add('visible');
+            } else if (showName === 'Starlight') {
+                document.getElementById('starlightParams').classList.add('visible');
+            } else if (showName === 'Wave') {
+                document.getElementById('waveParams').classList.add('visible');
+            } else if (showName === 'MorseCode') {
+                document.getElementById('morseCodeParams').classList.add('visible');
+            } else if (showName === 'TheaterChase') {
+                document.getElementById('theaterChaseParams').classList.add('visible');
+            } else if (showName === 'Stroboscope') {
+                document.getElementById('stroboscopeParams').classList.add('visible');
+            }
+        }
+
+        // Apply Mandelbrot parameters
+        async function applyMandelbrotParams() {
+            const Cre0 = parseFloat(document.getElementById('mandelbrotCre0').value);
+            const Cim0 = parseFloat(document.getElementById('mandelbrotCim0').value);
+            const Cim1 = parseFloat(document.getElementById('mandelbrotCim1').value);
+            const scale = parseInt(document.getElementById('mandelbrotScale').value);
+            const max_iterations = parseInt(document.getElementById('mandelbrotMaxIter').value);
+            const color_scale = parseInt(document.getElementById('mandelbrotColorScale').value);
+
+            try {
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: 'Mandelbrot',
+                        params: { Cre0, Cim0, Cim1, scale, max_iterations, color_scale }
+                    })
+                });
+                pendingParameterConfig = false;  // Applied successfully
+            } catch (error) {
+                console.error('Failed to apply Mandelbrot parameters:', error);
+            }
+        }
+
+        // Apply Chaos parameters
+        async function applyChaosParams() {
+            const Rmin = parseFloat(document.getElementById('chaosRmin').value);
+            const Rmax = parseFloat(document.getElementById('chaosRmax').value);
+            const Rdelta = parseFloat(document.getElementById('chaosRdelta').value);
+
+            try {
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: 'Chaos',
+                        params: { Rmin, Rmax, Rdelta }
+                    })
+                });
+                pendingParameterConfig = false;  // Applied successfully
+            } catch (error) {
+                console.error('Failed to apply Chaos parameters:', error);
+            }
+        }
+
+        // ColorRanges color management
+        let colorRangesColorCount = 1;
+
+        function addColorRangesColor() {
+            colorRangesColorCount++;
+            const container = document.getElementById('colorRangesColorInputs');
+            const newColorDiv = document.createElement('div');
+            newColorDiv.className = 'param-row';
+            newColorDiv.innerHTML = `
+                <label class="param-label" for="colorRangesColor${colorRangesColorCount}">Color ${colorRangesColorCount}</label>
+                <input type="color" id="colorRangesColor${colorRangesColorCount}" value="#ffffff">
+            `;
+            container.appendChild(newColorDiv);
+        }
+
+        function removeColorRangesColor() {
+            if (colorRangesColorCount > 1) {
+                const container = document.getElementById('colorRangesColorInputs');
+                if (container.children.length > 0) {
+                    // Use lastElementChild to skip text nodes (whitespace)
+                    const lastElement = container.lastElementChild;
+                    if (lastElement) {
+                        container.removeChild(lastElement);
+                        colorRangesColorCount--;
+                    }
+                }
+            }
+        }
+
+        /**
+         * Ensure exactly n color inputs exist for ColorRanges
+         * Adds or removes color inputs as needed
+         * @param {number} count - Desired number of color inputs
+         */
+        function ensureColorRangesColorCount(count) {
+            // Add colors if needed
+            while (colorRangesColorCount < count) {
+                addColorRangesColor();
+            }
+            // Remove colors if needed
+            while (colorRangesColorCount > count) {
+                removeColorRangesColor();
+            }
+        }
+
+        // Load Warm White preset (single color)
+        function loadWarmWhite() {
+            ensureColorRangesColorCount(1);
+            document.getElementById('colorRangesColor1').value = '#fff4dc'; // Warm white
+            document.getElementById('colorRangesRanges').value = '';
+            document.getElementById('colorRangesLinearBlend').checked = false;
+        }
+
+        // Load Gradient preset (two colors with linear blend)
+        function loadGradient() {
+            ensureColorRangesColorCount(2);
+            document.getElementById('colorRangesColor1').value = '#ff0000'; // Red
+            document.getElementById('colorRangesColor2').value = '#0000ff'; // Blue
+            document.getElementById('colorRangesRanges').value = '';
+            document.getElementById('colorRangesLinearBlend').checked = true;
+        }
+
+        // Load Ukraine flag preset
+        function loadUkraineFlag() {
+            ensureColorRangesColorCount(2);
+            document.getElementById('colorRangesColor1').value = '#0057b7'; // Blue
+            document.getElementById('colorRangesColor2').value = '#ffd700'; // Yellow
+            document.getElementById('colorRangesRanges').value = '';
+            document.getElementById('colorRangesLinearBlend').checked = false;
+        }
+
+        // Load Italian flag preset
+        function loadItalianFlag() {
+            ensureColorRangesColorCount(3);
+            document.getElementById('colorRangesColor1').value = '#008c45'; // Green
+            document.getElementById('colorRangesColor2').value = '#ffffff'; // White
+            document.getElementById('colorRangesColor3').value = '#cd212a'; // Red
+            document.getElementById('colorRangesRanges').value = '';
+            document.getElementById('colorRangesLinearBlend').checked = false;
+        }
+
+        // Load French flag preset
+        function loadFrenchFlag() {
+            ensureColorRangesColorCount(3);
+            document.getElementById('colorRangesColor1').value = '#0055a4'; // Blue
+            document.getElementById('colorRangesColor2').value = '#ffffff'; // White
+            document.getElementById('colorRangesColor3').value = '#ef4135'; // Red
+            document.getElementById('colorRangesRanges').value = '';
+            document.getElementById('colorRangesLinearBlend').checked = false;
+        }
+
+        // Apply ColorRanges parameters
+        async function applyColorRangesParams() {
+            const colors = [];
+
+            // Collect all color values (supports 1 or more colors)
+            for (let i = 1; i <= colorRangesColorCount; i++) {
+                const colorInput = document.getElementById(`colorRangesColor${i}`);
+                if (colorInput) {
+                    const hex = colorInput.value;
+                    const r = parseInt(hex.substr(1,2), 16);
+                    const g = parseInt(hex.substr(3,2), 16);
+                    const b = parseInt(hex.substr(5,2), 16);
+                    colors.push([r, g, b]);
+                }
+            }
+
+            // Parse ranges (optional, only for multi-color mode)
+            const rangesText = document.getElementById('colorRangesRanges').value.trim();
+            let ranges = [];
+            if (rangesText && colors.length > 1) {
+                ranges = rangesText.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n));
+
+                // Validate: should have colors.length - 1 ranges
+                if (ranges.length > 0 && ranges.length !== colors.length - 1) {
+                    alert(`Warning: For ${colors.length} colors, you need ${colors.length - 1} range value(s).\nYou provided ${ranges.length}. Using equal distribution instead.`);
+                    ranges = []; // Clear invalid ranges
+                }
+            }
+
+            // Get gradient mode from checkbox
+            const gradient = document.getElementById('colorRangesLinearBlend').checked;
+
+            // Always use colors array format
+            const params = { colors };
+            if (ranges.length > 0) {
+                params.ranges = ranges;
+            }
+            if (gradient) {
+                params.gradient = true;
+            }
+
+            console.log('Solid params:', JSON.stringify(params));
+
+            try {
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: 'Solid',
+                        params: params
+                    })
+                });
+                pendingParameterConfig = false;  // Applied successfully
+                lastPopulatedShow = null;  // Allow repopulation with backend values
+            } catch (error) {
+                console.error('Failed to apply Solid parameters:', error);
+            }
+        }
+
+        async function applyFireParams() {
+            const cooling = parseFloat(document.getElementById('cooling').value);
+            const spread = parseFloat(document.getElementById('spread').value);
+            const ignition = parseFloat(document.getElementById('ignition').value);
+            const spark_amount = parseFloat(document.getElementById('sparkAmount').value);
+
+            try {
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: 'Fire',
+                        params: { cooling, spread, ignition, spark_amount }
+                    })
+                });
+                pendingParameterConfig = false;  // Applied successfully
+            } catch (error) {
+                console.error('Failed to apply Fire parameters:', error);
+            }
+        }
+
+        // Apply Starlight parameters
+        async function applyStarlightParams() {
+            const probability = parseFloat(document.getElementById('starlightProbability').value);
+            const length = parseInt(document.getElementById('starlightLength').value);
+            const fade = parseInt(document.getElementById('starlightFade').value);
+
+            const hex = document.getElementById('starlightColor').value;
+            const r = parseInt(hex.substr(1,2), 16);
+            const g = parseInt(hex.substr(3,2), 16);
+            const b = parseInt(hex.substr(5,2), 16);
+
+            try {
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: 'Starlight',
+                        params: { probability, length, fade, r, g, b }
+                    })
+                });
+                pendingParameterConfig = false;  // Applied successfully
+            } catch (error) {
+                console.error('Failed to apply Starlight parameters:', error);
+            }
+        }
+
+        // Apply Wave parameters
+        async function applyWaveParams() {
+            const wave_speed = parseFloat(document.getElementById('waveSpeed').value);
+            const decay_rate = parseFloat(document.getElementById('waveDecay').value);
+            const brightness_frequency = parseFloat(document.getElementById('waveBrightnessFreq').value);
+            const wavelength = parseFloat(document.getElementById('waveWavelength').value);
+
+            try {
+                pendingParameterConfig = true;
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: 'Wave',
+                        params: { wave_speed, decay_rate, brightness_frequency, wavelength }
+                    })
+                });
+                pendingParameterConfig = false;  // Applied successfully
+            } catch (error) {
+                console.error('Failed to apply Wave parameters:', error);
+            }
+        }
+
+        // Apply MorseCode parameters
+        async function applyMorseCodeParams() {
+            const message = document.getElementById('morseMessage').value;
+            const speed = parseFloat(document.getElementById('morseSpeed').value);
+            const dot_length = parseInt(document.getElementById('morseDotLength').value);
+            const dash_length = parseInt(document.getElementById('morseDashLength').value);
+            const symbol_space = parseInt(document.getElementById('morseSymbolSpace').value);
+            const letter_space = parseInt(document.getElementById('morseLetterSpace').value);
+            const word_space = parseInt(document.getElementById('morseWordSpace').value);
+
+            try {
+                pendingParameterConfig = true;
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: 'MorseCode',
+                        params: { message, speed, dot_length, dash_length, symbol_space, letter_space, word_space }
+                    })
+                });
+                pendingParameterConfig = false;  // Applied successfully
+            } catch (error) {
+                console.error('Failed to apply MorseCode parameters:', error);
+            }
+        }
+
+        // Apply TheaterChase parameters
+        async function applyTheaterChaseParams() {
+            const num_steps_per_cycle = parseInt(document.getElementById('theaterStepsPerCycle').value);
+
+            try {
+                pendingParameterConfig = true;
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: 'TheaterChase',
+                        params: { num_steps_per_cycle }
+                    })
+                });
+                pendingParameterConfig = false;  // Applied successfully
+            } catch (error) {
+                console.error('Failed to apply TheaterChase parameters:', error);
+            }
+        }
+
+        // Apply Stroboscope parameters
+        async function applyStroboscopeParams() {
+            const hex = document.getElementById('stroboscopeColor').value;
+            const r = parseInt(hex.substring(1, 3), 16);
+            const g = parseInt(hex.substring(3, 5), 16);
+            const b = parseInt(hex.substring(5, 7), 16);
+            const on_cycles = parseInt(document.getElementById('stroboscopeOnCycles').value);
+            const off_cycles = parseInt(document.getElementById('stroboscopeOffCycles').value);
+
+            try {
+                pendingParameterConfig = true;
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: 'Stroboscope',
+                        params: { r, g, b, on_cycles, off_cycles }
+                    })
+                });
+                pendingParameterConfig = false;  // Applied successfully
+            } catch (error) {
+                console.error('Failed to apply Stroboscope parameters:', error);
+            }
+        }
+
+        // Update device info display
+        function updateDeviceInfo() {
+            const pageTitleElement = document.getElementById('pageTitle');
+            const deviceIdElement = document.getElementById('deviceId');
+
+            if (currentStatus.device_id) {
+                const hostname = "ledz-" + currentStatus.device_id.toLowerCase();
+                const hasCustomName = currentStatus.device_name && currentStatus.device_name !== currentStatus.device_id;
+
+                // Update page title with custom name if set
+                if (hasCustomName) {
+                    pageTitleElement.textContent = 'ledz ' + currentStatus.device_name;
+                } else {
+                    pageTitleElement.textContent = 'ledz';
+                }
+
+                // Device ID and technical details
+                let infoHTML = currentStatus.device_id;
+
+                if (currentStatus.wifi_connected && currentStatus.wifi_ssid) {
+                    infoHTML += `<br><small style="font-size: 11px; font-weight: normal;">
+                        WiFi: ${currentStatus.wifi_ssid}<br>
+                        Access at: <a href="http://${hostname}.local/" style="color: inherit; text-decoration: underline;">${hostname}.local</a>
+                    </small>`;
+                } else {
+                    infoHTML += `<br><small style="font-size: 11px; font-weight: normal;">
+                        Access at: <a href="http://${hostname}.local/" style="color: inherit; text-decoration: underline;">${hostname}.local</a>
+                    </small>`;
+                }
+
+                deviceIdElement.innerHTML = infoHTML;
+            }
+
+            // Update firmware version
+            const firmwareVersionElement = document.getElementById('firmwareVersion');
+            if (firmwareVersionElement && currentStatus.firmware_version) {
+                firmwareVersionElement.textContent = currentStatus.firmware_version;
+            }
+
+            // Update OTA partition
+            const otaPartitionElement = document.getElementById('otaPartition');
+            if (otaPartitionElement && currentStatus.ota_partition) {
+                otaPartitionElement.textContent = `(${currentStatus.ota_partition})`;
+            }
+        }
+
+        // Fetch available shows
+        async function loadShows() {
+            try {
+                const response = await fetch('/api/shows');
+                const data = await response.json();
+                shows = data.shows;
+
+                const select = document.getElementById('showSelect');
+                select.innerHTML = shows.map(show =>
+                    `<option value="${show.name}">${show.name}</option>`
+                ).join('');
+
+                // Update description and show/hide parameters on change
+                select.addEventListener('change', () => {
+                    const selectedShow = shows.find(s => s.name === select.value);
+                    document.getElementById('showDescription').textContent =
+                        selectedShow ? selectedShow.description : '';
+                    updateParameterVisibility(select.value);
+                });
+            } catch (error) {
+                console.error('Failed to load shows:', error);
+            }
+        }
+
+        // Fetch device status
+        // Populate parameter fields from show_params
+        function populateShowParams(showName, params) {
+            if (!params) return;
+
+            // Helper to convert RGB array to hex
+            const rgbToHex = (r, g, b) => {
+                return '#' + [r, g, b].map(x => {
+                    const hex = x.toString(16);
+                    return hex.length === 1 ? '0' + hex : hex;
+                }).join('');
+            };
+
+            switch(showName) {
+                case 'Solid':
+                    if (params.colors && Array.isArray(params.colors)) {
+                        // Ensure we have the right number of color inputs
+                        ensureColorRangesColorCount(params.colors.length);
+
+                        // Populate color inputs
+                        params.colors.forEach((color, index) => {
+                            const input = document.getElementById(`colorRangesColor${index + 1}`);
+                            if (input && Array.isArray(color) && color.length >= 3) {
+                                input.value = rgbToHex(color[0], color[1], color[2]);
+                            }
+                        });
+
+                        // Populate ranges
+                        if (params.ranges && Array.isArray(params.ranges)) {
+                            document.getElementById('colorRangesRanges').value = params.ranges.join(', ');
+                        } else {
+                            document.getElementById('colorRangesRanges').value = '';
+                        }
+
+                        // Populate gradient checkbox
+                        document.getElementById('colorRangesLinearBlend').checked = params.gradient === true;
+                    }
+                    break;
+
+                case 'Fire':
+                    if (params.cooling !== undefined) document.getElementById('cooling').value = params.cooling;
+                    if (params.spread !== undefined) document.getElementById('spread').value = params.spread;
+                    if (params.ignition !== undefined) document.getElementById('ignition').value = params.ignition;
+                    if (params.spark_amount !== undefined) document.getElementById('sparkAmount').value = params.spark_amount;
+                    break;
+
+                case 'Starlight':
+                    if (params.probability !== undefined) document.getElementById('starlightProbability').value = params.probability;
+                    if (params.length !== undefined) document.getElementById('starlightLength').value = params.length;
+                    if (params.fade !== undefined) document.getElementById('starlightFade').value = params.fade;
+                    if (params.r !== undefined) {
+                        document.getElementById('starlightColor').value = rgbToHex(params.r, params.g, params.b);
+                    }
+                    break;
+
+                case 'Stroboscope':
+                    if (params.r !== undefined) {
+                        document.getElementById('stroboscopeColor').value = rgbToHex(params.r, params.g, params.b);
+                    }
+                    if (params.on_cycles !== undefined) document.getElementById('stroboscopeOnCycles').value = params.on_cycles;
+                    if (params.off_cycles !== undefined) document.getElementById('stroboscopeOffCycles').value = params.off_cycles;
+                    break;
+
+                case 'Wave':
+                    if (params.wave_speed !== undefined) document.getElementById('waveSpeed').value = params.wave_speed;
+                    if (params.decay_rate !== undefined) document.getElementById('waveDecay').value = params.decay_rate;
+                    if (params.brightness_frequency !== undefined) document.getElementById('waveBrightnessFreq').value = params.brightness_frequency;
+                    if (params.wavelength !== undefined) document.getElementById('waveWavelength').value = params.wavelength;
+                    break;
+
+                case 'MorseCode':
+                    if (params.message !== undefined) document.getElementById('morseMessage').value = params.message;
+                    if (params.speed !== undefined) document.getElementById('morseSpeed').value = params.speed;
+                    if (params.dot_length !== undefined) document.getElementById('morseDotLength').value = params.dot_length;
+                    if (params.dash_length !== undefined) document.getElementById('morseDashLength').value = params.dash_length;
+                    if (params.symbol_space !== undefined) document.getElementById('morseSymbolSpace').value = params.symbol_space;
+                    if (params.letter_space !== undefined) document.getElementById('morseLetterSpace').value = params.letter_space;
+                    if (params.word_space !== undefined) document.getElementById('morseWordSpace').value = params.word_space;
+                    break;
+
+                case 'TheaterChase':
+                    if (params.num_steps_per_cycle !== undefined) document.getElementById('theaterStepsPerCycle').value = params.num_steps_per_cycle;
+                    break;
+
+                case 'Mandelbrot':
+                    if (params.Cre0 !== undefined) document.getElementById('mandelbrotCre0').value = params.Cre0;
+                    if (params.Cim0 !== undefined) document.getElementById('mandelbrotCim0').value = params.Cim0;
+                    if (params.Cim1 !== undefined) document.getElementById('mandelbrotCim1').value = params.Cim1;
+                    if (params.scale !== undefined) document.getElementById('mandelbrotScale').value = params.scale;
+                    if (params.max_iterations !== undefined) document.getElementById('mandelbrotMaxIter').value = params.max_iterations;
+                    if (params.color_scale !== undefined) document.getElementById('mandelbrotColorScale').value = params.color_scale;
+                    break;
+
+                case 'Chaos':
+                    if (params.Rmin !== undefined) document.getElementById('chaosRmin').value = params.Rmin;
+                    if (params.Rmax !== undefined) document.getElementById('chaosRmax').value = params.Rmax;
+                    if (params.Rdelta !== undefined) document.getElementById('chaosRdelta').value = params.Rdelta;
+                    break;
+            }
+        }
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                currentStatus = await response.json();
+
+                // Update device info with mDNS hostname
+                updateDeviceInfo();
+                document.getElementById('currentShow').textContent = currentStatus.current_show;
+                document.getElementById('currentBrightness').textContent = currentStatus.brightness;
+
+                // Update UI controls without triggering change events
+                // Don't override dropdown if user is configuring parameters
+                const showSelect = document.getElementById('showSelect');
+                if (!pendingParameterConfig) {
+                    if (showSelect.value !== currentStatus.current_show) {
+                        showSelect.value = currentStatus.current_show;
+                        const selectedShow = shows.find(s => s.name === currentStatus.current_show);
+                        document.getElementById('showDescription').textContent =
+                            selectedShow ? selectedShow.description : '';
+                        updateParameterVisibility(currentStatus.current_show);
+                        lastPopulatedShow = null; // Reset so params will be populated for new show
+                    }
+
+                    // Populate parameter fields with current values (only if show changed or first time)
+                    if (currentStatus.show_params && lastPopulatedShow !== currentStatus.current_show) {
+                        populateShowParams(currentStatus.current_show, currentStatus.show_params);
+                        lastPopulatedShow = currentStatus.current_show;
+                    }
+                }
+
+                const brightnessSlider = document.getElementById('brightnessSlider');
+                if (Math.abs(brightnessSlider.value - currentStatus.brightness) > 5) {
+                    brightnessSlider.value = currentStatus.brightness;
+                    document.getElementById('brightnessValue').textContent = currentStatus.brightness;
+                }
+            } catch (error) {
+                console.error('Failed to update status:', error);
+            }
+        }
+
+        // Show change handler
+        document.getElementById('showSelect').addEventListener('change', async (e) => {
+            const showName = e.target.value;
+
+            // Don't auto-apply for shows with parameters - wait for user to click Apply button
+            const showsWithParams = ['Solid', 'Mandelbrot', 'Chaos', 'Fire',
+                                     'Starlight', 'Wave', 'MorseCode', 'TheaterChase', 'Stroboscope'];
+
+            if (showsWithParams.includes(showName)) {
+                pendingParameterConfig = true;  // User is now configuring parameters
+                return;
+            }
+
+            // User selected a show without parameters (Rainbow, ColorRun, Jump)
+            pendingParameterConfig = false;
+
+            try {
+                await fetch('/api/show', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: showName })
+                });
+            } catch (error) {
+                console.error('Failed to change show:', error);
+            }
+        });
+
+        // Brightness change handler (instantaneous updates)
+        document.getElementById('brightnessSlider').addEventListener('input', async (e) => {
+            const value = e.target.value;
+            document.getElementById('brightnessValue').textContent = value;
+
+            try {
+                await fetch('/api/brightness', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ value: parseInt(value) })
+                });
+            } catch (error) {
+                console.error('Failed to change brightness:', error);
+            }
+        });
+
+        // Load layout configuration
+        async function loadLayout() {
+            try {
+                const response = await fetch('/api/layout');
+                const layout = await response.json();
+
+                // Set layout mode dropdown
+                let mode = 'normal';
+                if (layout.reverse && layout.mirror) mode = 'reverse_mirror';
+                else if (layout.reverse) mode = 'reverse';
+                else if (layout.mirror) mode = 'mirror';
+                document.getElementById('layoutMode').value = mode;
+
+                // Set dead LEDs
+                document.getElementById('deadLeds').value = layout.dead_leds;
+            } catch (error) {
+                console.error('Failed to load layout:', error);
+            }
+        }
+
+        // Apply layout configuration
+        async function applyLayout() {
+            const mode = document.getElementById('layoutMode').value;
+            const dead_leds = parseInt(document.getElementById('deadLeds').value);
+
+            let reverse = false;
+            let mirror = false;
+            if (mode === 'reverse') reverse = true;
+            else if (mode === 'mirror') mirror = true;
+            else if (mode === 'reverse_mirror') {
+                reverse = true;
+                mirror = true;
+            }
+
+            try {
+                await fetch('/api/layout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reverse, mirror, dead_leds })
+                });
+                // Layout is applied immediately, no restart needed
+            } catch (error) {
+                console.error('Failed to apply layout:', error);
+            }
+        }
+
+        // Presets management
+        let presets = [];
+
+        async function loadPresets() {
+            try {
+                const response = await fetch('/api/presets');
+                const data = await response.json();
+                presets = data.presets || [];
+
+                const select = document.getElementById('presetSelect');
+                if (presets.length === 0) {
+                    select.innerHTML = '<option value="">No presets saved</option>';
+                } else {
+                    select.innerHTML = presets.map(p =>
+                        `<option value="${p.index}">${p.name} (${p.show_name})</option>`
+                    ).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load presets:', error);
+            }
+        }
+
+        async function savePreset() {
+            const nameInput = document.getElementById('presetName');
+            const name = nameInput.value.trim();
+
+            if (!name) {
+                alert('Please enter a preset name');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/presets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    nameInput.value = '';
+                    await loadPresets();
+                    // Select the newly saved preset
+                    document.getElementById('presetSelect').value = result.index;
+                } else {
+                    alert('Failed to save preset: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to save preset:', error);
+                alert('Failed to save preset');
+            }
+        }
+
+        async function loadSelectedPreset() {
+            const select = document.getElementById('presetSelect');
+            const index = select.value;
+
+            if (index === '') {
+                alert('Please select a preset to load');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/presets/load', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index: parseInt(index) })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    // Refresh UI to show new state
+                    pendingParameterConfig = false;
+                    lastPopulatedShow = null;
+                    await updateStatus();
+                    await loadLayout();
+                } else {
+                    alert('Failed to load preset: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to load preset:', error);
+                alert('Failed to load preset');
+            }
+        }
+
+        async function deleteSelectedPreset() {
+            const select = document.getElementById('presetSelect');
+            const index = select.value;
+
+            if (index === '') {
+                alert('Please select a preset to delete');
+                return;
+            }
+
+            const presetName = select.options[select.selectedIndex].text;
+            if (!confirm(`Delete preset "${presetName}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/presets', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index: parseInt(index) })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    await loadPresets();
+                } else {
+                    alert('Failed to delete preset: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to delete preset:', error);
+                alert('Failed to delete preset');
+            }
+        }
+
+        // Initialize (loadShows must complete before updateStatus to avoid race condition)
+        async function init() {
+            await loadShows();
+            await updateStatus();
+            // Ensure parameter visibility is set for initial show (updateStatus skips this
+            // if dropdown value already matches current show)
+            updateParameterVisibility(document.getElementById('showSelect').value);
+            loadLayout();
+            loadPresets();
+        }
+        init();
+
+        // Update status periodically
+        setInterval(updateStatus, 10000);
+
+        // Timer status display
+        let cachedTimers = [];
+        let timersFetchedAt = 0;
+
+        function formatTime(seconds) {
+            if (seconds <= 0) return '0s';
+            if (seconds < 60) {
+                return `${seconds}s`;
+            } else if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+            } else {
+                const hours = Math.floor(seconds / 3600);
+                const mins = Math.floor((seconds % 3600) / 60);
+                return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+            }
+        }
+
+        function formatTimeOfDay(secondsSinceMidnight) {
+            const hours = Math.floor(secondsSinceMidnight / 3600);
+            const mins = Math.floor((secondsSinceMidnight % 3600) / 60);
+            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+        }
+
+        async function fetchTimers() {
+            try {
+                const response = await fetch('/api/timers');
+                const data = await response.json();
+                cachedTimers = (data.timers || []).filter(t => t.enabled);
+                timersFetchedAt = Date.now();
+                updateTimerDisplay();
+            } catch (error) {
+                console.error('Failed to load timers:', error);
+            }
+        }
+
+        function updateTimerDisplay() {
+            const timerStatusItem = document.getElementById('timerStatusItem');
+            const timerStatus = document.getElementById('timerStatus');
+            const elapsedSeconds = Math.floor((Date.now() - timersFetchedAt) / 1000);
+
+            // Filter out expired timers
+            const activeTimers = cachedTimers.filter(t => {
+                if (t.type_name === 'alarm_daily') return true;
+                return t.remaining_seconds - elapsedSeconds > 0;
+            });
+
+            if (activeTimers.length === 0) {
+                timerStatusItem.style.display = 'none';
+                if (cachedTimers.length > 0) {
+                    // A timer may have expired, refresh from backend
+                    cachedTimers = [];
+                    fetchTimers();
+                }
+            } else {
+                timerStatusItem.style.display = 'block';
+                const timer = activeTimers[0];
+                const actionText = timer.action === 0 ? 'Preset' : 'Off';
+                let timeInfo = '';
+                switch (timer.type_name) {
+                    case 'countdown':
+                        const remaining = Math.max(0, timer.remaining_seconds - elapsedSeconds);
+                        timeInfo = formatTime(remaining);
+                        break;
+                    case 'alarm_daily':
+                        timeInfo = formatTimeOfDay(timer.target_time);
+                        break;
+                }
+                const countSuffix = activeTimers.length > 1 ? ` (+${activeTimers.length - 1})` : '';
+                timerStatus.textContent = `${actionText} ${timeInfo}${countSuffix}`;
+            }
+        }
+
+        fetchTimers();
+        setInterval(updateTimerDisplay, 1000);
+    </script>
+</body>
+</html>

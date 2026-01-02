@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - ledz</title>
+    <link rel="stylesheet" href="/common.css">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Settings</h1>
+        <p>Configure device settings</p>
+    </div>
+    <div class="nav">
+        <a href="/">&larr; Back to Control Panel</a>
+    </div>
+    <div class="content">
+        <div class="section">
+            <h2>Device Name</h2>
+            <p>Set a custom name for this device. This name is displayed in the control panel.</p>
+
+            <div class="form-group">
+                <label for="deviceName">Device Name</label>
+                <input type="text" id="deviceName" placeholder="Enter device name" maxlength="31">
+            </div>
+
+            <button class="btn btn-primary" onclick="updateDeviceName()">Update Name</button>
+
+            <div class="info-box">
+                <strong>Current: </strong><span id="currentDeviceName">Loading...</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Hardware Configuration</h2>
+            <p>Configure LED strip hardware settings. The device will restart after saving.</p>
+
+            <div class="form-group">
+                <label for="numPixels">Number of LEDs</label>
+                <input type="number" id="numPixels" placeholder="Enter number of LEDs" min="1" max="1000">
+            </div>
+
+            <div class="form-group">
+                <label for="ledPin">LED Strip Pin (GPIO)</label>
+                <input type="number" id="ledPin" placeholder="Enter GPIO pin number" min="0" max="48">
+                <small style="display:block; margin-top:4px; color:#666;">Default: 39 (PIN_NEOPIXEL for onboard LED), or
+                    35 (MOSI for external strips)</small>
+            </div>
+
+            <div class="form-group">
+                <label for="cycleTime">Show Cycle Time (ms)</label>
+                <select id="cycleTime">
+                    <option value="10">10 ms (Default)</option>
+                    <option value="20">20 ms</option>
+                    <option value="25">25 ms</option>
+                    <option value="50">50 ms</option>
+                </select>
+            </div>
+
+            <button class="btn btn-primary" onclick="updateHardwareSettings()">Update Hardware Settings</button>
+
+            <div class="info-box">
+                <strong>Current: </strong><span id="currentNumPixels">Loading...</span> LEDs on pin <span
+                    id="currentLedPin">Loading...</span> with cycle time <span id="currentCycleTime">Loading...</span>
+                ms<br>
+                <strong>Note: </strong>The device will restart after updating these settings.
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Touch Control</h2>
+            <p>Configure capacitive touch pins to load presets. Touch pins GPIO 5, 7, 9 can each trigger a preset.</p>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="touchEnabled" onchange="updateTouchEnabled()">
+                    Enable touch control
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="touchThreshold">Touch Threshold</label>
+                <input type="number" id="touchThreshold" placeholder="45000" min="1000" max="100000"
+                       style="width: 120px;">
+                <button class="btn btn-primary" onclick="updateTouchThreshold()"
+                        style="width: auto; margin-top: 0; margin-left: 8px; padding: 12px 16px;">Update
+                </button>
+                <small style="display:block; margin-top:4px; color:#666;">Lower value = more sensitive. Default:
+                    45000</small>
+            </div>
+
+            <div class="info-box" id="touchStatus">
+                <strong>Current Values: </strong><span id="touchValues">Loading...</span><br>
+                <small style="color: #666;">Values below threshold trigger touch. Refresh page to update.</small>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Firmware Updates (OTA)</h2>
+            <p>Check for and install firmware updates from GitHub releases.</p>
+
+            <div class="info-box" id="otaCurrentVersion">
+                <strong>Current Version: </strong><span id="currentVersion">Loading...</span><br>
+                <strong>Partition: </strong><span id="currentPartition">Loading...</span><br>
+                <strong>Build Date: </strong><span id="buildDate">Loading...</span>
+            </div>
+
+            <button class="btn btn-primary" onclick="checkForUpdates()" id="checkUpdateBtn">Check for Updates</button>
+
+            <div id="updateAvailable" style="display: none; margin-top: 15px;">
+                <div class="success-box">
+                    <strong>Update Available!</strong><br>
+                    <strong>Version: </strong><span id="latestVersion"></span><br>
+                    <strong>Size: </strong><span id="updateSize"></span><br>
+                    <strong>Release Notes:</strong><br>
+                    <div id="releaseNotes" style="margin-top: 5px; white-space: pre-wrap; font-size: 12px;"></div>
+                </div>
+                <button class="btn btn-primary" onclick="performUpdate()" id="installUpdateBtn">Install Update</button>
+            </div>
+
+            <div id="updateProgress" style="display: none; margin-top: 15px;">
+                <div class="info-box">
+                    <strong>Installing update...</strong><br>
+                    <div style="margin-top: 10px;">Please wait. The device will restart automatically after the update
+                        completes.
+                    </div>
+                </div>
+            </div>
+
+            <div class="warning-box">
+                <strong>Note: </strong>The device will restart after installing an update. Make sure you have a stable
+                WiFi connection before updating.
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>WiFi Configuration</h2>
+            <p>Update the WiFi network credentials. The device will restart after saving.</p>
+
+            <div class="form-group">
+                <label for="wifiSSID">WiFi Network (SSID)</label>
+                <input type="text" id="wifiSSID" placeholder="Enter WiFi network name">
+            </div>
+
+            <div class="form-group">
+                <label for="wifiPassword">WiFi Password</label>
+                <input type="password" id="wifiPassword" placeholder="Enter WiFi password">
+            </div>
+
+            <button class="btn btn-primary" onclick="updateWiFi()">Update WiFi</button>
+
+            <div class="info-box">
+                <strong>Note: </strong>The device will restart after updating WiFi credentials. You will need to
+                reconnect to the new network to access the device.
+            </div>
+        </div>
+
+
+        <div class="section">
+            <h2>Factory Reset</h2>
+            <p>Erase all settings and return the device to factory defaults.</p>
+
+            <button class="btn btn-danger" onclick="factoryReset()">Factory Reset</button>
+
+            <div class="warning-box">
+                <strong>Warning: </strong>This will permanently erase all settings including:
+                <ul style="margin-top: 8px; margin-left: 20px;">
+                    <li>WiFi configuration</li>
+                    <li>Show settings and parameters</li>
+                    <li>Strip layout configuration</li>
+                    <li>All other preferences</li>
+                </ul>
+                The device will restart in AP mode and require reconfiguration.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Load current device name
+    async function loadDeviceName() {
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            document.getElementById('currentDeviceName').textContent = data.device_name || data.device_id;
+        } catch (error) {
+            console.error('Failed to load device name:', error);
+            document.getElementById('currentDeviceName').textContent = 'Error loading';
+        }
+    }
+
+    // Load current hardware settings from /api/status endpoint
+    async function loadHardwareSettings() {
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            const numPixels = data.num_pixels || 300;
+            const ledPin = data.led_pin || 35;
+            const cycleTime = data.cycle_time || 10;
+            document.getElementById('currentNumPixels').textContent = numPixels;
+            document.getElementById('currentLedPin').textContent = ledPin;
+            document.getElementById('currentCycleTime').textContent = cycleTime;
+
+            // Set the select value
+            const cycleTimeSelect = document.getElementById('cycleTime');
+            if (cycleTimeSelect) {
+                cycleTimeSelect.value = cycleTime.toString();
+            }
+        } catch (error) {
+            console.error('Failed to load hardware settings:', error);
+            document.getElementById('currentNumPixels').textContent = 'Error';
+            document.getElementById('currentLedPin').textContent = 'Error';
+            document.getElementById('currentCycleTime').textContent = 'Error';
+        }
+    }
+
+    // Update device name
+    async function updateDeviceName() {
+        const name = document.getElementById('deviceName').value;
+
+        if (!name || name.trim() === '') {
+            alert('Please enter a device name');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/settings/device-name', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name.trim()})
+            });
+
+            if (response.ok) {
+                alert('Device name updated successfully!');
+                document.getElementById('deviceName').value = '';
+                loadDeviceName();
+            } else {
+                const data = await response.json();
+                alert('Failed to update device name: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to update device name:', error);
+            alert('Error updating device name. Please try again.');
+        }
+    }
+
+    // Update hardware settings (num_pixels and/or led_pin)
+    async function updateHardwareSettings() {
+        const numPixels = parseInt(document.getElementById('numPixels').value);
+        const ledPin = parseInt(document.getElementById('ledPin').value);
+        const cycleTime = parseInt(document.getElementById('cycleTime').value);
+
+        const updates = {};
+        let changes = [];
+
+        if (!isNaN(numPixels)) {
+            if (numPixels < 1 || numPixels > 1000) {
+                alert('Please enter a valid number of LEDs (1-1000)');
+                return;
+            }
+            updates.num_pixels = numPixels;
+            changes.push(`${numPixels} LEDs`);
+        }
+
+        if (!isNaN(ledPin)) {
+            if (ledPin < 0 || ledPin > 48) {
+                alert('Please enter a valid GPIO pin (0-48)');
+                return;
+            }
+            updates.led_pin = ledPin;
+            changes.push(`pin ${ledPin}`);
+        }
+
+        if (!isNaN(cycleTime)) {
+            updates.cycle_time = cycleTime;
+            changes.push(`${cycleTime}ms cycle time`);
+        }
+
+        if (changes.length === 0) {
+            alert('Please enter at least one value to update');
+            return;
+        }
+
+        if (!confirm(`Update hardware settings to ${changes.join(' and ')}?\n\nDevice will restart to apply changes.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/settings/device', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(updates)
+            });
+
+            if (response.ok) {
+                alert('Hardware settings updated!\n\nDevice is restarting...\n\nPlease wait a moment and refresh the page.');
+                document.getElementById('numPixels').value = '';
+                document.getElementById('ledPin').value = '';
+            } else {
+                const data = await response.json();
+                alert('Failed to update hardware settings: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to update hardware settings:', error);
+            alert('Error updating hardware settings. Please try again.');
+        }
+    }
+
+    // Update WiFi credentials
+    async function updateWiFi() {
+        const ssid = document.getElementById('wifiSSID').value;
+        const password = document.getElementById('wifiPassword').value;
+
+        if (!ssid || ssid.trim() === '') {
+            alert('Please enter a WiFi SSID');
+            return;
+        }
+
+        if (!confirm(`Update WiFi credentials to network "${ssid}"?\n\nDevice will restart and connect to the new network.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/settings/wifi', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ssid, password})
+            });
+
+            if (response.ok) {
+                alert('WiFi updated successfully!\n\nDevice is restarting...\n\nPlease reconnect to the new WiFi network and access the device at its new IP address or hostname.');
+                document.getElementById('wifiSSID').value = '';
+                document.getElementById('wifiPassword').value = '';
+            } else {
+                const data = await response.json();
+                alert('Failed to update WiFi: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to update WiFi:', error);
+            alert('Error updating WiFi credentials. Please try again.');
+        }
+    }
+
+    // Factory reset
+    async function factoryReset() {
+        if (!confirm('Factory Reset Warning\n\nThis will erase ALL settings including:\n- WiFi configuration\n- Show settings\n- Layout configuration\n- All preferences\n\nThe device will restart in AP mode.\n\nAre you sure you want to continue?')) {
+            return;
+        }
+
+        if (!confirm('Final Confirmation\n\nThis action CANNOT be undone!\n\nAre you absolutely sure you want to factory reset?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/settings/factory-reset', {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                alert('Factory reset complete!\n\nDevice is restarting in AP mode.\n\nConnect to the WiFi network "ledz-XXXXXX" to reconfigure the device.');
+            } else {
+                alert('Failed to factory reset. Please try again.');
+            }
+        } catch (error) {
+            console.error('Failed to factory reset:', error);
+            alert('Error performing factory reset. Please try again.');
+        }
+    }
+
+    // OTA Update Functions
+    let updateInfo = null;
+
+    async function loadOTAStatus() {
+        try {
+            const response = await fetch('/api/ota/status');
+            const data = await response.json();
+            document.getElementById('currentVersion').textContent = data.firmware_version || 'Unknown';
+            document.getElementById('currentPartition').textContent = data.partition || 'Unknown';
+            document.getElementById('buildDate').textContent = data.build_date || 'Unknown';
+        } catch (error) {
+            console.error('Failed to load OTA status:', error);
+            document.getElementById('currentVersion').textContent = 'Error loading';
+        }
+    }
+
+    async function checkForUpdates() {
+        const btn = document.getElementById('checkUpdateBtn');
+        btn.disabled = true;
+        btn.textContent = 'Checking...';
+
+        try {
+            const response = await fetch('/api/ota/check');
+            const data = await response.json();
+
+            if (data.update_available) {
+                updateInfo = data;
+                document.getElementById('latestVersion').textContent = data.latest_version;
+                document.getElementById('updateSize').textContent = formatBytes(data.size_bytes);
+                document.getElementById('releaseNotes').textContent = data.release_notes || 'No release notes available.';
+                document.getElementById('updateAvailable').style.display = 'block';
+                btn.textContent = 'Update Available!';
+            } else {
+                alert('You are running the latest version: ' + data.current_version);
+                btn.textContent = 'Check for Updates';
+                btn.disabled = false;
+            }
+        } catch (error) {
+            console.error('Failed to check for updates:', error);
+            alert('Failed to check for updates. Please ensure you have internet connection.');
+            btn.textContent = 'Check for Updates';
+            btn.disabled = false;
+        }
+    }
+
+    async function performUpdate() {
+        if (!updateInfo) {
+            alert('No update information available. Please check for updates first.');
+            return;
+        }
+
+        if (!confirm('Install firmware update ' + updateInfo.latest_version + '?\n\nThe device will restart after the update completes.')) {
+            return;
+        }
+
+        document.getElementById('updateAvailable').style.display = 'none';
+        document.getElementById('updateProgress').style.display = 'block';
+        document.getElementById('checkUpdateBtn').disabled = true;
+
+        try {
+            const response = await fetch('/api/ota/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    download_url: updateInfo.download_url,
+                    size: updateInfo.size_bytes
+                })
+            });
+
+            if (response.ok) {
+                setTimeout(() => {
+                    alert('Update started! The device will restart in a few moments.\n\nPlease wait about 30 seconds, then refresh this page.');
+                }, 2000);
+            } else {
+                alert('Failed to start update. Please try again.');
+                document.getElementById('updateProgress').style.display = 'none';
+                document.getElementById('checkUpdateBtn').disabled = false;
+            }
+        } catch (error) {
+            console.error('Failed to perform update:', error);
+            alert('Error performing update. Please try again.');
+            document.getElementById('updateProgress').style.display = 'none';
+            document.getElementById('checkUpdateBtn').disabled = false;
+        }
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // Touch Control Functions
+    async function loadTouchConfig() {
+        try {
+            const response = await fetch('/api/touch');
+            const data = await response.json();
+
+            document.getElementById('touchEnabled').checked = data.enabled;
+            document.getElementById('touchThreshold').value = data.threshold;
+
+            // Display current touch values
+            const valuesStr = data.pins.map((pin, i) =>
+                `GPIO ${pin.gpio}: ${data.values[i]}`
+            ).join(', ');
+            document.getElementById('touchValues').textContent = valuesStr;
+        } catch (error) {
+            console.error('Failed to load touch config:', error);
+            document.getElementById('touchValues').textContent = 'Error loading';
+        }
+    }
+
+    async function updateTouchEnabled() {
+        const enabled = document.getElementById('touchEnabled').checked;
+        try {
+            const response = await fetch('/api/touch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enabled})
+            });
+            if (!response.ok) {
+                throw new Error('Failed to update');
+            }
+        } catch (error) {
+            console.error('Failed to update touch enabled:', error);
+            alert('Failed to update touch setting');
+            // Revert checkbox
+            document.getElementById('touchEnabled').checked = !enabled;
+        }
+    }
+
+    async function updateTouchThreshold() {
+        const enabled = document.getElementById('touchEnabled').checked;
+        const threshold = parseInt(document.getElementById('touchThreshold').value);
+        if (isNaN(threshold) || threshold < 1000 || threshold > 100000) {
+            alert('Please enter a valid threshold between 1000 and 100000');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/touch', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enabled, threshold})
+            });
+            if (response.ok) {
+                const status = enabled ? 'enabled' : 'disabled';
+                alert(`Touch control ${status}, threshold set to ${threshold}`);
+            } else {
+                throw new Error('Failed to update');
+            }
+        } catch (error) {
+            console.error('Failed to update touch settings:', error);
+            alert('Failed to update touch settings');
+        }
+    }
+
+    // Load device info on page load
+    loadDeviceName();
+    loadHardwareSettings();
+    loadOTAStatus();
+    loadTouchConfig();
+</script>
+</body>
+</html>

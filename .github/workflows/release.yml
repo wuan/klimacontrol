@@ -1,0 +1,125 @@
+name: Build and Release Firmware
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Install PlatformIO
+        run: |
+          pip install --upgrade platformio
+          pio --version
+
+      - name: Build Firmware
+        run: |
+          echo "Building firmware for ESP32-S3..."
+          pio run -e adafruit_qtpy_esp32s3_nopsram
+
+          echo "Firmware built successfully!"
+          ls -lh .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.*
+
+      - name: Prepare Release Assets
+        run: |
+          # Copy firmware to release directory
+          mkdir -p release
+          cp .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.bin release/firmware.bin
+          cp .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.elf release/firmware.elf
+
+          # Get firmware size
+          SIZE=$(stat -c%s release/firmware.bin 2>/dev/null || stat -f%z release/firmware.bin)
+          SIZE_KB=$((SIZE / 1024))
+          echo "FIRMWARE_SIZE=${SIZE_KB}KB" >> $GITHUB_ENV
+
+          # Get build info
+          echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+          echo "GIT_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          cat > release_notes.md <<EOF
+          ## Firmware Release ${GITHUB_REF_NAME}
+
+          **Built:** ${BUILD_DATE}
+          **Commit:** ${GIT_COMMIT}
+          **Size:** ${FIRMWARE_SIZE}
+
+          ### Installation
+
+          #### Over-The-Air (OTA) Update
+          1. Navigate to your device's web interface
+          2. Go to **Settings** > **Firmware Updates (OTA)**
+          3. Click **Check for Updates**
+          4. Click **Install Update**
+          5. Device will restart automatically
+
+          #### Manual Flash via USB
+          \`\`\`bash
+          # Install esptool if you haven't already
+          pip install esptool
+
+          # Flash firmware (replace /dev/ttyUSB0 with your port)
+          esptool.py --chip esp32s3 --port /dev/ttyUSB0 \\
+            --baud 921600 --before default_reset --after hard_reset \\
+            write_flash 0x10000 firmware.bin
+          \`\`\`
+
+          ### Files
+
+          - **firmware.bin** - Main firmware file (use this for OTA updates)
+          - **firmware.elf** - Debug symbols file (optional, for developers)
+
+          ### What's Changed
+
+          See commit history for detailed changes: https://github.com/${{ github.repository }}/commits/${GITHUB_REF_NAME}
+          EOF
+
+          # Set multiline output
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
+          cat release_notes.md >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/firmware.bin
+            release/firmware.elf
+          body: ${{ env.RELEASE_NOTES }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.ref_name }}
+          path: |
+            release/firmware.bin
+            release/firmware.elf
+          retention-days: 90

@@ -1,0 +1,28 @@
+# ESP32-S3 OTA Partition Table - 4MB Flash
+# For use with Adafruit QT Py ESP32-S3
+#
+# This partition table is configured for OTA firmware updates:
+# - Dual app partitions (app0, app1) for atomic updates
+# - OTA data partition for rollback control
+# - NVS for device configuration
+# - SPIFFS for web server assets
+# - Coredump for crash debugging
+#
+# Flash Layout (Total 4MB):
+# 0x0000 - 0x0FFF     : Boot loader
+# 0x1000 - 0x1FFF     : Partition table
+# 0x2000 - 0xDFFF     : System data and app partitions
+#
+# To use this file:
+# 1. Copy to your project root
+# 2. Add to platformio.ini:
+#    [env:adafruit_qtpy_esp32s3_nopsram]
+#    board_build.partitions = partitions.csv
+
+# Name,Type,SubType,Offset,Size,Flags
+nvs,data,nvs,36K,20K,
+otadata,data,ota,56K,8K,
+app0,app,ota_0,64K,1856K,
+app1,app,ota_1,1920K,1856K,
+spiffs,data,spiffs,3776K,256K,
+coredump,data,coredump,4032K,64K,

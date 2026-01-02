@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timers - ledz</title>
+    <link rel="stylesheet" href="/common.css">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Timers & Schedules</h1>
+            <p>Configure countdown timers and daily alarms</p>
+        </div>
+        <div class="nav">
+            <a href="/">&larr; Back to Control Panel</a>
+        </div>
+        <div class="content">
+            <div class="section" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <div style="font-size: 13px; opacity: 0.9; margin-bottom: 4px;">Current Time (UTC<span id="tzDisplay"></span>)</div>
+                        <div id="serverTime" style="font-size: 32px; font-weight: 600; font-family: monospace; letter-spacing: 2px;">--:--:--</div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                        <select id="timezoneOffset" style="padding: 8px 12px; border-radius: 6px; border: none; background: rgba(255,255,255,0.2); color: white; font-size: 13px; min-width: 180px;">
+                            <option value="-12">UTC-12 Baker Island</option>
+                            <option value="-11">UTC-11 Samoa</option>
+                            <option value="-10">UTC-10 Hawaii</option>
+                            <option value="-9">UTC-9 Alaska</option>
+                            <option value="-8">UTC-8 Los Angeles</option>
+                            <option value="-7">UTC-7 Denver</option>
+                            <option value="-6">UTC-6 Chicago</option>
+                            <option value="-5">UTC-5 New York</option>
+                            <option value="-4">UTC-4 Santiago</option>
+                            <option value="-3">UTC-3 São Paulo</option>
+                            <option value="-2">UTC-2 Atlantic</option>
+                            <option value="-1">UTC-1 Azores</option>
+                            <option value="0" selected>UTC+0 London</option>
+                            <option value="1">UTC+1 Paris, Berlin</option>
+                            <option value="2">UTC+2 Cairo, Athens</option>
+                            <option value="3">UTC+3 Moscow</option>
+                            <option value="4">UTC+4 Dubai</option>
+                            <option value="5">UTC+5 Karachi</option>
+                            <option value="6">UTC+6 Dhaka</option>
+                            <option value="7">UTC+7 Bangkok</option>
+                            <option value="8">UTC+8 Singapore</option>
+                            <option value="9">UTC+9 Tokyo</option>
+                            <option value="10">UTC+10 Sydney</option>
+                            <option value="11">UTC+11 Noumea</option>
+                            <option value="12">UTC+12 Auckland</option>
+                        </select>
+                        <button onclick="setTimezone()" style="padding: 8px 20px; border-radius: 6px; border: none; background: rgba(255,255,255,0.3); color: white; cursor: pointer; font-size: 13px;">Save Timezone</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Active Timers</h2>
+                <div id="timerList">
+                    <p style="color: #666;">Loading...</p>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Quick Off Timer</h2>
+                <p>Turn off LEDs after a set duration.</p>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="setQuickTimer(15*60)" style="min-width: 80px;">15 min</button>
+                    <button class="btn btn-primary" onclick="setQuickTimer(30*60)" style="min-width: 80px;">30 min</button>
+                    <button class="btn btn-primary" onclick="setQuickTimer(60*60)" style="min-width: 80px;">1 hour</button>
+                    <button class="btn btn-primary" onclick="setQuickTimer(120*60)" style="min-width: 80px;">2 hours</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Custom Countdown Timer</h2>
+                <p>Set a custom countdown timer with a specific duration and action.</p>
+
+                <div class="form-group">
+                    <label for="countdownMinutes">Duration (minutes)</label>
+                    <input type="number" id="countdownMinutes" min="1" max="10080" value="30" placeholder="Enter minutes">
+                </div>
+
+                <div class="form-group">
+                    <label for="countdownAction">Action</label>
+                    <select id="countdownAction">
+                        <option value="off">Turn Off LEDs</option>
+                        <option value="preset">Load Preset</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="countdownPresetGroup" style="display: none;">
+                    <label for="countdownPreset">Preset to Load</label>
+                    <select id="countdownPreset">
+                        <option value="">Select preset...</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" onclick="setCustomCountdown()">Set Countdown Timer</button>
+            </div>
+
+            <div class="section">
+                <h2>Daily Alarm</h2>
+                <p>Set a recurring daily alarm to trigger an action at a specific time each day.</p>
+
+                <div class="form-group">
+                    <label for="dailyAlarmTime">Alarm Time</label>
+                    <input type="time" id="dailyAlarmTime" value="07:00">
+                </div>
+
+                <div class="form-group">
+                    <label for="dailyAlarmAction">Action</label>
+                    <select id="dailyAlarmAction">
+                        <option value="off">Turn Off LEDs</option>
+                        <option value="preset">Load Preset</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="dailyAlarmPresetGroup" style="display: none;">
+                    <label for="dailyAlarmPreset">Preset to Load</label>
+                    <select id="dailyAlarmPreset">
+                        <option value="">Select preset...</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary" onclick="setDailyAlarm()">Set Daily Alarm</button>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let presets = [];
+        let timersData = [];
+        let timersFetchedAt = 0;
+        let serverTimeAtFetch = 0;
+        let timezoneOffsetHours = 0;
+
+        // Format seconds as human-readable countdown
+        function formatCountdown(seconds) {
+            if (seconds <= 0) return '0:00';
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            if (hours > 0) {
+                return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            } else {
+                return `${mins}:${secs.toString().padStart(2, '0')}`;
+            }
+        }
+
+        // Format seconds since midnight as HH:MM:SS
+        function formatTimeOfDay(secondsSinceMidnight) {
+            const hours = Math.floor(secondsSinceMidnight / 3600);
+            const mins = Math.floor((secondsSinceMidnight % 3600) / 60);
+            const secs = Math.floor(secondsSinceMidnight % 60);
+            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Format alarm time as HH:MM (no seconds for alarms)
+        function formatAlarmTime(secondsSinceMidnight) {
+            const hours = Math.floor(secondsSinceMidnight / 3600);
+            const mins = Math.floor((secondsSinceMidnight % 3600) / 60);
+            return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+        }
+
+        // Load presets for dropdowns
+        async function loadPresets() {
+            try {
+                const response = await fetch('/api/presets');
+                const data = await response.json();
+                presets = data.presets || [];
+
+                const options = presets.map(p =>
+                    `<option value="${p.index}">${p.name}</option>`
+                ).join('');
+
+                document.getElementById('countdownPreset').innerHTML =
+                    '<option value="">Select preset...</option>' + options;
+                document.getElementById('dailyAlarmPreset').innerHTML =
+                    '<option value="">Select preset...</option>' + options;
+            } catch (error) {
+                console.error('Failed to load presets:', error);
+            }
+        }
+
+        // Fetch timers from backend
+        async function fetchTimers() {
+            try {
+                const response = await fetch('/api/timers');
+                const data = await response.json();
+                timersData = (data.timers || []).filter(t => t.enabled);
+                timersFetchedAt = Date.now();
+
+                // Update timezone dropdown
+                timezoneOffsetHours = data.timezone_offset_hours || 0;
+                document.getElementById('timezoneOffset').value = timezoneOffsetHours;
+                document.getElementById('tzDisplay').textContent = (timezoneOffsetHours >= 0 ? '+' : '') + timezoneOffsetHours;
+
+                // Update server time display
+                if (data.local_seconds_since_midnight !== undefined && data.current_epoch !== 0) {
+                    serverTimeAtFetch = data.local_seconds_since_midnight;
+                } else {
+                    serverTimeAtFetch = -1; // NTP not available
+                }
+
+                updateTimerDisplay();
+            } catch (error) {
+                console.error('Failed to load timers:', error);
+                document.getElementById('timerList').innerHTML =
+                    '<p style="color: #d9534f;">Failed to load timers</p>';
+            }
+        }
+
+        // Update timer display using cached data
+        function updateTimerDisplay() {
+            const timerList = document.getElementById('timerList');
+            const elapsedSeconds = Math.floor((Date.now() - timersFetchedAt) / 1000);
+
+            // Update server time display
+            const serverTimeElement = document.getElementById('serverTime');
+            if (serverTimeAtFetch >= 0) {
+                const currentLocalSeconds = (serverTimeAtFetch + elapsedSeconds) % 86400;
+                serverTimeElement.textContent = formatTimeOfDay(currentLocalSeconds);
+                serverTimeElement.style.color = '';
+            } else {
+                serverTimeElement.textContent = 'NTP not available';
+                serverTimeElement.style.color = '#d9534f';
+            }
+
+            // Filter out expired timers
+            const activeTimers = timersData.filter(t => {
+                if (t.type_name === 'alarm_daily') return true;
+                return t.remaining_seconds - elapsedSeconds > 0;
+            });
+
+            if (activeTimers.length === 0) {
+                timerList.innerHTML = '<p style="color: #888; text-align: center; padding: 20px;">No active timers</p>';
+                if (timersData.length > 0) {
+                    // A timer expired, refresh from backend
+                    timersData = [];
+                    fetchTimers();
+                }
+            } else {
+                timerList.innerHTML = activeTimers.map(timer => {
+                    let actionText = 'Turn off';
+                    if (timer.action === 0) {
+                        const preset = presets.find(p => p.index === timer.preset_index);
+                        actionText = preset ? `Load "${preset.name}"` : `Load preset #${timer.preset_index}`;
+                    }
+
+                    let timeDisplay = '';
+                    let typeLabel = '';
+                    let typeColor = '';
+
+                    switch (timer.type_name) {
+                        case 'countdown':
+                            const remaining = Math.max(0, timer.remaining_seconds - elapsedSeconds);
+                            timeDisplay = formatCountdown(remaining);
+                            typeLabel = 'TIMER';
+                            typeColor = '#667eea';
+                            break;
+                        case 'alarm_daily':
+                            timeDisplay = formatAlarmTime(timer.target_time);
+                            typeLabel = 'DAILY';
+                            typeColor = '#28a745';
+                            break;
+                    }
+
+                    return `
+                        <div style="display: flex; align-items: center; padding: 12px 16px; background: #f8f9fa; border-radius: 10px; margin-bottom: 10px; border-left: 4px solid ${typeColor};">
+                            <div style="flex: 1;">
+                                <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px;">
+                                    <span style="font-size: 10px; font-weight: 600; color: ${typeColor}; background: ${typeColor}22; padding: 2px 6px; border-radius: 4px;">${typeLabel}</span>
+                                    <span style="font-size: 28px; font-weight: 600; font-family: monospace; letter-spacing: 2px; color: #333;">${timeDisplay}</span>
+                                </div>
+                                <div style="font-size: 13px; color: #666;">${actionText}</div>
+                            </div>
+                            <button class="btn btn-danger" onclick="cancelTimer(${timer.index})" style="width: auto; padding: 6px 12px; font-size: 12px; margin: 0;">Cancel</button>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // Set a quick off timer
+        async function setQuickTimer(seconds) {
+            try {
+                const response = await fetch('/api/timers/countdown', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        duration: seconds,
+                        action: 1 // TURN_OFF
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    await fetchTimers();
+                } else {
+                    alert('Failed to set timer: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to set timer:', error);
+                alert('Failed to set timer');
+            }
+        }
+
+        // Set a custom countdown timer
+        async function setCustomCountdown() {
+            const minutes = parseInt(document.getElementById('countdownMinutes').value);
+            const actionSelect = document.getElementById('countdownAction').value;
+
+            if (!minutes || minutes < 1) {
+                alert('Please enter a valid duration');
+                return;
+            }
+
+            const requestBody = {
+                duration: minutes * 60
+            };
+
+            if (actionSelect === 'preset') {
+                const presetIndex = parseInt(document.getElementById('countdownPreset').value);
+                if (isNaN(presetIndex)) {
+                    alert('Please select a preset');
+                    return;
+                }
+                requestBody.action = 0; // LOAD_PRESET
+                requestBody.preset_index = presetIndex;
+            } else {
+                requestBody.action = 1; // TURN_OFF
+            }
+
+            try {
+                const response = await fetch('/api/timers/countdown', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    await fetchTimers();
+                    alert('Countdown timer set!');
+                } else {
+                    alert('Failed to set timer: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to set timer:', error);
+                alert('Failed to set timer');
+            }
+        }
+
+        // Set a daily alarm
+        async function setDailyAlarm() {
+            const timeValue = document.getElementById('dailyAlarmTime').value;
+            const actionSelect = document.getElementById('dailyAlarmAction').value;
+
+            if (!timeValue) {
+                alert('Please enter a time');
+                return;
+            }
+
+            const [hours, mins] = timeValue.split(':').map(Number);
+
+            const requestBody = {
+                daily: true,
+                hour: hours,
+                minute: mins
+            };
+
+            if (actionSelect === 'preset') {
+                const presetIndex = parseInt(document.getElementById('dailyAlarmPreset').value);
+                if (isNaN(presetIndex)) {
+                    alert('Please select a preset');
+                    return;
+                }
+                requestBody.action = 0; // LOAD_PRESET
+                requestBody.preset_index = presetIndex;
+            } else {
+                requestBody.action = 1; // TURN_OFF
+            }
+
+            try {
+                const response = await fetch('/api/timers/alarm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    await fetchTimers();
+                    alert('Daily alarm set!');
+                } else {
+                    alert('Failed to set alarm: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to set alarm:', error);
+                alert('Failed to set alarm');
+            }
+        }
+
+        // Cancel a timer
+        async function cancelTimer(index) {
+            if (!confirm('Cancel this timer?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/timers', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ index })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    await fetchTimers();
+                } else {
+                    alert('Failed to cancel timer: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to cancel timer:', error);
+                alert('Failed to cancel timer');
+            }
+        }
+
+        // Set timezone
+        async function setTimezone() {
+            const offset = parseInt(document.getElementById('timezoneOffset').value);
+
+            try {
+                const response = await fetch('/api/timers/timezone', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ offset })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('Timezone updated!');
+                    await fetchTimers();
+                } else {
+                    alert('Failed to set timezone: ' + (result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Failed to set timezone:', error);
+                alert('Failed to set timezone');
+            }
+        }
+
+        // Show/hide preset select based on action selection
+        document.getElementById('countdownAction').addEventListener('change', (e) => {
+            document.getElementById('countdownPresetGroup').style.display =
+                e.target.value === 'preset' ? 'block' : 'none';
+        });
+
+        document.getElementById('dailyAlarmAction').addEventListener('change', (e) => {
+            document.getElementById('dailyAlarmPresetGroup').style.display =
+                e.target.value === 'preset' ? 'block' : 'none';
+        });
+
+        // Initialize
+        loadPresets();
+        fetchTimers();
+
+        // Update display every second (uses cached data)
+        setInterval(updateTimerDisplay, 1000);
+    </script>
+</body>
+</html>
