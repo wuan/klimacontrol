@@ -36,8 +36,8 @@ jobs:
 
       - name: Build Firmware
         run: |
-          echo "Building firmware for ESP32-S3..."
-          pio run -e adafruit_qtpy_esp32s3_nopsram
+          echo "Building firmware for ESP32-S2..."
+          pio run -e adafruit_qtpy_esp32s2
 
           echo "Firmware built successfully!"
           ls -lh .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.*

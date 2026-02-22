@@ -318,7 +318,9 @@ void OTAUpdater::getMemoryInfo(uint32_t &freeHeap, uint32_t &minFreeHeap, uint32
     freeHeap = esp_get_free_heap_size();
     minFreeHeap = esp_get_minimum_free_heap_size();
 
-#ifdef CONFIG_SPIRAM
+// TODO: Fix this for the QtPy ESP32-S2
+// #ifdef CONFIG_SPIRAM
+#ifdef CONFIG_HAS_PSRAM
 psramFree= esp_get_free_psram_size();
 #else
 psramFree=0;

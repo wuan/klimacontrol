@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Build for ESP32 (primary target)
 ```bash
-pio run -e adafruit_qtpy_esp32s3_nopsram
+pio run -e adafruit_qtpy_esp32s2
 ```
 
 ### Build for native environment (tests only)
@@ -42,7 +42,7 @@ pio test -e native -v
 
 ### Upload to device
 ```bash
-pio run -e adafruit_qtpy_esp32s3_nopsram -t upload
+pio run -e adafruit_qtpy_esp32s2 -t upload
 ```
 
 ### Monitor serial output
