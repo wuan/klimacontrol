@@ -9,12 +9,12 @@
 #include "Config.h"
 
 // Forward declarations
-class ShowController;
+class SensorController;
 
 class TimerScheduler {
 private:
     Config::ConfigManager &config;
-    ShowController &showController;
+    SensorController &sensorController;
     Config::TimersConfig timersConfig;
     bool ntpAvailable = false;
 
@@ -34,7 +34,7 @@ public:
      * @param config Configuration manager reference
      * @param showController Show controller reference
      */
-    TimerScheduler(Config::ConfigManager &config, ShowController &showController);
+    TimerScheduler(Config::ConfigManager &config, SensorController &sensorController);
 
     /**
      * Initialize the scheduler - loads config from NVS

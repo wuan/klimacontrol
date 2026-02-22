@@ -15,8 +15,7 @@ namespace Config {
 }
 
 class Network;
-class ShowController;
-class ShowFactory;
+class SensorController;
 
 class AccessLogger : public AsyncMiddleware {
 public:
@@ -36,7 +35,7 @@ protected:
 
     Config::ConfigManager &config;
     Network &network;
-    ShowController &showController;
+    SensorController &sensorController;
 
     /**
      * Setup shared routes for assets (CSS, favicon, etc.)
@@ -70,9 +69,9 @@ public:
      * WebServerManager constructor
      * @param config Configuration manager reference
      * @param network Network manager reference
-     * @param showController ShowController reference
+     * @param sensorController SensorController reference
      */
-    WebServerManager(Config::ConfigManager &config, Network &network, ShowController &showController);
+    WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController);
 
     /**
      * Virtual destructor
@@ -100,7 +99,7 @@ protected:
     void setupRoutes() override;
 
 public:
-    ConfigWebServerManager(Config::ConfigManager &config, Network &network, ShowController &showController);
+    ConfigWebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController);
 };
 
 /**
@@ -112,7 +111,7 @@ protected:
     void setupRoutes() override;
 
 public:
-    OperationalWebServerManager(Config::ConfigManager &config, Network &network, ShowController &showController);
+    OperationalWebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController);
 };
 
 #endif //LEDZ_WEBSERVERMANAGER_H

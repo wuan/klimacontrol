@@ -9,12 +9,12 @@
 #include "Config.h"
 
 // Forward declarations
-class ShowController;
+class SensorController;
 
 class TouchController {
 private:
     Config::ConfigManager &config;
-    ShowController &showController;
+    SensorController &sensorController;
     Config::TouchConfig touchConfig;
 
     // Touch pin GPIO numbers for ESP32-S3
@@ -44,7 +44,7 @@ public:
      * @param config Configuration manager reference
      * @param showController Show controller reference for loading presets
      */
-    TouchController(Config::ConfigManager &config, ShowController &showController);
+    TouchController(Config::ConfigManager &config, SensorController &sensorController);
 
     /**
      * Initialize the touch controller - loads config from NVS

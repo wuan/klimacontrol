@@ -20,7 +20,7 @@ namespace Config {
 }
 
 class WebServerManager;
-class ShowController;
+class SensorController;
 
 /**
  * Network operating modes
@@ -41,7 +41,7 @@ private:
 #endif
 
     Config::ConfigManager &config;
-    ShowController &showController;
+    SensorController &sensorController;
     std::unique_ptr<WebServerManager> webServer;
     std::unique_ptr<TimerScheduler> timerScheduler;
     std::unique_ptr<TouchController> touchController;
@@ -72,9 +72,9 @@ public:
     /**
      * Network constructor
      * @param config Configuration manager reference
-     * @param showController Show controller reference
+     * @param sensorController Sensor controller reference
      */
-    Network(Config::ConfigManager &config, ShowController &showController);
+    Network(Config::ConfigManager &config, SensorController &sensorController);
 
     // disable copy constructor
     Network(const Network &) = delete;

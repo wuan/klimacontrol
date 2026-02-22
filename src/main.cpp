@@ -1,21 +1,23 @@
 #include <memory>
 
+#ifdef ARDUINO
+#include <Wire.h>
+#endif
+
 #include "Network.h"
 #include "Config.h"
 #include "WebServerManager.h"
-#include "ShowFactory.h"
-#include "ShowController.h"
-#include "strip/Base.h"
-#include "task/LedShow.h"
+#include "SensorController.h"
+#include "sensor/SHT4x.h"
+#include "task/SensorMonitor.h"
 
 
 TaskHandle_t networkTaskHandle = nullptr;
 
 Config::ConfigManager config;
-ShowFactory showFactory;
-ShowController showController(showFactory, config);
-Task::LedShow ledShow(showController);
-Network network(config, showController);
+SensorController sensorController(config);
+Task::SensorMonitor sensorMonitor(sensorController);
+Network network(config, sensorController);
 
 void setup() {
     delay(1000);
@@ -26,37 +28,47 @@ void setup() {
 #ifdef ARDUINO
     // Load device configuration
     Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-    uint16_t num_pixels = deviceConfig.num_pixels;
-    uint8_t led_pin = deviceConfig.led_pin;
-    Serial.printf("Initializing LED strip with %u pixels on pin %u\n", num_pixels, led_pin);
+    uint8_t i2c_sda_pin = deviceConfig.i2c_sda_pin;
+    uint8_t i2c_scl_pin = deviceConfig.i2c_scl_pin;
+    uint8_t sensor_address = deviceConfig.sensor_i2c_address;
+    
+    Serial.printf("Initializing I2C on pins SDA=%u, SCL=%u\n", i2c_sda_pin, i2c_scl_pin);
+    Serial.printf("Looking for sensor at address 0x%02X\n", sensor_address);
 
-    // Initialize base strip with configured pin and number of pixels
+    // Initialize I2C with configured pins
+    Wire.begin(i2c_sda_pin, i2c_scl_pin);
+    
+    // Initialize SHT4x sensor
     try {
-        auto base = std::make_unique<Strip::Base>(led_pin, num_pixels);
-
-        // Set layout pointers for runtime reconfiguration
-        showController.setStrip(std::move(base));
+        auto sht4x = std::make_unique<Sensor::SHT4x>(sensor_address);
+        sensorController.addSensor(std::move(sht4x));
+        Serial.println("SHT4x sensor added to controller");
     } catch (const std::exception &e) {
-        Serial.printf("Error initializing LED strip: %s\n", e.what());
+        Serial.printf("Error initializing SHT4x sensor: %s\n", e.what());
     } catch (...) {
-        Serial.println("Unknown error initializing LED strip");
+        Serial.println("Unknown error initializing SHT4x sensor");
     }
 #endif
 
     
-    // Initialize show controller
-    showController.begin();
+    // Initialize sensor controller
+    sensorController.begin();
+    
+    // Load sensor configuration and apply to controller
+    Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
+    sensorController.setTargetTemperature(deviceConfig.target_temperature);
+    sensorController.setControlEnabled(deviceConfig.temperature_control_enabled);
 
     // Start tasks on their designated cores
-    // LED task: Core 1 (isolated from WiFi)
+    // Sensor task: Core 1 (isolated from WiFi)
     // Network task: Core 0 (same as WiFi stack)
 
     try {
-        ledShow.startTask();
+        sensorMonitor.startTask();
     } catch (const std::exception &e) {
-        Serial.printf("Error starting LED show task: %s\n", e.what());
+        Serial.printf("Error starting sensor monitor task: %s\n", e.what());
     } catch (...) {
-        Serial.println("Unknown error starting LED show task");
+        Serial.println("Unknown error starting sensor monitor task");
     }
 
     try {

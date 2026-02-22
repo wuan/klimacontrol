@@ -4,8 +4,8 @@
 
 #include "Config.h"
 #include "Network.h"
-#include "ShowController.h"
-#include "ShowFactory.h"
+#include "SensorController.h"
+#include "SensorDataLogger.h"
 #include "DeviceId.h"
 #include "OTAUpdater.h"
 #include "OTAConfig.h"
@@ -154,10 +154,6 @@ void WebServerManager::setupAPIRoutes() {
         Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
         doc["device_id"] = deviceConfig.device_id;
         doc["device_name"] = deviceConfig.device_name;
-        doc["num_pixels"] = deviceConfig.num_pixels;
-        doc["led_pin"] = deviceConfig.led_pin;
-        doc["brightness"] = showController.getBrightness();
-        doc["cycle_time"] = deviceConfig.cycle_time;
         doc["firmware_version"] = FIRMWARE_VERSION;
 
         // OTA partition info
@@ -166,18 +162,20 @@ void WebServerManager::setupAPIRoutes() {
             doc["ota_partition"] = running_partition->label;
         }
 
-        // Show info
-        doc[JSON_KEY_CURRENT_SHOW] = showController.getCurrentShowName();
-
-        // Current show configuration
-        Config::ShowConfig showConfig = config.loadShowConfig();
-        if (strlen(showConfig.params_json) > 0) {
-            // Parse the params_json and include it
-            StaticJsonDocument<Config::JSON_DOC_MEDIUM> paramsDoc;
-            if (DeserializationError error = deserializeJson(paramsDoc, showConfig.params_json); !error) {
-                doc[JSON_KEY_SHOW_PARAMS] = paramsDoc.as<JsonObject>();
-            }
+        // Sensor info
+        const auto &sensorData = sensorController.getCurrentData();
+        doc["sensor_connected"] = sensorController.hasConnectedSensors();
+        doc["sensor_valid"] = sensorData.valid;
+        
+        if (sensorData.valid) {
+            doc["temperature"] = sensorData.temperature;
+            doc["humidity"] = sensorData.humidity;
+            doc["sensor_timestamp"] = sensorData.timestamp;
         }
+
+        // Temperature control info
+        doc["target_temperature"] = sensorController.getTargetTemperature();
+        doc["control_enabled"] = sensorController.isControlEnabled();
 
         // Network info
         doc["wifi_connected"] = WiFiClass::status() == WL_CONNECTED;
@@ -191,31 +189,41 @@ void WebServerManager::setupAPIRoutes() {
         request->send(200, CONTENT_TYPE_JSON, response);
     });
 
-    // GET /api/shows - List available shows
-    server.on(API_PATH_SHOWS, HTTP_GET, [this](AsyncWebServerRequest *request) {
+    // GET /api/sensors - Get sensor information
+    server.on("/api/sensors", HTTP_GET, [this](AsyncWebServerRequest *request) {
         StaticJsonDocument<Config::JSON_DOC_LARGE> doc;
-        JsonArray shows = doc.createNestedArray("shows");
+        JsonArray sensors = doc.createNestedArray("sensors");
 
-        const std::vector<ShowFactory::ShowInfo> &showList = showController.listShows();
-        for (const auto &showInfo: showList) {
-            JsonObject show = shows.createNestedObject();
-            show[JSON_KEY_NAME] = showInfo.name;
-            show["description"] = showInfo.description;
+        for (size_t i = 0; i < sensorController.getSensorCount(); i++) {
+            Sensor::Sensor *sensor = sensorController.getSensor(i);
+            if (sensor) {
+                JsonObject sensorObj = sensors.createNestedObject();
+                sensorObj["name"] = sensor->getName();
+                sensorObj["type"] = sensor->getType();
+                sensorObj["connected"] = sensor->isConnected();
+            }
         }
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        // Add current sensor data
+        const auto &currentData = sensorController.getCurrentData();
+        doc["current_temperature"] = currentData.valid ? currentData.temperature : JSON_NULL;
+        doc["current_humidity"] = currentData.valid ? currentData.humidity : JSON_NULL;
+        doc["data_valid"] = currentData.valid;
+        doc["data_timestamp"] = currentData.timestamp;
+
+        String sensorResponse;
+        serializeJson(doc, sensorResponse);
+        request->send(200, CONTENT_TYPE_JSON, sensorResponse);
     });
 
-    // POST /api/show - Change current show
-    server.on(API_PATH_SHOW, HTTP_POST,
+    // POST /api/temperature/target - Set target temperature
+    server.on("/api/temperature/target", HTTP_POST,
               []([[maybe_unused]] AsyncWebServerRequest *request) {
               },
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_MEDIUM> doc;
+                      StaticJsonDocument<Config::JSON_DOC_TINY> doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -223,60 +231,119 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      const char *showName = doc[JSON_KEY_NAME];
-                      if (showName == nullptr) {
+                      if (!doc.containsKey(JSON_KEY_VALUE)) {
                           request->send(400, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"Show name required"})");
+                                        R"({"success":false,"error":"Value required"})");
                           return;
                       }
 
-                      // Get parameters if provided
-                      String paramsJson;
-                      if (doc.containsKey(JSON_KEY_PARAMS)) {
-                          JsonObject params = doc[JSON_KEY_PARAMS];
-                          serializeJson(params, paramsJson);
-                      } else {
-                          paramsJson = "{}";
-                      }
+                      float targetTemp = doc[JSON_KEY_VALUE];
+                      sensorController.setTargetTemperature(targetTemp);
 
-                      if (showController.queueShowChange(showName, paramsJson.c_str())) {
-                          request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
-                      } else {
-                          request->send(503, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_QUEUE_FULL);
-                      }
+                      // Save to config
+                      Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
+                      deviceConfig.target_temperature = targetTemp;
+                      config.saveDeviceConfig(deviceConfig);
+
+                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
                   }
               }
     );
 
-    // POST /api/brightness - Change brightness
-    server.on(API_PATH_BRIGHTNESS, HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
-                  if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+    // POST /api/control/enable - Enable temperature control
+    server.on("/api/control/enable", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        sensorController.setControlEnabled(true);
+        
+        // Save to config
+        Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
+        deviceConfig.temperature_control_enabled = true;
+        config.saveDeviceConfig(deviceConfig);
+        
+        request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+    });
 
-                      if (deserializeJson(doc, data, len)) {
-                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
-                          return;
-                      }
+    // POST /api/control/disable - Disable temperature control
+    server.on("/api/control/disable", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        sensorController.setControlEnabled(false);
+        
+        // Save to config
+        Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
+        deviceConfig.temperature_control_enabled = false;
+        config.saveDeviceConfig(deviceConfig);
+        
+        request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+    });
 
-                      if (!doc.containsKey("value")) {
-                          request->send(400, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"Brightness value required"})");
-                          return;
-                      }
+    // GET /api/log - Get logged sensor data
+    server.on("/api/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        auto *logger = sensorController.getDataLogger();
+        if (!logger) {
+            request->send(500, CONTENT_TYPE_JSON, R"({"success":false,"error":"Data logger not available"})");
+            return;
+        }
+        
+        // Get query parameters
+        int count = 100; // Default: 100 most recent entries
+        if (request->hasParam("count")) {
+            count = request->getParam("count")->value().toInt();
+            count = std::max(1, std::min(count, 1000)); // Limit to 1-1000
+        }
+        
+        auto entries = logger->getRecentEntries(count);
+        
+        StaticJsonDocument<Config::JSON_DOC_XLARGE> doc;
+        JsonArray dataArray = doc.createNestedArray("data");
+        
+        for (const auto &entry : entries) {
+            JsonObject dataObj = dataArray.createNestedObject();
+            dataObj["timestamp"] = entry.logTime;
+            dataObj["time"] = entry.data.timestamp;
+            dataObj["temperature"] = entry.data.temperature;
+            dataObj["humidity"] = entry.data.humidity;
+            dataObj["valid"] = entry.data.valid;
+        }
+        
+        doc["total_entries"] = logger->getEntryCount();
+        doc["max_capacity"] = logger->getMaxCapacity();
+        doc["has_wrapped"] = logger->hasWrapped();
+        doc["returned_count"] = entries.size();
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, CONTENT_TYPE_JSON, response);
+    });
 
-                      uint8_t brightness = doc[JSON_KEY_VALUE];
-                      if (showController.queueBrightnessChange(brightness)) {
-                          request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
-                      } else {
-                          request->send(503, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_QUEUE_FULL);
-                      }
-                  }
-              }
-    );
+    // GET /api/log/csv - Export logged data as CSV
+    server.on("/api/log/csv", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        auto *logger = sensorController.getDataLogger();
+        if (!logger) {
+            request->send(500, CONTENT_TYPE_TEXT, "Data logger not available");
+            return;
+        }
+        
+        String csv = logger->exportAsCSV();
+        AsyncWebServerResponse *response = request->beginResponse(200, "text/csv", csv);
+        response->addHeader("Content-Disposition", "attachment; filename=sensor_data.csv");
+        request->send(response);
+    });
+
+    // POST /api/log/clear - Clear logged data
+    server.on("/api/log/clear", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        auto *logger = sensorController.getDataLogger();
+        if (logger) {
+            logger->clear();
+            request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+        } else {
+            request->send(500, CONTENT_TYPE_JSON, R"({"success":false,"error":"Data logger not available"})");
+        }
+    });
+
+
+
+    // POST /api/show - Change current show
+
+
+
 
     // POST /api/layout - Change strip layout configuration
     server.on(API_PATH_LAYOUT, HTTP_POST,
@@ -1330,8 +1397,8 @@ void WebServerManager::setupAPIRoutes() {
 #endif
 }
 
-WebServerManager::WebServerManager(Config::ConfigManager &config, Network &network, ShowController &show_controller)
-    : config(config), network(network), showController(show_controller)
+WebServerManager::WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensor_controller)
+    : config(config), network(network), sensorController(sensor_controller)
 #ifdef ARDUINO
       , server(80)
 #endif

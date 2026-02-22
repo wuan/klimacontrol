@@ -14,8 +14,8 @@
 #include <set>
 #endif
 
-Network::Network(Config::ConfigManager &config, ShowController &showController)
-    : config(config), showController(showController), mode(NetworkMode::NONE), webServer(nullptr)
+Network::Network(Config::ConfigManager &config, SensorController &sensorController)
+    : config(config), sensorController(sensorController), mode(NetworkMode::NONE), webServer(nullptr)
 #ifdef ARDUINO
       , ntpClient(wifiUdp)
 #endif
@@ -186,7 +186,7 @@ void Network::startSTA(const char *ssid, const char *password) {
         Serial.println(ntpClient.getFormattedTime());
 
         // Initialize timer scheduler
-        timerScheduler = std::make_unique<TimerScheduler>(config, showController);
+        timerScheduler = std::make_unique<TimerScheduler>(config, sensorController);
         timerScheduler->begin();
         timerScheduler->setNtpAvailable(true);
     } else {
@@ -200,7 +200,7 @@ void Network::configureUsingAPMode() {
     startAP();
 
     // Create and start config webserver for AP mode
-    webServer = std::make_unique<ConfigWebServerManager>(config, *this, showController);
+    webServer = std::make_unique<ConfigWebServerManager>(config, *this, sensorController);
     webServer->begin();
 
     // Wait for configuration
@@ -229,7 +229,7 @@ void Network::configureUsingAPMode() {
     Serial.println("Network task started");
 
     // Initialize touch controller early (works without WiFi)
-    touchController = std::make_unique<TouchController>(config, showController);
+    touchController = std::make_unique<TouchController>(config, sensorController);
     touchController->begin();
 
     // Check if WiFi is configured
@@ -276,7 +276,7 @@ void Network::configureUsingAPMode() {
     config.resetConnectionFailures();
 
     // Create and start operational webserver for STA mode
-    webServer = std::make_unique<OperationalWebServerManager>(config, *this, showController);
+    webServer = std::make_unique<OperationalWebServerManager>(config, *this, sensorController);
     webServer->begin();
 
     Serial.println("Webserver started - system ready");

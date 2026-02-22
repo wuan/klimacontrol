@@ -67,8 +67,8 @@ const TouchController::ShowVariantGroup TouchController::SHOW_VARIANTS[] = {
 
 const size_t TouchController::NUM_SHOW_VARIANTS = sizeof(TouchController::SHOW_VARIANTS) / sizeof(TouchController::SHOW_VARIANTS[0]);
 
-TouchController::TouchController(Config::ConfigManager &config, ShowController &showController)
-    : config(config), showController(showController), currentShowIdx(0), currentVariantIdx(0) {
+TouchController::TouchController(Config::ConfigManager &config, SensorController &sensorController)
+    : config(config), sensorController(sensorController), currentShowIdx(0), currentVariantIdx(0) {
     // Initialize debounce tracking
     for (uint8_t i = 0; i < Config::TouchConfig::MAX_TOUCH_PINS; i++) {
         wasTouched[i] = false;
@@ -82,16 +82,13 @@ void TouchController::begin() {
     Serial.printf("TouchController: Configuration loaded - enabled: %d, threshold: %d", touchConfig.enabled, touchConfig.threshold);
 #endif
 
-    // Sync currentShowIdx with the actual current show
-    std::string currentShowName = showController.getCurrentShowName();
-    if (currentShowName.length() > 0) {
-        for (size_t i = 0; i < NUM_SHOW_VARIANTS; i++) {
-            if (strcmp(SHOW_VARIANTS[i].showName, currentShowName.c_str()) == 0) {
-                currentShowIdx = i;
-                break;
-            }
-        }
-    }
+    // For temperature controller, touch interface could control target temperature
+    // Initialize with current target temperature
+    float currentTarget = sensorController.getTargetTemperature();
+    // Map temperature range to show indices for compatibility
+    // 10°C -> index 0, 30°C -> index 20 (2°C steps)
+    currentShowIdx = static_cast<uint8_t>((currentTarget - 10.0f) / 2.0f);
+    currentShowIdx = std::max(0, std::min(20, static_cast<int>(currentShowIdx)));
 
 #ifdef ARDUINO
     Serial.println("TouchController: Initializing touch pins");
@@ -127,58 +124,26 @@ void TouchController::update() {
                 lastTouchTime[i] = now;
 
                 if (i == 0) {
-                    // Button 1: Switch Show
-                    currentShowIdx = (currentShowIdx + 1) % NUM_SHOW_VARIANTS;
-                    currentVariantIdx = 0; // Reset to first variant of new show
-
-                    const ShowVariantGroup& group = SHOW_VARIANTS[currentShowIdx];
-                    const char* params = group.variants[currentVariantIdx];
-
-                    Serial.printf("TouchController: Switching show to %s with variant %d: %s\n",
-                                  group.showName, currentVariantIdx, params);
-                    showController.queueShowChange(group.showName, params);
+                    // Button 1: Increase target temperature (+2°C)
+                    float currentTemp = sensorController.getTargetTemperature();
+                    float newTemp = std::min(30.0f, currentTemp + 2.0f);
+                    sensorController.setTargetTemperature(newTemp);
+                    
+                    Serial.printf("TouchController: Increased target temperature to %.1f°C\n", newTemp);
                 } else if (i == 1) {
-                    // Button 2: Switch Variant (Circulate variants of current show)
-                    const ShowVariantGroup& group = SHOW_VARIANTS[currentShowIdx];
-                    currentVariantIdx = (currentVariantIdx + 1) % group.numVariants;
+                    // Button 2: Decrease target temperature (-2°C)
+                    float currentTemp = sensorController.getTargetTemperature();
+                    float newTemp = std::max(10.0f, currentTemp - 2.0f);
+                    sensorController.setTargetTemperature(newTemp);
                     
-                    const char* params = group.variants[currentVariantIdx];
-                    
-                    Serial.printf("TouchController: Loading variant %d for show %s: %s\n", 
-                                  currentVariantIdx, group.showName, params);
-                    showController.queueShowChange(group.showName, params);
+                    Serial.printf("TouchController: Decreased target temperature to %.1f°C\n", newTemp);
                 } else if (i == 2) {
-                    // Button 3: Switch Layout (8 steps matching Python script)
-                    static uint8_t layoutStep = 0;
-                    layoutStep = (layoutStep + 1) % 8;
+                    // Button 3: Toggle temperature control
+                    bool currentlyEnabled = sensorController.isControlEnabled();
+                    sensorController.setControlEnabled(!currentlyEnabled);
                     
-                    bool reverse = false;
-                    bool mirror = false;
-                    int16_t dead_leds = 0;
-                    
-                    // Python create_layouts uses (dead_leds, reverse, mirror) logic:
-                    // 0: (0, F, F)
-                    // 1: (0, F, T)
-                    // 2: (0, T, F)
-                    // 3: (0, T, T)
-                    // 4: (D, F, F)
-                    // 5: (D, F, T)
-                    // 6: (D, T, F)
-                    // 7: (D, T, T)
-                    // Note: Python script order is slightly different but covers same combinations
-                    
-                    reverse = (layoutStep % 4) >= 2;
-                    mirror = (layoutStep % 2) == 1;
-                    
-                    if (layoutStep >= 4) {
-                        Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-                        // TODO: fix this
-                        // dead_leds = deviceConfig.dead_leds;
-                    }
-                    
-                    Serial.printf("TouchController: Switching layout to step %u (rev=%d, mir=%d, dead=%d)\n", 
-                                  layoutStep, reverse, mirror, dead_leds);
-                    showController.queueLayoutChange(reverse, mirror, dead_leds);
+                    Serial.printf("TouchController: Temperature control %s\n",
+                                  currentlyEnabled ? "disabled" : "enabled");
                 }
             }
         }
