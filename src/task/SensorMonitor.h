@@ -1,0 +1,70 @@
+#ifndef SENSOR_MONITOR_H
+#define SENSOR_MONITOR_H
+
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+class SensorController;
+
+namespace Task {
+    
+    /**
+     * Sensor Monitoring Task
+     * Runs on Core 1, reads sensors and updates temperature control
+     */
+    class SensorMonitor {
+    private:
+        SensorController &controller;
+        TaskHandle_t taskHandle = nullptr;
+        
+        // Task statistics
+        unsigned long lastReadingTime = 0;
+        unsigned long readingInterval = 1000; // 1 second default
+        
+    public:
+        /**
+         * Constructor
+         * @param controller Sensor controller reference
+         */
+        explicit SensorMonitor(SensorController &controller);
+        
+        /**
+         * Start the sensor monitoring task
+         */
+        void startTask();
+        
+        /**
+         * Set reading interval
+         * @param intervalMs Interval in milliseconds
+         */
+        void setReadingInterval(unsigned long intervalMs) { 
+            readingInterval = intervalMs; 
+        }
+        
+        /**
+         * Get current reading interval
+         * @return Current interval in milliseconds
+         */
+        unsigned long getReadingInterval() const { return readingInterval; }
+        
+        /**
+         * Get task handle
+         * @return Task handle
+         */
+        TaskHandle_t getTaskHandle() const { return taskHandle; }
+        
+    private:
+        /**
+         * Main sensor monitoring task
+         */
+        [[noreturn]] void task();
+        
+        /**
+         * Static trampoline function for FreeRTOS
+         */
+        static void taskWrapper(void *pvParameters);
+    };
+    
+} // namespace Task
+
+#endif // SENSOR_MONITOR_H

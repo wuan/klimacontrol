@@ -4,6 +4,7 @@
 #include <Wire.h>
 #endif
 
+#include "SensorDataLogger.h"
 #include "Network.h"
 #include "Config.h"
 #include "WebServerManager.h"
@@ -54,8 +55,7 @@ void setup() {
     // Initialize sensor controller
     sensorController.begin();
     
-    // Load sensor configuration and apply to controller
-    Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
+    // Apply sensor configuration from the already loaded deviceConfig
     sensorController.setTargetTemperature(deviceConfig.target_temperature);
     sensorController.setControlEnabled(deviceConfig.temperature_control_enabled);
 

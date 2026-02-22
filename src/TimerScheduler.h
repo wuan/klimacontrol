@@ -8,8 +8,7 @@
 
 #include "Config.h"
 
-// Forward declarations
-class SensorController;
+#include "SensorController.h"
 
 class TimerScheduler {
 private:

@@ -206,8 +206,8 @@ void WebServerManager::setupAPIRoutes() {
 
         // Add current sensor data
         const auto &currentData = sensorController.getCurrentData();
-        doc["current_temperature"] = currentData.valid ? currentData.temperature : JSON_NULL;
-        doc["current_humidity"] = currentData.valid ? currentData.humidity : JSON_NULL;
+        doc["current_temperature"] = currentData.valid ? currentData.temperature : static_cast<float>(NAN);
+        doc["current_humidity"] = currentData.valid ? currentData.humidity : static_cast<float>(NAN);
         doc["data_valid"] = currentData.valid;
         doc["data_timestamp"] = currentData.timestamp;
 
@@ -317,7 +317,7 @@ void WebServerManager::setupAPIRoutes() {
     server.on("/api/log/csv", HTTP_GET, [this](AsyncWebServerRequest *request) {
         auto *logger = sensorController.getDataLogger();
         if (!logger) {
-            request->send(500, CONTENT_TYPE_TEXT, "Data logger not available");
+            request->send(500, "text/plain", "Data logger not available");
             return;
         }
         
@@ -374,13 +374,8 @@ void WebServerManager::setupAPIRoutes() {
                           layoutConfig.dead_leds = doc["dead_leds"];
                       }
 
-                      // Queue the layout change for thread-safe execution
-                      if (showController.queueLayoutChange(layoutConfig.reverse, layoutConfig.mirror,
-                                                           layoutConfig.dead_leds)) {
-                          request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
-                      } else {
-                          request->send(503, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_QUEUE_FULL);
-                      }
+                      // Layout changes don't apply to temperature controller
+                      request->send(404, CONTENT_TYPE_JSON, R"({"success":false,"error":"Layout control not available in temperature controller"})");
                   }
               }
     );
@@ -480,20 +475,16 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      // Queue preset load through ShowController for thread safety
-                      if (showController.queuePresetLoad(preset)) {
-                          StaticJsonDocument<Config::JSON_DOC_TINY> responseDoc;
-                          responseDoc["success"] = true;
-                          responseDoc["name"] = preset.name;
-                          responseDoc["show_name"] = preset.show_name;
+                      // Preset loading for temperature controller - just enable control
+                      sensorController.setControlEnabled(true);
+                      StaticJsonDocument<Config::JSON_DOC_TINY> responseDoc;
+                      responseDoc["success"] = true;
+                      responseDoc["name"] = preset.name;
+                      responseDoc["message"] = "Temperature control enabled";
 
-                          String response;
-                          serializeJson(responseDoc, response);
-                          request->send(200, CONTENT_TYPE_JSON, response);
-                      } else {
-                          request->send(503, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"Queue full"})");
-                      }
+                      String response;
+                      serializeJson(responseDoc, response);
+                      request->send(200, CONTENT_TYPE_JSON, response);
                   }
               }
     );
@@ -829,14 +820,12 @@ void WebServerManager::setupAPIRoutes() {
         doc["led_pin"] = deviceConfig.led_pin;
         doc["cycle_time"] = deviceConfig.cycle_time;
 
-        // Show statistics
-        ShowStats stats = showController.getStats();
+        // Sensor statistics
         JsonObject statsJson = doc.createNestedObject("stats");
-        statsJson["avg_execution_time"] = stats.avg_execution_time;
-        statsJson["avg_show_time"] = stats.avg_show_time;
-        statsJson["avg_cycle_time"] = stats.avg_cycle_time;
-        statsJson["last_execution_time"] = stats.last_execution_time;
-        statsJson["last_show_time"] = stats.last_show_time;
+        statsJson["sensor_count"] = sensorController.getSensorCount();
+        statsJson["has_connected_sensors"] = sensorController.hasConnectedSensors();
+        statsJson["time_since_last_reading"] = sensorController.getTimeSinceLastReading();
+        statsJson["log_entries"] = sensorController.getDataLogger() ? sensorController.getDataLogger()->getEntryCount() : 0;
 
         // Chip info
         doc["chip_model"] = ESP.getChipModel();
@@ -1493,8 +1482,8 @@ void WebServerManager::end() {
 
 // ConfigWebServerManager implementation
 ConfigWebServerManager::ConfigWebServerManager(Config::ConfigManager &config, Network &network,
-                                               ShowController &showController)
-    : WebServerManager(config, network, showController) {
+                                               SensorController &sensorController)
+    : WebServerManager(config, network, sensorController) {
 }
 
 void ConfigWebServerManager::setupRoutes() {
@@ -1513,8 +1502,8 @@ void ConfigWebServerManager::setupRoutes() {
 
 // OperationalWebServerManager implementation
 OperationalWebServerManager::OperationalWebServerManager(Config::ConfigManager &config, Network &network,
-                                                         ShowController &showController)
-    : WebServerManager(config, network, showController) {
+                                                         SensorController &sensorController)
+    : WebServerManager(config, network, sensorController) {
 }
 
 void OperationalWebServerManager::setupRoutes() {
