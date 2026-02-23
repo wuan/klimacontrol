@@ -105,7 +105,7 @@ main.cpp (setup)
 **Adding a new show**:
 1. Create `src/show/MyShow.h` and `src/show/MyShow.cpp` inheriting from `Show::Show`
 2. Register in `ShowFactory.cpp` constructor with lambda factory function
-3. Add JSON parameter parsing in `ShowFactory::createShow()` (optional)
+3. Add JSON parameter parsing in ShowFactory::createShow()` (optional)
 4. Add UI controls in `WebServerManager.cpp` (optional)
 5. Add to `updateParameterVisibility()` function if it has parameters
 6. Include header in `main.cpp`

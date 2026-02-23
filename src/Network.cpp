@@ -172,9 +172,9 @@ void Network::startSTA(const char *ssid, const char *password) {
             // Set instance name with custom device name or device ID
             String instanceName;
             if (hasCustomName) {
-                instanceName = "ledz " + String(deviceConfig.device_name);
+                instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_name);
             } else {
-                instanceName = "ledz " + String(deviceConfig.device_id);
+                instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_id);
             }
             MDNS.setInstanceName(instanceName.c_str());
             Serial.print("mDNS instance name: ");
