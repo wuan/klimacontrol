@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings - ledz</title>
+    <title>Settings - Klima-Control</title>
     <link rel="stylesheet" href="/common.css">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
@@ -33,41 +33,7 @@
             </div>
         </div>
 
-        <div class="section">
-            <h2>Hardware Configuration</h2>
-            <p>Configure LED strip hardware settings. The device will restart after saving.</p>
 
-            <div class="form-group">
-                <label for="numPixels">Number of LEDs</label>
-                <input type="number" id="numPixels" placeholder="Enter number of LEDs" min="1" max="1000">
-            </div>
-
-            <div class="form-group">
-                <label for="ledPin">LED Strip Pin (GPIO)</label>
-                <input type="number" id="ledPin" placeholder="Enter GPIO pin number" min="0" max="48">
-                <small style="display:block; margin-top:4px; color:#666;">Default: 39 (PIN_NEOPIXEL for onboard LED), or
-                    35 (MOSI for external strips)</small>
-            </div>
-
-            <div class="form-group">
-                <label for="cycleTime">Show Cycle Time (ms)</label>
-                <select id="cycleTime">
-                    <option value="10">10 ms (Default)</option>
-                    <option value="20">20 ms</option>
-                    <option value="25">25 ms</option>
-                    <option value="50">50 ms</option>
-                </select>
-            </div>
-
-            <button class="btn btn-primary" onclick="updateHardwareSettings()">Update Hardware Settings</button>
-
-            <div class="info-box">
-                <strong>Current: </strong><span id="currentNumPixels">Loading...</span> LEDs on pin <span
-                    id="currentLedPin">Loading...</span> with cycle time <span id="currentCycleTime">Loading...</span>
-                ms<br>
-                <strong>Note: </strong>The device will restart after updating these settings.
-            </div>
-        </div>
 
         <div class="section">
             <h2>Touch Control</h2>
@@ -243,68 +209,6 @@
         } catch (error) {
             console.error('Failed to update device name:', error);
             alert('Error updating device name. Please try again.');
-        }
-    }
-
-    // Update hardware settings (num_pixels and/or led_pin)
-    async function updateHardwareSettings() {
-        const numPixels = parseInt(document.getElementById('numPixels').value);
-        const ledPin = parseInt(document.getElementById('ledPin').value);
-        const cycleTime = parseInt(document.getElementById('cycleTime').value);
-
-        const updates = {};
-        let changes = [];
-
-        if (!isNaN(numPixels)) {
-            if (numPixels < 1 || numPixels > 1000) {
-                alert('Please enter a valid number of LEDs (1-1000)');
-                return;
-            }
-            updates.num_pixels = numPixels;
-            changes.push(`${numPixels} LEDs`);
-        }
-
-        if (!isNaN(ledPin)) {
-            if (ledPin < 0 || ledPin > 48) {
-                alert('Please enter a valid GPIO pin (0-48)');
-                return;
-            }
-            updates.led_pin = ledPin;
-            changes.push(`pin ${ledPin}`);
-        }
-
-        if (!isNaN(cycleTime)) {
-            updates.cycle_time = cycleTime;
-            changes.push(`${cycleTime}ms cycle time`);
-        }
-
-        if (changes.length === 0) {
-            alert('Please enter at least one value to update');
-            return;
-        }
-
-        if (!confirm(`Update hardware settings to ${changes.join(' and ')}?\n\nDevice will restart to apply changes.`)) {
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/settings/device', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(updates)
-            });
-
-            if (response.ok) {
-                alert('Hardware settings updated!\n\nDevice is restarting...\n\nPlease wait a moment and refresh the page.');
-                document.getElementById('numPixels').value = '';
-                document.getElementById('ledPin').value = '';
-            } else {
-                const data = await response.json();
-                alert('Failed to update hardware settings: ' + (data.error || 'Unknown error'));
-            }
-        } catch (error) {
-            console.error('Failed to update hardware settings:', error);
-            alert('Error updating hardware settings. Please try again.');
         }
     }
 
