@@ -57,8 +57,6 @@ namespace Config {
         char device_name[32]; // Custom device name
         
         // Sensor and temperature control configuration
-        uint8_t i2c_sda_pin; // I2C SDA pin
-        uint8_t i2c_scl_pin; // I2C SCL pin
         uint8_t sensor_i2c_address; // Default I2C address for sensors
         float target_temperature; // Target temperature for control
         bool temperature_control_enabled; // Temperature control enabled
@@ -70,8 +68,6 @@ namespace Config {
             led_pin(39),
 #endif
             cycle_time(10),
-            i2c_sda_pin(8), // Default I2C pins for QT Py ESP32-S3
-            i2c_scl_pin(9),
             sensor_i2c_address(0x44), // Default SHT4x address
             target_temperature(22.0f),
             temperature_control_enabled(false)

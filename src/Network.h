@@ -12,6 +12,7 @@
 #include "CaptivePortal.h"
 #include "TimerScheduler.h"
 #include "TouchController.h"
+#include "StatusLed.h"
 
 // Forward declarations
 namespace Config {
@@ -44,6 +45,7 @@ private:
     std::unique_ptr<WebServerManager> webServer;
     std::unique_ptr<TimerScheduler> timerScheduler;
     std::unique_ptr<TouchController> touchController;
+    std::unique_ptr<StatusLed> statusLed;
     CaptivePortal captivePortal;
     TaskHandle_t taskHandle = nullptr;
 
@@ -94,6 +96,18 @@ public:
      * Get current network mode
      */
     [[nodiscard]] NetworkMode getMode() const { return mode; }
+
+    /**
+     * Set status LED state
+     * @param state LED state to set
+     */
+    void setStatusLedState(LedState state);
+
+    /**
+     * Get current status LED state
+     * @return Current LED state, or OFF if LED is disabled
+     */
+    LedState getStatusLedState() const;
 
     /**
      * Get timer scheduler (for API access)

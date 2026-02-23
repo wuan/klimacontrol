@@ -129,8 +129,6 @@ namespace Config {
         prefs.getString("device_name", config.device_name, sizeof(config.device_name));
         
         // Load sensor configuration
-        config.i2c_sda_pin = prefs.getUChar("i2c_sda_pin", 8);
-        config.i2c_scl_pin = prefs.getUChar("i2c_scl_pin", 9);
         config.sensor_i2c_address = prefs.getUChar("sensor_i2c_address", 0x44);
         config.target_temperature = prefs.getFloat("target_temperature", 22.0f);
         config.temperature_control_enabled = prefs.getBool("temperature_control_enabled", false);
@@ -163,8 +161,6 @@ namespace Config {
         prefs.putString("device_name", config.device_name);
         
         // Save sensor configuration
-        prefs.putUChar("i2c_sda_pin", config.i2c_sda_pin);
-        prefs.putUChar("i2c_scl_pin", config.i2c_scl_pin);
         prefs.putUChar("sensor_i2c_address", config.sensor_i2c_address);
         prefs.putFloat("target_temperature", config.target_temperature);
         prefs.putBool("temperature_control_enabled", config.temperature_control_enabled);

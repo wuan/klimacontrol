@@ -11,6 +11,7 @@
 #include "SensorController.h"
 #include "sensor/SHT4x.h"
 #include "task/SensorMonitor.h"
+#include "StatusLed.h"
 
 
 TaskHandle_t networkTaskHandle = nullptr;
@@ -29,14 +30,16 @@ void setup() {
 #ifdef ARDUINO
     // Load device configuration
     Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-    uint8_t i2c_sda_pin = deviceConfig.i2c_sda_pin;
-    uint8_t i2c_scl_pin = deviceConfig.i2c_scl_pin;
     uint8_t sensor_address = deviceConfig.sensor_i2c_address;
+    
+    // Hardwired I2C pins for QT Py ESP32-S3
+    const uint8_t i2c_sda_pin = 8;
+    const uint8_t i2c_scl_pin = 9;
     
     Serial.printf("Initializing I2C on pins SDA=%u, SCL=%u\n", i2c_sda_pin, i2c_scl_pin);
     Serial.printf("Looking for sensor at address 0x%02X\n", sensor_address);
 
-    // Initialize I2C with configured pins
+    // Initialize I2C with hardwired pins
     Wire.begin(i2c_sda_pin, i2c_scl_pin);
     
     // Initialize SHT4x sensor

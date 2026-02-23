@@ -15,7 +15,7 @@
 #endif
 
 Network::Network(Config::ConfigManager &config, SensorController &sensorController)
-    : config(config), sensorController(sensorController), mode(NetworkMode::NONE), webServer(nullptr)
+    : config(config), sensorController(sensorController), mode(NetworkMode::NONE), webServer(nullptr), statusLed(nullptr)
 #ifdef ARDUINO
       , ntpClient(wifiUdp)
 #endif
@@ -31,6 +31,19 @@ String Network::generateHostname() {
 #else
     return "ledz";
 #endif
+}
+
+void Network::setStatusLedState(LedState state) {
+    if (statusLed) {
+        statusLed->setState(state);
+    }
+}
+
+LedState Network::getStatusLedState() const {
+    if (statusLed) {
+        return statusLed->getState();
+    }
+    return LedState::OFF;
 }
 
 void Network::startAP() {
@@ -228,6 +241,11 @@ void Network::configureUsingAPMode() {
 #ifdef ARDUINO
     Serial.println("Network task started");
 
+    // Initialize status LED early (works without WiFi) - uses built-in NeoPixel
+    statusLed = std::make_unique<StatusLed>(PIN_NEOPIXEL, 1); // Built-in NeoPixel, 1 pixel
+    statusLed->begin();
+    statusLed->setState(LedState::BLINK_SLOW); // Indicate booting
+    
     // Initialize touch controller early (works without WiFi)
     touchController = std::make_unique<TouchController>(config, sensorController);
     touchController->begin();
@@ -235,6 +253,10 @@ void Network::configureUsingAPMode() {
     // Check if WiFi is configured
     if (!config.isConfigured()) {
         Serial.println("No WiFi configuration found - starting AP mode");
+        
+        if (statusLed) {
+            statusLed->setState(LedState::BLINK_FAST); // Fast blink for AP mode
+        }
 
         configureUsingAPMode();
     }
@@ -247,6 +269,11 @@ void Network::configureUsingAPMode() {
 
     if (failures >= 3) {
         Serial.println("Too many connection failures - starting AP mode for reconfiguration");
+        
+        if (statusLed) {
+            statusLed->setState(LedState::BLINK_FAST); // Fast blink for AP mode
+        }
+        
         config.markUnconfigured();
         config.resetConnectionFailures();
         configureUsingAPMode();
@@ -274,6 +301,10 @@ void Network::configureUsingAPMode() {
 
     // Connection successful - reset failure counter
     config.resetConnectionFailures();
+    
+    if (statusLed) {
+        statusLed->setState(LedState::ON); // Solid on for connected state
+    }
 
     // Create and start operational webserver for STA mode
     webServer = std::make_unique<OperationalWebServerManager>(config, *this, sensorController);
@@ -293,6 +324,11 @@ void Network::configureUsingAPMode() {
 
         unsigned long now = millis();
 
+        // Update status LED frequently (every 50ms)
+        if (statusLed) {
+            statusLed->update();
+        }
+        
         // Check touch controller frequently (every 50ms)
         if (touchController) {
             touchController->update();
