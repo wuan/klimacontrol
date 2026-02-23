@@ -1,8 +1,8 @@
 // WebServer Manager - handles HTTP server and API endpoints
 //
 
-#ifndef LEDZ_WEBSERVERMANAGER_H
-#define LEDZ_WEBSERVERMANAGER_H
+#ifndef KLIMACONTROL_WEBSERVERMANAGER_H
+#define KLIMACONTROL_WEBSERVERMANAGER_H
 
 #ifdef ARDUINO
 #include <ESPAsyncWebServer.h>
@@ -114,4 +114,4 @@ public:
     OperationalWebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController);
 };
 
-#endif //LEDZ_WEBSERVERMANAGER_H
+#endif //KLIMACONTROL_WEBSERVERMANAGER_H

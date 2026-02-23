@@ -1,10 +1,12 @@
-#ifndef LEDZ_CONFIG_H
-#define LEDZ_CONFIG_H
+#ifndef KLIMACONTROL_CONFIG_H
+#define KLIMACONTROL_CONFIG_H
 
 #ifdef ARDUINO
 #include <Preferences.h>
 #include <Arduino.h>
 #endif
+
+#include "Constants.h"
 
 namespace Config {
     /**
@@ -355,4 +357,4 @@ namespace Config {
     };
 } // namespace Config
 
-#endif //LEDZ_CONFIG_H
+#endif //KLIMACONTROL_CONFIG_H

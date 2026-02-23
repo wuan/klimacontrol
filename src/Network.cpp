@@ -1,5 +1,7 @@
 #include <sstream>
 
+#include "Constants.h"
+
 #ifdef ARDUINO
 #include <WiFi.h>
 #include <Adafruit_NeoPixel.h>
@@ -25,11 +27,11 @@ Network::Network(Config::ConfigManager &config, SensorController &sensorControll
 String Network::generateHostname() {
 #ifdef ARDUINO
     String deviceId = DeviceId::getDeviceId();
-    String hostname = "ledz-" + deviceId;
+    String hostname = Constants::HOSTNAME_PREFIX + deviceId;
     hostname.toLowerCase();
     return hostname;
 #else
-    return "ledz";
+    return Constants::PROJECT_NAME;
 #endif
 }
 
@@ -51,7 +53,7 @@ void Network::startAP() {
     mode = NetworkMode::AP;
 
     // Get device ID for AP SSID
-    String ap_ssid = "ledz " + DeviceId::getDeviceId();
+    String ap_ssid = Constants::AP_SSID_PREFIX + DeviceId::getDeviceId();
 
     Serial.print("Starting Access Point: ");
     Serial.println(ap_ssid.c_str());
@@ -79,9 +81,9 @@ void Network::startAP() {
         // Set instance name with custom device name or device ID
         String instanceName;
         if (hasCustomName) {
-            instanceName = "ledz " + String(deviceConfig.device_name);
+            instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_name);
         } else {
-            instanceName = "ledz " + String(deviceConfig.device_id);
+            instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_id);
         }
         MDNS.setInstanceName(instanceName.c_str());
         Serial.print("mDNS instance name: ");
@@ -181,7 +183,9 @@ void Network::startSTA(const char *ssid, const char *password) {
             // Advertise HTTP service
             MDNS.addService("http", "tcp", 80);
 
-            Serial.println("You can now access ledz at:");
+            Serial.print("You can now access ");
+            Serial.print(Constants::PROJECT_NAME);
+            Serial.println(" at:");
             Serial.print("  http://");
             Serial.print(hostname);
             Serial.println(".local/");

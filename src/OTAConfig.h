@@ -11,10 +11,10 @@
 // ============================================================================
 
 // Your GitHub username/organization
-#define OTA_GITHUB_OWNER "oetztal"
+#define OTA_GITHUB_OWNER "wuan"
 
 // Your repository name
-#define OTA_GITHUB_REPO "ledz"
+#define OTA_GITHUB_REPO "klimacontrol"
 
 // ============================================================================
 // Firmware Version

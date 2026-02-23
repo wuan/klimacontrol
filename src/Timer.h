@@ -1,5 +1,5 @@
-#ifndef LEDZ_TIMER_H
-#define LEDZ_TIMER_H
+#ifndef KLIMACONTROL_TIMER_H
+#define KLIMACONTROL_TIMER_H
 
 // Forward declare millis() for non-Arduino builds
 #ifndef ARDUINO
@@ -21,4 +21,4 @@ namespace Support {
     };
 } // Support
 
-#endif //LEDZ_TIMER_H
+#endif //KLIMACONTROL_TIMER_H

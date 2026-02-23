@@ -3,8 +3,8 @@
 // Handles capacitive touch input for loading presets
 //
 
-#ifndef LEDZ_TOUCH_CONTROLLER_H
-#define LEDZ_TOUCH_CONTROLLER_H
+#ifndef KLIMACONTROL_TOUCH_CONTROLLER_H
+#define KLIMACONTROL_TOUCH_CONTROLLER_H
 
 #include "Config.h"
 
@@ -103,4 +103,4 @@ public:
     }
 };
 
-#endif //LEDZ_TOUCH_CONTROLLER_H
+#endif //KLIMACONTROL_TOUCH_CONTROLLER_H

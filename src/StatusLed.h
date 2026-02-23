@@ -1,8 +1,8 @@
 // StatusLed - Simple status LED control using built-in NeoPixel
 //
 
-#ifndef LEDZ_STATUSLED_H
-#define LEDZ_STATUSLED_H
+#ifndef KLIMACONTROL_STATUSLED_H
+#define KLIMACONTROL_STATUSLED_H
 
 #include <cstdint>
 
@@ -84,4 +84,4 @@ public:
     void toggle();
 };
 
-#endif //LEDZ_STATUSLED_H
+#endif //KLIMACONTROL_STATUSLED_H

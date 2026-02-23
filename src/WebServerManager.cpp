@@ -8,6 +8,7 @@
 #include "SensorDataLogger.h"
 #include "DeviceId.h"
 #include "OTAUpdater.h"
+#include "Constants.h"
 #include "OTAConfig.h"
 #include "TimerScheduler.h"
 #include "TouchController.h"
@@ -1439,7 +1440,7 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
 
         // Generate mDNS hostname for response
         String deviceId = DeviceId::getDeviceId();
-        String hostname = "ledz-" + deviceId;
+        String hostname = Constants::HOSTNAME_PREFIX + deviceId;
         hostname.toLowerCase();
 
         // Send success response with hostname

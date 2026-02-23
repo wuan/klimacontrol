@@ -2,8 +2,8 @@
 // Generates unique device identifier from ESP32 MAC address
 //
 
-#ifndef LEDZ_DEVICEID_H
-#define LEDZ_DEVICEID_H
+#ifndef KLIMACONTROL_DEVICEID_H
+#define KLIMACONTROL_DEVICEID_H
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -46,4 +46,4 @@ namespace DeviceId {
 
 #endif // ARDUINO
 
-#endif //LEDZ_DEVICEID_H
+#endif //KLIMACONTROL_DEVICEID_H

@@ -1,5 +1,5 @@
-#ifndef LEDZ_WIFI_H
-#define LEDZ_WIFI_H
+#ifndef KLIMACONTROL_WIFI_H
+#define KLIMACONTROL_WIFI_H
 
 #ifdef ARDUINO
 #include <WiFiUdp.h>
@@ -133,4 +133,4 @@ public:
 };
 
 
-#endif //LEDZ_WIFI_H
+#endif //KLIMACONTROL_WIFI_H

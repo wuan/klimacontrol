@@ -2,8 +2,8 @@
 // Redirects all DNS queries to the device IP in AP mode
 //
 
-#ifndef LEDZ_CAPTIVEPORTAL_H
-#define LEDZ_CAPTIVEPORTAL_H
+#ifndef KLIMACONTROL_CAPTIVEPORTAL_H
+#define KLIMACONTROL_CAPTIVEPORTAL_H
 
 #ifdef ARDUINO
 #include <DNSServer.h>
@@ -48,4 +48,4 @@ public:
     bool isRunning() const { return running; }
 };
 
-#endif //LEDZ_CAPTIVEPORTAL_H
+#endif //KLIMACONTROL_CAPTIVEPORTAL_H

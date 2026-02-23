@@ -3,8 +3,8 @@
 // Manages countdown timers and alarms
 //
 
-#ifndef LEDZ_TIMER_SCHEDULER_H
-#define LEDZ_TIMER_SCHEDULER_H
+#ifndef KLIMACONTROL_TIMER_SCHEDULER_H
+#define KLIMACONTROL_TIMER_SCHEDULER_H
 
 #include "Config.h"
 
@@ -110,4 +110,4 @@ public:
     [[nodiscard]] int8_t getTimezoneOffset() const { return timersConfig.timezone_offset_hours; }
 };
 
-#endif //LEDZ_TIMER_SCHEDULER_H
+#endif //KLIMACONTROL_TIMER_SCHEDULER_H
