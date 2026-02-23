@@ -9,7 +9,6 @@
 #include <ESPmDNS.h>
 #endif
 
-#include "strip/Strip.h"
 #include "CaptivePortal.h"
 #include "TimerScheduler.h"
 #include "TouchController.h"
