@@ -1,5 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="20" fill="#222"/>
-  <circle cx="50" cy="50" r="30" fill="none" stroke="#f90" stroke-width="10"/>
-  <circle cx="50" cy="50" r="10" fill="#f90"/>
+  <!-- Temperature controller favicon - thermometer design -->
+  <rect width="100" height="100" rx="15" fill="#2c3e50"/>
+  
+  <!-- Thermometer bulb (blue for cool) -->
+  <circle cx="50" cy="75" r="15" fill="#3498db"/>
+  
+  <!-- Thermometer stem -->
+  <rect x="47" y="25" width="6" height="45" rx="3" fill="#ecf0f1"/>
+  
+  <!-- Temperature indicator (red mercury line) -->
+  <rect x="48" y="45" width="4" height="25" rx="2" fill="#e74c3c"/>
+  
+  <!-- Temperature scale marks -->
+  <line x1="45" y1="30" x2="55" y1="30" stroke="#7f8c8d" stroke-width="1"/>
+  <line x1="45" y1="35" x2="50" y1="35" stroke="#7f8c8d" stroke-width="1"/>
+  <line x1="45" y1="40" x2="55" y1="40" stroke="#7f8c8d" stroke-width="1"/>
+  <line x1="45" y1="45" x2="50" y1="45" stroke="#7f8c8d" stroke-width="1"/>
+  <line x1="45" y1="50" x2="55" y1="50" stroke="#7f8c8d" stroke-width="1"/>
 </svg>

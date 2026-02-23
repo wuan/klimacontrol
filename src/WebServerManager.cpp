@@ -37,10 +37,6 @@ static const char* JSON_KEY_ERROR = "error";
 static const char* JSON_KEY_VALUE = "value";
 static const char* JSON_KEY_NAME = "name";
 static const char* JSON_KEY_INDEX = "index";
-static const char* JSON_KEY_SHOW_NAME = "show_name";
-static const char* JSON_KEY_PARAMS = "params";
-static const char* JSON_KEY_CURRENT_SHOW = "current_show";
-static const char* JSON_KEY_SHOW_PARAMS = "show_params";
 
 // Common JSON Responses
 static const char* JSON_RESPONSE_SUCCESS = "{\"success\":true}";
@@ -50,12 +46,8 @@ static const char* JSON_RESPONSE_ERROR_QUEUE_FULL = "{\"success\":false,\"error\
 // API Paths
 static const char* API_PATH_WIFI = "/api/wifi";
 static const char* API_PATH_STATUS = "/api/status";
-static const char* API_PATH_SHOWS = "/api/shows";
-static const char* API_PATH_SHOW = "/api/show";
 static const char* API_PATH_BRIGHTNESS = "/api/brightness";
 static const char* API_PATH_LAYOUT = "/api/layout";
-static const char* API_PATH_PRESETS = "/api/presets";
-static const char* API_PATH_PRESETS_LOAD = "/api/presets/load";
 static const char* API_PATH_TIMERS = "/api/timers";
 static const char* API_PATH_RESTART = "/api/restart";
 static const char* API_PATH_RESET = "/api/reset";
@@ -395,229 +387,13 @@ void WebServerManager::setupAPIRoutes() {
         request->send(200, CONTENT_TYPE_JSON, response);
     });
 
-    // GET /api/presets - List all presets
-    server.on(API_PATH_PRESETS, HTTP_GET, [this](AsyncWebServerRequest *request) {
-        Config::PresetsConfig presetsConfig = config.loadPresetsConfig();
-
-        StaticJsonDocument<Config::JSON_DOC_XLARGE> doc;
-        JsonArray presets = doc.createNestedArray("presets");
-
-        for (uint8_t i = 0; i < Config::PresetsConfig::MAX_PRESETS; i++) {
-            if (presetsConfig.presets[i].valid) {
-                JsonObject preset = presets.createNestedObject();
-                preset[JSON_KEY_INDEX] = i;
-                preset[JSON_KEY_NAME] = presetsConfig.presets[i].name;
-                preset[JSON_KEY_SHOW_NAME] = presetsConfig.presets[i].show_name;
-                preset["layout_reverse"] = presetsConfig.presets[i].layout_reverse;
-                preset["layout_mirror"] = presetsConfig.presets[i].layout_mirror;
-                preset["layout_dead_leds"] = presetsConfig.presets[i].layout_dead_leds;
-
-                // Parse and include params_json
-                StaticJsonDocument<Config::JSON_DOC_MEDIUM> paramsDoc;
-                if (!deserializeJson(paramsDoc, presetsConfig.presets[i].params_json)) {
-                    preset[JSON_KEY_PARAMS] = paramsDoc.as<JsonObject>();
-                }
-            }
-        }
-
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
-    });
-
-    // POST /api/presets/load - Load a preset by index or name
-    // NOTE: Must be registered BEFORE /api/presets POST to avoid route conflict
-    server.on(API_PATH_PRESETS_LOAD, HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
-                     [[maybe_unused]] size_t total) {
-                  if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
-                      DeserializationError error = deserializeJson(doc, data, len);
-
-                      if (error) {
-                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
-                          return;
-                      }
-
-                      int presetIndex = -1;
-
-                      // Find preset by index or name
-                      if (doc.containsKey(JSON_KEY_INDEX)) {
-                          presetIndex = doc[JSON_KEY_INDEX];
-                          if (presetIndex < 0 || presetIndex >= Config::PresetsConfig::MAX_PRESETS) {
-                              request->send(400, CONTENT_TYPE_JSON,
-                                            R"({"success":false,"error":"Invalid preset index"})");
-                              return;
-                          }
-                      } else if (doc.containsKey(JSON_KEY_NAME)) {
-                          const char *presetName = doc[JSON_KEY_NAME];
-                          presetIndex = config.findPresetByName(presetName);
-                          if (presetIndex < 0) {
-                              request->send(404, CONTENT_TYPE_JSON,
-                                            R"({"success":false,"error":"Preset not found"})");
-                              return;
-                          }
-                      } else {
-                          request->send(400, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"Index or name required"})");
-                          return;
-                      }
-
-                      // Load the preset
-                      Config::PresetsConfig presetsConfig = config.loadPresetsConfig();
-                      const Config::Preset &preset = presetsConfig.presets[presetIndex];
-
-                      if (!preset.valid) {
-                          request->send(404, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"Preset slot is empty"})");
-                          return;
-                      }
-
-                      // Preset loading for temperature controller - just enable control
-                      sensorController.setControlEnabled(true);
-                      StaticJsonDocument<Config::JSON_DOC_TINY> responseDoc;
-                      responseDoc["success"] = true;
-                      responseDoc["name"] = preset.name;
-                      responseDoc["message"] = "Temperature control enabled";
-
-                      String response;
-                      serializeJson(responseDoc, response);
-                      request->send(200, CONTENT_TYPE_JSON, response);
-                  }
-              }
-    );
+    // GET /api/presets - List all presets (REMOVED - obsolete)
+    // POST /api/presets/load - Load a preset by index or name (REMOVED - obsolete)
 
     // POST /api/presets - Save current state as preset
-    server.on(API_PATH_PRESETS, HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
-                     [[maybe_unused]] size_t total) {
-                  if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
-                      DeserializationError error = deserializeJson(doc, data, len);
+    // POST /api/presets - Save current state as preset (REMOVED - obsolete)
 
-                      if (error) {
-                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
-                          return;
-                      }
-
-                      const char *presetName = doc[JSON_KEY_NAME];
-                      if (presetName == nullptr || strlen(presetName) == 0) {
-                          request->send(400, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"Preset name required"})");
-                          return;
-                      }
-
-                      // Check if preset with this name already exists
-                      int existingIndex = config.findPresetByName(presetName);
-                      int slotIndex;
-
-                      if (existingIndex >= 0) {
-                          // Overwrite existing preset
-                          slotIndex = existingIndex;
-                      } else {
-                          // Find next available slot
-                          slotIndex = config.getNextPresetSlot();
-                          if (slotIndex < 0) {
-                              request->send(400, CONTENT_TYPE_JSON,
-                                            R"({"success":false,"error":"All preset slots are full"})");
-                              return;
-                          }
-                      }
-
-                      // Load current state to save
-                      Config::ShowConfig showConfig = config.loadShowConfig();
-                      Config::LayoutConfig layoutConfig = config.loadLayoutConfig();
-
-                      // Create preset from current state
-                      Config::Preset preset;
-                      preset.valid = true;
-
-                      strncpy(preset.name, presetName, sizeof(preset.name) - 1);
-                      preset.name[sizeof(preset.name) - 1] = '\0';
-
-                      strncpy(preset.show_name, showConfig.current_show, sizeof(preset.show_name) - 1);
-                      preset.show_name[sizeof(preset.show_name) - 1] = '\0';
-
-                      strncpy(preset.params_json, showConfig.params_json, sizeof(preset.params_json) - 1);
-                      preset.params_json[sizeof(preset.params_json) - 1] = '\0';
-
-                      preset.layout_reverse = layoutConfig.reverse;
-                      preset.layout_mirror = layoutConfig.mirror;
-                      preset.layout_dead_leds = layoutConfig.dead_leds;
-
-                      if (config.savePreset(slotIndex, preset)) {
-                          StaticJsonDocument<Config::JSON_DOC_TINY> responseDoc;
-                          responseDoc["success"] = true;
-                          responseDoc["index"] = slotIndex;
-                          responseDoc["name"] = preset.name;
-
-                          String response;
-                          serializeJson(responseDoc, response);
-                          request->send(200, CONTENT_TYPE_JSON, response);
-                      } else {
-                          request->send(500, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"Failed to save preset"})");
-                      }
-                  }
-              }
-    );
-
-    // DELETE /api/presets - Delete a preset by index or name
-    server.on(API_PATH_PRESETS, HTTP_DELETE,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
-                     [[maybe_unused]] size_t total) {
-                  if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
-                      DeserializationError error = deserializeJson(doc, data, len);
-
-                      if (error) {
-                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
-                          return;
-                      }
-
-                      int presetIndex = -1;
-
-                      // Find preset by index or name
-                      if (doc.containsKey(JSON_KEY_INDEX)) {
-                          presetIndex = doc[JSON_KEY_INDEX];
-                          if (presetIndex < 0 || presetIndex >= Config::PresetsConfig::MAX_PRESETS) {
-                              request->send(400, CONTENT_TYPE_JSON,
-                                            R"({"success":false,"error":"Invalid preset index"})");
-                              return;
-                          }
-                      } else if (doc.containsKey(JSON_KEY_NAME)) {
-                          const char *presetName = doc[JSON_KEY_NAME];
-                          presetIndex = config.findPresetByName(presetName);
-                          if (presetIndex < 0) {
-                              request->send(404, CONTENT_TYPE_JSON,
-                                            R"({"success":false,"error":"Preset not found"})");
-                              return;
-                          }
-                      } else {
-                          request->send(400, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"Index or name required"})");
-                          return;
-                      }
-
-                      // Delete the preset
-                      if (config.deletePreset(presetIndex)) {
-                          request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
-                      } else {
-                          request->send(500, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"Failed to delete preset"})");
-                      }
-                  }
-              }
-    );
+    // DELETE /api/presets - Delete a preset by index or name (REMOVED - obsolete)
 
     // POST /api/restart - Restart the device
     server.on(API_PATH_RESTART, HTTP_POST, [](AsyncWebServerRequest *request) {
