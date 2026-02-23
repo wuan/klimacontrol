@@ -1,5 +1,4 @@
 #include "TimerScheduler.h"
-#include "ShowController.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>

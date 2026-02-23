@@ -3,7 +3,6 @@
 //
 
 #include "TouchController.h"
-#include "ShowController.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
