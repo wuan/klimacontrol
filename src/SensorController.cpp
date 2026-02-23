@@ -25,15 +25,22 @@ SensorController::SensorController(Config::ConfigManager &config)
 }
 
 void SensorController::begin() {
+    Serial.println("SensorController: Beginning sensor initialization...");
+    
     // Initialize all sensors
     for (auto &sensor : sensors) {
-        if (sensor && !sensor->begin()) {
-            Serial.printf("SensorController: Failed to initialize sensor %s\n", sensor->getName());
-        } else {
-            Serial.printf("SensorController: Initialized sensor %s (%s)\n", 
-                         sensor->getName(), sensor->getType());
+        if (sensor) {
+            Serial.printf("SensorController: Initializing sensor %s...\n", sensor->getName());
+            if (!sensor->begin()) {
+                Serial.printf("SensorController: Failed to initialize sensor %s\n", sensor->getName());
+            } else {
+                Serial.printf("SensorController: Successfully initialized sensor %s (%s)\n", 
+                             sensor->getName(), sensor->getType());
+            }
         }
     }
+    
+    Serial.printf("SensorController: Found %u sensors total\n", sensors.size());
     
     // Load configuration
     // TODO: Load target temperature and control settings from config
@@ -52,19 +59,32 @@ void SensorController::readSensors() {
     Sensor::SensorData combinedData;
     combinedData.timestamp = millis();
     
+    Serial.println("SensorController: Reading sensors...");
+    Serial.printf("SensorController: Found %u sensors, checking connections...\n", sensors.size());
+    
     // Read all sensors and average the results
     float tempSum = 0.0f;
     float humiditySum = 0.0f;
     int validCount = 0;
     
     for (auto &sensor : sensors) {
-        if (sensor && sensor->isConnected()) {
-            Sensor::SensorData data = sensor->read();
-            if (data.valid) {
-                tempSum += data.temperature;
-                humiditySum += data.humidity;
-                validCount++;
-                anyValid = true;
+        if (sensor) {
+            Serial.printf("SensorController: Checking sensor %s - connected: %d\n", 
+                         sensor->getName(), sensor->isConnected());
+            
+            if (sensor->isConnected()) {
+                Serial.printf("SensorController: Reading from sensor %s...\n", sensor->getName());
+                Sensor::SensorData data = sensor->read();
+                Serial.printf("SensorController: Sensor %s returned valid: %d", sensor->getName(), data.valid);
+                if (data.valid) {
+                    Serial.printf(", temp: %.1f°C, humidity: %.1f%%\n", data.temperature, data.humidity);
+                    tempSum += data.temperature;
+                    humiditySum += data.humidity;
+                    validCount++;
+                    anyValid = true;
+                } else {
+                    Serial.println(" (invalid data)");
+                }
             }
         }
     }
