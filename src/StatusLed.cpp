@@ -23,7 +23,7 @@ void StatusLed::setState(LedState newState) {
         case LedState::ON:
             ledOn = true;
             brightness = 1.0f;
-            currentColor = 0x00FF00; // Green for normal operation
+            currentColor = 0x000F00; // Green for normal operation
             break;
         case LedState::OFF:
             ledOn = false;
@@ -34,12 +34,17 @@ void StatusLed::setState(LedState newState) {
         case LedState::BLINK_FAST:
             ledOn = true;
             brightness = 1.0f;
-            currentColor = 0x0000FF; // Blue for AP/config mode
+            currentColor = 0x00000F; // Blue for AP/config mode
             break;
         case LedState::PULSE:
             ledOn = true;
             brightness = 1.0f;
-            currentColor = 0xFF0000; // Red for error/warning
+            currentColor = 0x0F0000; // Red for error/warning
+            break;
+        case LedState::MEASURING:
+            ledOn = true;
+            brightness = 1.0f;
+            currentColor = 0x0F0F00; // Yellow for active measurement
             break;
     }
     
@@ -111,6 +116,10 @@ void StatusLed::update() {
             }
             break;
         }
+        case LedState::MEASURING:
+            pixel.setPixelColor(0, currentColor);
+            pixel.show();
+            break;
     }
 #endif
 }
@@ -129,4 +138,8 @@ void StatusLed::toggle() {
     } else {
         setState(LedState::ON);
     }
+}
+
+void StatusLed::setMeasuring() {
+    setState(LedState::MEASURING);
 }

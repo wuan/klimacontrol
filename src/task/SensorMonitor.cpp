@@ -15,14 +15,13 @@ namespace Task {
     
     void SensorMonitor::startTask() {
 #ifdef ARDUINO
-        xTaskCreatePinnedToCore(
+        xTaskCreate(
             taskWrapper, // Task Function
             "SensorMonitor", // Task Name
             8000, // Stack Size (8KB)
             this, // Parameters
             1, // Priority (same as LED task)
-            &taskHandle, // Task Handle
-            1 // Core Number (same as LED task)
+            &taskHandle // Task Handle
         );
 #endif
     }

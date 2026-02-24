@@ -383,14 +383,13 @@ void Network::configureUsingAPMode() {
 }
 
 void Network::startTask() {
-    xTaskCreatePinnedToCore(
+    xTaskCreate(
         taskWrapper, // Task Function
         "Network", // Task Name
         10000, // Stack Size
         this, // Parameters
         1, // Priority
-        &taskHandle, // Task Handle
-        0 // Core Number
+        &taskHandle // Task Handle
     );
 }
 

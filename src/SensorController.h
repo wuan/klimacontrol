@@ -7,6 +7,7 @@
 #include "Config.h"
 
 class SensorDataLogger;
+class Network;
 
 namespace Sensor {
     class Sensor;
@@ -18,6 +19,7 @@ namespace Sensor {
 class SensorController {
 private:
     Config::ConfigManager &config;
+    Network *network; // Pointer to network for status LED control
     std::vector<std::unique_ptr<Sensor::Sensor>> sensors;
     Sensor::SensorData currentData;
     
@@ -37,6 +39,12 @@ public:
      * @param config Configuration manager reference
      */
     explicit SensorController(Config::ConfigManager &config);
+    
+    /**
+     * Set network pointer for status LED control
+     * @param network Pointer to network instance
+     */
+    void setNetwork(Network *network);
     
     // Delete copy constructor and assignment operator
     SensorController(const SensorController &) = delete;
@@ -118,6 +126,16 @@ public:
      * @return True if at least one sensor is connected
      */
     bool hasConnectedSensors() const;
+    
+    /**
+     * Set status LED to measuring state (yellow)
+     */
+    void setStatusLedMeasuring();
+    
+    /**
+     * Set status LED to normal state (green)
+     */
+    void setStatusLedNormal();
     
     /**
      * Get data logger
