@@ -19,7 +19,8 @@ enum class LedState {
     ON,        // LED is on
     BLINK_SLOW, // Slow blinking (1 Hz)
     BLINK_FAST, // Fast blinking (2 Hz)
-    PULSE      // Smooth pulse effect
+    PULSE,     // Smooth pulse effect
+    MEASURING  // Yellow for active measurement
 };
 
 /**
@@ -82,6 +83,11 @@ public:
      * Toggle LED state
      */
     void toggle();
+    
+    /**
+     * Set LED to measuring state (yellow)
+     */
+    void setMeasuring();
 };
 
 #endif //KLIMACONTROL_STATUSLED_H

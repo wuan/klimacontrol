@@ -1,6 +1,8 @@
 #include "SensorController.h"
 #include <algorithm>
 #include "SensorDataLogger.h"
+#include "StatusLed.h"
+#include "Network.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -16,12 +18,16 @@ namespace {
 }
 
 SensorController::SensorController(Config::ConfigManager &config)
-    : config(config), targetTemperature(22.0f), controlEnabled(false), lastReadingTime(0),
+    : config(config), network(nullptr), targetTemperature(22.0f), controlEnabled(false), lastReadingTime(0),
       logInterval(60000), lastLogTime(0) {
     // Initialize current data to invalid state
     currentData.valid = false;
     // Initialize data logger with capacity for 1000 entries
     dataLogger = std::make_unique<SensorDataLogger>(1000);
+}
+
+void SensorController::setNetwork(Network *network) {
+    this->network = network;
 }
 
 void SensorController::begin() {
@@ -58,6 +64,9 @@ void SensorController::readSensors() {
     bool anyValid = false;
     Sensor::SensorData combinedData;
     combinedData.timestamp = millis();
+    
+    // Set LED to yellow during measurement
+    setStatusLedMeasuring();
     
     Serial.println("SensorController: Reading sensors...");
     Serial.printf("SensorController: Found %u sensors, checking connections...\n", sensors.size());
@@ -105,6 +114,9 @@ void SensorController::readSensors() {
     } else {
         currentData.valid = false;
     }
+    
+    // Set LED back to normal after measurement
+    setStatusLedNormal();
 }
 
 Sensor::Sensor *SensorController::getSensor(size_t index) {
@@ -183,4 +195,16 @@ bool SensorController::hasConnectedSensors() const {
         }
     }
     return false;
+}
+
+void SensorController::setStatusLedMeasuring() {
+    if (network) {
+        network->setStatusLedState(LedState::MEASURING);
+    }
+}
+
+void SensorController::setStatusLedNormal() {
+    if (network) {
+        network->setStatusLedState(LedState::ON);
+    }
 }

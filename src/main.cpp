@@ -8,11 +8,9 @@
 #include "Network.h"
 #include "Config.h"
 #include "WebServerManager.h"
-#include "SensorController.h"
 #include "sensor/SHT4x.h"
 #include "task/SensorMonitor.h"
 #include "StatusLed.h"
-
 
 TaskHandle_t networkTaskHandle = nullptr;
 
@@ -57,6 +55,9 @@ void setup() {
     
     // Initialize sensor controller
     sensorController.begin();
+    
+    // Set network pointer for status LED control
+    sensorController.setNetwork(&network);
     
     // Apply sensor configuration from the already loaded deviceConfig
     sensorController.setTargetTemperature(deviceConfig.target_temperature);
