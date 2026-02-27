@@ -3,13 +3,16 @@
 
 #include <cstdint>
 #include <memory>
+#include <variant>
 #include <vector>
 
 namespace Sensor {
 
+    using Value = std::variant<float, int32_t>;
+
     struct Measurement {
         const char* type;       // e.g., "temperature", "humidity", "pressure", "co2"
-        float value;
+        Value value;
         const char* unit;       // e.g., "°C", "%", "hPa", "ppm"
         const char* sensor;     // e.g., "SHT4x", "BME680"
         bool calculated;        // true for derived values (dew point, sea-level pressure)

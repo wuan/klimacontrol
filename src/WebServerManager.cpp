@@ -175,7 +175,11 @@ void WebServerManager::setupAPIRoutes() {
             for (const auto &m : sensorController.getMeasurements()) {
                 JsonObject mObj = measurements.createNestedObject();
                 mObj["type"] = m.type;
-                mObj["value"] = m.value;
+                if (auto* i = std::get_if<int32_t>(&m.value)) {
+                    mObj["value"] = *i;
+                } else {
+                    mObj["value"] = std::get<float>(m.value);
+                }
                 mObj["unit"] = m.unit;
                 mObj["sensor"] = m.sensor;
                 mObj["calculated"] = m.calculated;
@@ -227,7 +231,11 @@ void WebServerManager::setupAPIRoutes() {
             for (const auto &m : sensorController.getMeasurements()) {
                 JsonObject mObj = measurements.createNestedObject();
                 mObj["type"] = m.type;
-                mObj["value"] = m.value;
+                if (auto* i = std::get_if<int32_t>(&m.value)) {
+                    mObj["value"] = *i;
+                } else {
+                    mObj["value"] = std::get<float>(m.value);
+                }
                 mObj["unit"] = m.unit;
                 mObj["sensor"] = m.sensor;
                 mObj["calculated"] = m.calculated;
@@ -324,8 +332,8 @@ void WebServerManager::setupAPIRoutes() {
 
             // Backward-compatible top-level fields
             for (const auto &m : entry.measurements) {
-                if (strcmp(m.type, "temperature") == 0) dataObj["temperature"] = m.value;
-                else if (strcmp(m.type, "humidity") == 0) dataObj["humidity"] = m.value;
+                if (strcmp(m.type, "temperature") == 0) dataObj["temperature"] = std::get<float>(m.value);
+                else if (strcmp(m.type, "humidity") == 0) dataObj["humidity"] = std::get<float>(m.value);
             }
 
             // Generic measurements array
@@ -333,7 +341,11 @@ void WebServerManager::setupAPIRoutes() {
             for (const auto &m : entry.measurements) {
                 JsonObject mObj = measurements.createNestedObject();
                 mObj["type"] = m.type;
-                mObj["value"] = m.value;
+                if (auto* i = std::get_if<int32_t>(&m.value)) {
+                    mObj["value"] = *i;
+                } else {
+                    mObj["value"] = std::get<float>(m.value);
+                }
                 mObj["unit"] = m.unit;
                 mObj["sensor"] = m.sensor;
                 mObj["calculated"] = m.calculated;

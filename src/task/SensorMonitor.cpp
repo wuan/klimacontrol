@@ -74,7 +74,7 @@ namespace Task {
             }
             
             // Small delay to prevent task from hogging CPU
-            vTaskDelay(50 / portTICK_PERIOD_MS);
+            vTaskDelay(500 / portTICK_PERIOD_MS);
         }
     }
 #endif

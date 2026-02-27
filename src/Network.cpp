@@ -112,15 +112,15 @@ void Network::startSTA(const char *ssid, const char *password) {
     // Set WiFi mode explicitly
     WiFi.mode(WIFI_STA);
 
-    // Disable WiFi power saving for low latency
-    WiFi.setSleep(WIFI_PS_NONE);
+    // Enable WiFi power save (radio sleeps between DTIM beacons)
+    WiFi.setSleep(WIFI_PS_MIN_MODEM);
 
-    // Set transmit power to maximum
-    WiFi.setTxPower(WIFI_POWER_19_5dBm);
+    // Reduce transmit power (8.5 dBm is sufficient for indoor range)
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
 
     Serial.println("WiFi Configuration:");
-    Serial.printf("  Power save: NONE\n");
-    Serial.printf("  TX Power: 19.5dBm (max)\n");
+    Serial.printf("  Power save: MIN_MODEM\n");
+    Serial.printf("  TX Power: 8.5dBm\n");
 
     WiFi.begin(ssid, password);
 
@@ -327,9 +327,10 @@ void Network::configureUsingAPMode() {
 
     unsigned long lastCheck = millis();
     unsigned long lastSecond = millis();
+    unsigned long lastTouchUpdate = 0;
     while (true) {
-        // Short delay for responsive touch control
-        vTaskDelay(50 / portTICK_PERIOD_MS);
+        // Short delay for responsive touch/LED control
+        vTaskDelay(100 / portTICK_PERIOD_MS);
 
         unsigned long now = millis();
 
@@ -338,9 +339,10 @@ void Network::configureUsingAPMode() {
             statusLed->update();
         }
         
-        // Check touch controller frequently (every 50ms)
-        if (touchController) {
+        // Check touch controller every 100ms (has 500ms debounce)
+        if (touchController && (now - lastTouchUpdate >= 100)) {
             touchController->update();
+            lastTouchUpdate = now;
         }
 
         // Check WiFi and timers every second
@@ -423,9 +425,15 @@ void Network::publishMeasurements(const std::vector<Sensor::Measurement>& measur
         snprintf(topic, sizeof(topic), "%s/%s", mqttConfig.prefix, m.type);
 
         char payload[256];
-        snprintf(payload, sizeof(payload),
-            "{\"time\":%u,\"value\":%.2f,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
-            epoch, m.value, m.unit, m.sensor, m.calculated ? "true" : "false");
+        if (auto* i = std::get_if<int32_t>(&m.value)) {
+            snprintf(payload, sizeof(payload),
+                "{\"time\":%u,\"value\":%d,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
+                epoch, *i, m.unit, m.sensor, m.calculated ? "true" : "false");
+        } else {
+            snprintf(payload, sizeof(payload),
+                "{\"time\":%u,\"value\":%.2f,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
+                epoch, std::get<float>(m.value), m.unit, m.sensor, m.calculated ? "true" : "false");
+        }
 
         mqttClient->publish(topic, payload);
     }

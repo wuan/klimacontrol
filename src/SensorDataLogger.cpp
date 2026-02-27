@@ -104,7 +104,7 @@ namespace {
     float findMeasurementValue(const std::vector<Sensor::Measurement> &measurements, const char* type) {
         for (const auto &m : measurements) {
             if (strcmp(m.type, type) == 0) {
-                return m.value;
+                return std::get<float>(m.value);
             }
         }
         return 0.0f;
