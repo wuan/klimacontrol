@@ -40,7 +40,7 @@ jobs:
           pio run -e adafruit_qtpy_esp32s2
 
           echo "Firmware built successfully!"
-          ls -lh .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.*
+          ls -lh .pio/build/adafruit_qtpy_esp32s2/firmware.*
 
       - name: Prepare Release Assets
         run: |
@@ -83,7 +83,7 @@ jobs:
           pip install esptool
 
           # Flash firmware (replace /dev/ttyUSB0 with your port)
-          esptool.py --chip esp32s3 --port /dev/ttyUSB0 \\
+          esptool.py --chip esp32s2 --port /dev/ttyUSB0 \\
             --baud 921600 --before default_reset --after hard_reset \\
             write_flash 0x10000 firmware.bin
           \`\`\`
