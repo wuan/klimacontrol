@@ -9,6 +9,7 @@
 #include "Config.h"
 #include "WebServerManager.h"
 #include "sensor/SHT4x.h"
+#include "sensor/DeviceSensor.h"
 #include "task/SensorMonitor.h"
 #include "StatusLed.h"
 
@@ -50,6 +51,10 @@ void setup() {
     } catch (...) {
         Serial.println("Unknown error initializing SHT4x sensor");
     }
+
+    // Add device metrics sensor (RSSI, chip temp, free heap, uptime)
+    sensorController.addSensor(std::make_unique<Sensor::DeviceSensor>());
+    Serial.println("Device sensor added to controller");
 #endif
 
     
