@@ -100,6 +100,12 @@
                 <small style="display:block; margin-top:4px; color:#666;">Topics: {prefix}/temperature, {prefix}/humidity, ...</small>
             </div>
 
+            <div class="form-group">
+                <label for="mqttInterval">Publish Interval (seconds)</label>
+                <input type="number" id="mqttInterval" placeholder="15" min="5" max="3600" style="width: 120px;">
+                <small style="display:block; margin-top:4px; color:#666;">How often to publish measurements. Default: 15s</small>
+            </div>
+
             <button class="btn btn-primary" onclick="updateMqtt()">Save MQTT Settings</button>
 
             <div class="info-box" id="mqttStatus">
@@ -485,6 +491,7 @@
             document.getElementById('mqttPort').value = data.port || 1883;
             document.getElementById('mqttUsername').value = data.username || '';
             document.getElementById('mqttPrefix').value = data.prefix || '';
+            document.getElementById('mqttInterval').value = data.interval || 15;
 
             const status = data.enabled
                 ? (data.connected ? 'Connected' : 'Disconnected')
@@ -502,7 +509,8 @@
             host: document.getElementById('mqttHost').value.trim(),
             port: parseInt(document.getElementById('mqttPort').value) || 1883,
             username: document.getElementById('mqttUsername').value.trim(),
-            prefix: document.getElementById('mqttPrefix').value.trim()
+            prefix: document.getElementById('mqttPrefix').value.trim(),
+            interval: parseInt(document.getElementById('mqttInterval').value) || 15
         };
 
         const password = document.getElementById('mqttPassword').value;

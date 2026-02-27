@@ -1199,6 +1199,7 @@ void WebServerManager::setupAPIRoutes() {
         doc["port"] = mqttConfig.port;
         doc["username"] = mqttConfig.username;
         doc["prefix"] = mqttConfig.prefix;
+        doc["interval"] = mqttConfig.interval;
 
         MqttClient* mqtt = network.getMqttClient();
         doc["connected"] = mqtt ? mqtt->isConnected() : false;
@@ -1231,6 +1232,7 @@ void WebServerManager::setupAPIRoutes() {
                       if (doc.containsKey("username")) strlcpy(mqttConfig.username, doc["username"] | "", sizeof(mqttConfig.username));
                       if (doc.containsKey("password")) strlcpy(mqttConfig.password, doc["password"] | "", sizeof(mqttConfig.password));
                       if (doc.containsKey("prefix")) strlcpy(mqttConfig.prefix, doc["prefix"] | "", sizeof(mqttConfig.prefix));
+                      if (doc.containsKey("interval")) mqttConfig.interval = doc["interval"];
 
                       config.saveMqttConfig(mqttConfig);
                       network.updateMqttConfig(mqttConfig);
