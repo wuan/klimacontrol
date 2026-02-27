@@ -13,6 +13,7 @@
 #include "OTAConfig.h"
 #include "TimerScheduler.h"
 #include "TouchController.h"
+#include "MqttClient.h"
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
@@ -1187,6 +1188,57 @@ void WebServerManager::setupAPIRoutes() {
         serializeJson(doc, response);
         request->send(success ? 200 : 500, CONTENT_TYPE_JSON, response);
     });
+
+    // GET /api/mqtt - Get MQTT configuration
+    server.on("/api/mqtt", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        Config::MqttConfig mqttConfig = config.loadMqttConfig();
+
+        StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+        doc["enabled"] = mqttConfig.enabled;
+        doc["host"] = mqttConfig.host;
+        doc["port"] = mqttConfig.port;
+        doc["username"] = mqttConfig.username;
+        doc["prefix"] = mqttConfig.prefix;
+
+        MqttClient* mqtt = network.getMqttClient();
+        doc["connected"] = mqtt ? mqtt->isConnected() : false;
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, CONTENT_TYPE_JSON, response);
+    });
+
+    // POST /api/mqtt - Update MQTT configuration
+    server.on("/api/mqtt", HTTP_POST,
+              []([[maybe_unused]] AsyncWebServerRequest *request) {
+              },
+              nullptr,
+              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
+                  if (index == 0) {
+                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+                      DeserializationError error = deserializeJson(doc, data, len);
+
+                      if (error) {
+                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
+                          return;
+                      }
+
+                      Config::MqttConfig mqttConfig = config.loadMqttConfig();
+
+                      if (doc.containsKey("enabled")) mqttConfig.enabled = doc["enabled"];
+                      if (doc.containsKey("host")) strlcpy(mqttConfig.host, doc["host"] | "", sizeof(mqttConfig.host));
+                      if (doc.containsKey("port")) mqttConfig.port = doc["port"];
+                      if (doc.containsKey("username")) strlcpy(mqttConfig.username, doc["username"] | "", sizeof(mqttConfig.username));
+                      if (doc.containsKey("password")) strlcpy(mqttConfig.password, doc["password"] | "", sizeof(mqttConfig.password));
+                      if (doc.containsKey("prefix")) strlcpy(mqttConfig.prefix, doc["prefix"] | "", sizeof(mqttConfig.prefix));
+
+                      config.saveMqttConfig(mqttConfig);
+                      network.updateMqttConfig(mqttConfig);
+
+                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+                  }
+              }
+    );
 
     // GET /about - About page
     server.on("/about", HTTP_GET, [](AsyncWebServerRequest *request) {

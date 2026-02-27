@@ -157,6 +157,25 @@ namespace Config {
     };
 
     /**
+     * MQTT configuration structure
+     */
+    struct MqttConfig {
+        char host[64];
+        uint16_t port;
+        char username[64];
+        char password[64];
+        char prefix[64];         // topic prefix, e.g. "sensors/bedroom"
+        bool enabled;
+
+        MqttConfig() : port(1883), enabled(false) {
+            host[0] = '\0';
+            username[0] = '\0';
+            password[0] = '\0';
+            strcpy(prefix, "sensors");
+        }
+    };
+
+    /**
      * Touch control configuration structure
      * Maps touch pins to preset indices for physical control
      */
@@ -354,6 +373,18 @@ namespace Config {
          * @param config Touch configuration to save
          */
         void saveTouchConfig(const TouchConfig &config);
+
+        /**
+         * Load MQTT configuration from NVS
+         * @return MqttConfig structure
+         */
+        MqttConfig loadMqttConfig();
+
+        /**
+         * Save MQTT configuration to NVS
+         * @param config MQTT configuration to save
+         */
+        void saveMqttConfig(const MqttConfig &config);
     };
 } // namespace Config
 

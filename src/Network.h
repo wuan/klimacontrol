@@ -13,6 +13,8 @@
 #include "TimerScheduler.h"
 #include "TouchController.h"
 #include "StatusLed.h"
+#include "MqttClient.h"
+#include "sensor/Sensor.h"
 
 // Forward declarations
 namespace Config {
@@ -46,6 +48,8 @@ private:
     std::unique_ptr<TimerScheduler> timerScheduler;
     std::unique_ptr<TouchController> touchController;
     std::unique_ptr<StatusLed> statusLed;
+    std::unique_ptr<MqttClient> mqttClient;
+    uint32_t lastMqttPublish;
     CaptivePortal captivePortal;
     TaskHandle_t taskHandle = nullptr;
 
@@ -120,6 +124,22 @@ public:
      * @return Pointer to touch controller, or nullptr if not initialized
      */
     TouchController* getTouchController() { return touchController.get(); }
+
+    /**
+     * Get MQTT client (for API access)
+     * @return Pointer to MQTT client, or nullptr if not initialized
+     */
+    MqttClient* getMqttClient() { return mqttClient.get(); }
+
+    /**
+     * Publish sensor measurements via MQTT
+     */
+    void publishMeasurements(const std::vector<Sensor::Measurement>& measurements);
+
+    /**
+     * Update MQTT configuration at runtime
+     */
+    void updateMqttConfig(const Config::MqttConfig& mqttConfig);
 
     /**
      * Get current NTP epoch time

@@ -500,4 +500,43 @@ namespace Config {
                       config.enabled, config.threshold);
 #endif
     }
+    MqttConfig ConfigManager::loadMqttConfig() {
+        MqttConfig mqttConfig;
+
+#ifdef ARDUINO
+        prefs.begin(NAMESPACE, true); // Read-only mode
+
+        mqttConfig.enabled = prefs.getBool("mqtt_enabled", false);
+        prefs.getString("mqtt_host", mqttConfig.host, sizeof(mqttConfig.host));
+        mqttConfig.port = prefs.getUShort("mqtt_port", 1883);
+        prefs.getString("mqtt_user", mqttConfig.username, sizeof(mqttConfig.username));
+        prefs.getString("mqtt_pass", mqttConfig.password, sizeof(mqttConfig.password));
+        prefs.getString("mqtt_prefix", mqttConfig.prefix, sizeof(mqttConfig.prefix));
+
+        if (mqttConfig.prefix[0] == '\0') {
+            strcpy(mqttConfig.prefix, "sensors");
+        }
+
+        prefs.end();
+#endif
+
+        return mqttConfig;
+    }
+
+    void ConfigManager::saveMqttConfig(const MqttConfig &config) {
+#ifdef ARDUINO
+        prefs.begin(NAMESPACE, false); // Read-write mode
+
+        prefs.putBool("mqtt_enabled", config.enabled);
+        prefs.putString("mqtt_host", config.host);
+        prefs.putUShort("mqtt_port", config.port);
+        prefs.putString("mqtt_user", config.username);
+        prefs.putString("mqtt_pass", config.password);
+        prefs.putString("mqtt_prefix", config.prefix);
+
+        prefs.end();
+
+        Serial.println("Config: Saved MQTT configuration");
+#endif
+    }
 } // namespace Config

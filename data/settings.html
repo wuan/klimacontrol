@@ -64,6 +64,50 @@
         </div>
 
         <div class="section">
+            <h2>MQTT</h2>
+            <p>Publish sensor measurements to an MQTT broker for integration with home automation systems.</p>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="mqttEnabled" onchange="updateMqtt()">
+                    Enable MQTT
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="mqttHost">Broker Host</label>
+                <input type="text" id="mqttHost" placeholder="e.g. 192.168.1.100 or mqtt.example.com" maxlength="63">
+            </div>
+
+            <div class="form-group">
+                <label for="mqttPort">Port</label>
+                <input type="number" id="mqttPort" placeholder="1883" min="1" max="65535" style="width: 120px;">
+            </div>
+
+            <div class="form-group">
+                <label for="mqttUsername">Username <small>(optional)</small></label>
+                <input type="text" id="mqttUsername" placeholder="Leave empty if not required" maxlength="63">
+            </div>
+
+            <div class="form-group">
+                <label for="mqttPassword">Password <small>(optional)</small></label>
+                <input type="password" id="mqttPassword" placeholder="Leave empty if not required" maxlength="63">
+            </div>
+
+            <div class="form-group">
+                <label for="mqttPrefix">Topic Prefix</label>
+                <input type="text" id="mqttPrefix" placeholder="e.g. sensors/bedroom" maxlength="63">
+                <small style="display:block; margin-top:4px; color:#666;">Topics: {prefix}/temperature, {prefix}/humidity, ...</small>
+            </div>
+
+            <button class="btn btn-primary" onclick="updateMqtt()">Save MQTT Settings</button>
+
+            <div class="info-box" id="mqttStatus">
+                <strong>Status: </strong><span id="mqttConnectionStatus">Loading...</span>
+            </div>
+        </div>
+
+        <div class="section">
             <h2>Firmware Updates (OTA)</h2>
             <p>Check for and install firmware updates from GitHub releases.</p>
 
@@ -430,11 +474,74 @@
         }
     }
 
+    // MQTT Functions
+    async function loadMqttConfig() {
+        try {
+            const response = await fetch('/api/mqtt');
+            const data = await response.json();
+
+            document.getElementById('mqttEnabled').checked = data.enabled;
+            document.getElementById('mqttHost').value = data.host || '';
+            document.getElementById('mqttPort').value = data.port || 1883;
+            document.getElementById('mqttUsername').value = data.username || '';
+            document.getElementById('mqttPrefix').value = data.prefix || '';
+
+            const status = data.enabled
+                ? (data.connected ? 'Connected' : 'Disconnected')
+                : 'Disabled';
+            document.getElementById('mqttConnectionStatus').textContent = status;
+        } catch (error) {
+            console.error('Failed to load MQTT config:', error);
+            document.getElementById('mqttConnectionStatus').textContent = 'Error loading';
+        }
+    }
+
+    async function updateMqtt() {
+        const config = {
+            enabled: document.getElementById('mqttEnabled').checked,
+            host: document.getElementById('mqttHost').value.trim(),
+            port: parseInt(document.getElementById('mqttPort').value) || 1883,
+            username: document.getElementById('mqttUsername').value.trim(),
+            prefix: document.getElementById('mqttPrefix').value.trim()
+        };
+
+        const password = document.getElementById('mqttPassword').value;
+        if (password) {
+            config.password = password;
+        }
+
+        if (config.enabled && !config.host) {
+            alert('Please enter a broker host');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/mqtt', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+
+            if (response.ok) {
+                alert('MQTT settings saved');
+                document.getElementById('mqttPassword').value = '';
+                loadMqttConfig();
+            } else {
+                const data = await response.json();
+                alert('Failed to save MQTT settings: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to update MQTT settings:', error);
+            alert('Error saving MQTT settings');
+        }
+    }
+
     // Load device info on page load
     loadDeviceName();
     loadHardwareSettings();
     loadOTAStatus();
     loadTouchConfig();
+    loadMqttConfig();
 </script>
 </body>
 </html>

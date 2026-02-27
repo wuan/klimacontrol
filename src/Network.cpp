@@ -17,7 +17,7 @@
 #endif
 
 Network::Network(Config::ConfigManager &config, SensorController &sensorController)
-    : config(config), sensorController(sensorController), mode(NetworkMode::NONE), webServer(nullptr), statusLed(nullptr)
+    : config(config), sensorController(sensorController), mode(NetworkMode::NONE), webServer(nullptr), statusLed(nullptr), lastMqttPublish(0)
 #ifdef ARDUINO
       , ntpClient(wifiUdp)
 #endif
@@ -206,6 +206,11 @@ void Network::startSTA(const char *ssid, const char *password) {
         timerScheduler = std::make_unique<TimerScheduler>(config, sensorController);
         timerScheduler->begin();
         timerScheduler->setNtpAvailable(true);
+
+        // Initialize MQTT client
+        mqttClient = std::make_unique<MqttClient>();
+        Config::MqttConfig mqttConfig = config.loadMqttConfig();
+        mqttClient->begin(mqttConfig);
     } else {
         Serial.println("\nConnection failed");
     }
@@ -377,16 +382,56 @@ void Network::configureUsingAPMode() {
             if (timerScheduler) {
                 timerScheduler->checkTimers(ntpClient.getEpochTime());
             }
+
+            // MQTT: reconnect/keepalive + publish measurements
+            if (mqttClient) {
+                mqttClient->loop();
+
+                if (mqttClient->isConnected() && sensorController.isDataValid()) {
+                    uint32_t readingTs = sensorController.getLastReadingTimestamp();
+                    if (readingTs != lastMqttPublish) {
+                        lastMqttPublish = readingTs;
+                        publishMeasurements(sensorController.getMeasurements());
+                    }
+                }
+            }
         }
     }
 #endif
+}
+
+void Network::publishMeasurements(const std::vector<Sensor::Measurement>& measurements) {
+#ifdef ARDUINO
+    if (!mqttClient || !mqttClient->isConnected()) return;
+
+    uint32_t epoch = getCurrentEpoch();
+    Config::MqttConfig mqttConfig = config.loadMqttConfig();
+
+    for (const auto& m : measurements) {
+        char topic[128];
+        snprintf(topic, sizeof(topic), "%s/%s", mqttConfig.prefix, m.type);
+
+        char payload[256];
+        snprintf(payload, sizeof(payload),
+            "{\"time\":%u,\"value\":%.2f,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
+            epoch, m.value, m.unit, m.sensor, m.calculated ? "true" : "false");
+
+        mqttClient->publish(topic, payload);
+    }
+#endif
+}
+
+void Network::updateMqttConfig(const Config::MqttConfig& mqttConfig) {
+    if (mqttClient) {
+        mqttClient->setConfig(mqttConfig);
+    }
 }
 
 void Network::startTask() {
     xTaskCreate(
         taskWrapper, // Task Function
         "Network", // Task Name
-        10000, // Stack Size
+        14000, // Stack Size
         this, // Parameters
         1, // Priority
         &taskHandle // Task Handle
