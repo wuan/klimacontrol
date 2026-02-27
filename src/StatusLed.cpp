@@ -1,7 +1,15 @@
 #include "StatusLed.h"
 
+#ifndef ARDUINO
+unsigned long millis();
+#endif
+
 StatusLed::StatusLed(uint8_t pin, uint8_t numPixels) 
-    : pixel(numPixels, pin, NEO_GRB + NEO_KHZ800), state(LedState::OFF), 
+#ifdef ARDUINO
+    : pixel(numPixels, pin, NEO_GRB + NEO_KHZ800), state(LedState::OFF),
+#else
+    : state(LedState::OFF),
+#endif
       lastChange(0), ledOn(false), brightness(0.0f), direction(1),
       currentColor(0x000000), progress(0.0f), mqttFlashStart(0) {
 }
@@ -58,9 +66,14 @@ void StatusLed::setState(LedState newState) {
 }
 
 void StatusLed::update() {
-#ifdef ARDUINO
     unsigned long now = millis();
-    
+
+    if (state == LedState::MQTT_ACTIVE && now - mqttFlashStart >= MQTT_FLASH_DURATION_MS) {
+        state = LedState::ON;
+        progress = 0.0f; // Reset to green after publish
+    }
+
+#ifdef ARDUINO
     switch (state) {
         case LedState::OFF:
             pixel.setPixelColor(0, 0x000000);
@@ -132,15 +145,7 @@ void StatusLed::update() {
             break;
 
         case LedState::MQTT_ACTIVE:
-            if (now - mqttFlashStart >= MQTT_FLASH_DURATION_MS) {
-                state = LedState::ON;
-                progress = 0.0f; // Reset to green after publish
-                uint8_t r = 0;
-                uint8_t g = 15;
-                pixel.setPixelColor(0, r, g, 0);
-            } else {
-                pixel.setPixelColor(0, currentColor); // White flash
-            }
+            pixel.setPixelColor(0, currentColor); // White flash
             pixel.show();
             break;
     }
