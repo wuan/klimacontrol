@@ -393,7 +393,17 @@ void Network::configureUsingAPMode() {
                     if (intervalMs > 0 && (now - lastMqttPublish >= intervalMs)) {
                         lastMqttPublish = now;
                         publishMeasurements(sensorController.getMeasurements());
+                        if (statusLed) statusLed->setState(LedState::MQTT_ACTIVE);
                     }
+
+                    // Update MQTT progress for green→red gradient on status LED
+                    if (statusLed && intervalMs > 0) {
+                        float prog = static_cast<float>(now - lastMqttPublish) / intervalMs;
+                        if (prog > 1.0f) prog = 1.0f;
+                        statusLed->setProgress(prog);
+                    }
+                } else if (statusLed) {
+                    statusLed->setProgress(0.0f);
                 }
             }
         }

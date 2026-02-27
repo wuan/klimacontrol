@@ -77,14 +77,17 @@ void SensorController::readSensors() {
 
             if (sensor->isConnected()) {
                 Serial.printf("SensorController: Reading from sensor %s...\n", sensor->getName());
+                uint32_t readStart = millis();
                 Sensor::SensorReading reading = sensor->read();
-                Serial.printf("SensorController: Sensor %s returned valid: %d", sensor->getName(), reading.valid);
+                uint32_t readTime = millis() - readStart;
+                Serial.printf("SensorController: Sensor %s returned valid: %d (read took %u ms)", sensor->getName(), reading.valid, readTime);
                 if (reading.valid) {
                     Serial.printf(", %d measurements\n", reading.measurements.size());
                     for (const auto &m : reading.measurements) {
                         Serial.printf("  %s: %.1f %s\n", m.type, m.value, m.unit);
                         allMeasurements.push_back(m);
                     }
+                    allMeasurements.push_back({"time", static_cast<float>(readTime), "ms", sensor->getName(), false});
                     anyValid = true;
                 } else {
                     Serial.println(" (invalid data)");

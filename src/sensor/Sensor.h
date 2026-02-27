@@ -19,7 +19,6 @@ namespace Sensor {
         std::vector<Measurement> measurements;
         uint32_t timestamp;
         bool valid;
-
         SensorReading() : timestamp(0), valid(false) {}
     };
 

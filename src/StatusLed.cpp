@@ -2,8 +2,8 @@
 
 StatusLed::StatusLed(uint8_t pin, uint8_t numPixels) 
     : pixel(numPixels, pin, NEO_GRB + NEO_KHZ800), state(LedState::OFF), 
-      lastChange(0), ledOn(false), brightness(0.0f), direction(1), 
-      currentColor(0x000000) {
+      lastChange(0), ledOn(false), brightness(0.0f), direction(1),
+      currentColor(0x000000), progress(0.0f), mqttFlashStart(0) {
 }
 
 void StatusLed::begin() {
@@ -46,6 +46,12 @@ void StatusLed::setState(LedState newState) {
             brightness = 1.0f;
             currentColor = 0x0F0F00; // Yellow for active measurement
             break;
+        case LedState::MQTT_ACTIVE:
+            ledOn = true;
+            brightness = 1.0f;
+            mqttFlashStart = millis();
+            currentColor = 0x0F0F0F; // White for MQTT transmit flash
+            break;
     }
     
     update(); // Apply immediately
@@ -61,10 +67,14 @@ void StatusLed::update() {
             pixel.show();
             break;
             
-        case LedState::ON:
-            pixel.setPixelColor(0, currentColor);
+        case LedState::ON: {
+            // Green→Red gradient based on MQTT progress
+            uint8_t r = static_cast<uint8_t>(15 * progress);
+            uint8_t g = static_cast<uint8_t>(15 * (1.0f - progress));
+            pixel.setPixelColor(0, r, g, 0);
             pixel.show();
             break;
+        }
             
         case LedState::BLINK_SLOW: {
             unsigned long interval = 500; // 500ms on, 500ms off
@@ -120,6 +130,19 @@ void StatusLed::update() {
             pixel.setPixelColor(0, currentColor);
             pixel.show();
             break;
+
+        case LedState::MQTT_ACTIVE:
+            if (now - mqttFlashStart >= MQTT_FLASH_DURATION_MS) {
+                state = LedState::ON;
+                progress = 0.0f; // Reset to green after publish
+                uint8_t r = 0;
+                uint8_t g = 15;
+                pixel.setPixelColor(0, r, g, 0);
+            } else {
+                pixel.setPixelColor(0, currentColor); // White flash
+            }
+            pixel.show();
+            break;
     }
 #endif
 }
@@ -142,4 +165,10 @@ void StatusLed::toggle() {
 
 void StatusLed::setMeasuring() {
     setState(LedState::MEASURING);
+}
+
+void StatusLed::setProgress(float p) {
+    if (p < 0.0f) p = 0.0f;
+    if (p > 1.0f) p = 1.0f;
+    progress = p;
 }

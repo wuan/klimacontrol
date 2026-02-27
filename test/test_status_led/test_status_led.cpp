@@ -2,9 +2,9 @@
 #include "StatusLed.h"
 
 // Mock Arduino functions for testing
+static unsigned long mockMillis = 0;
 unsigned long millis() {
-    static unsigned long counter = 0;
-    return counter += 50; // Increment by 50ms each call
+    return mockMillis;
 }
 
 void pinMode(uint8_t, uint8_t) {
@@ -22,6 +22,7 @@ void analogWrite(uint8_t, int) {
 StatusLed* testLed;
 
 void setUp() {
+    mockMillis = 0;
     testLed = new StatusLed(13, 1); // Use pin 13, 1 pixel for testing
     testLed->begin();
 }
@@ -84,9 +85,41 @@ void test_update_method_no_crash() {
     // Test that update doesn't crash
     testLed->setState(LedState::BLINK_SLOW);
     for (int i = 0; i < 10; i++) {
+        mockMillis += 50;
         testLed->update();
     }
     TEST_ASSERT_TRUE(true); // If we get here, no crash occurred
+}
+
+void test_set_state_mqtt_active() {
+    mockMillis = 1000;
+    testLed->setState(LedState::MQTT_ACTIVE);
+    TEST_ASSERT_EQUAL(LedState::MQTT_ACTIVE, testLed->getState());
+}
+
+void test_progress_method() {
+    testLed->setProgress(0.5f);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.5f, testLed->getProgress());
+
+    // Clamps to 0.0-1.0
+    testLed->setProgress(-0.5f);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, testLed->getProgress());
+
+    testLed->setProgress(2.0f);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 1.0f, testLed->getProgress());
+}
+
+void test_mqtt_flash_returns_to_on() {
+    mockMillis = 1000;
+    testLed->setState(LedState::ON);
+    testLed->setState(LedState::MQTT_ACTIVE);
+    TEST_ASSERT_EQUAL(LedState::MQTT_ACTIVE, testLed->getState());
+
+    // After flash duration, should auto-transition back to ON
+    mockMillis = 1000 + 200; // > 150ms flash duration
+    testLed->update();
+    TEST_ASSERT_EQUAL(LedState::ON, testLed->getState());
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, testLed->getProgress());
 }
 
 int runUnityTests() {
@@ -101,6 +134,9 @@ int runUnityTests() {
     RUN_TEST(test_off_method);
     RUN_TEST(test_toggle_method);
     RUN_TEST(test_update_method_no_crash);
+    RUN_TEST(test_set_state_mqtt_active);
+    RUN_TEST(test_progress_method);
+    RUN_TEST(test_mqtt_flash_returns_to_on);
     return UNITY_END();
 }
 
