@@ -1,7 +1,16 @@
 #include "StatusLed.h"
 
-StatusLed::StatusLed(uint8_t pin, uint8_t numPixels) 
-    : pixel(numPixels, pin, NEO_GRB + NEO_KHZ800), state(LedState::OFF), 
+#ifndef ARDUINO
+unsigned long millis();
+#endif
+
+StatusLed::StatusLed(uint8_t pin, uint8_t numPixels)
+#ifdef ARDUINO
+    : pixel(numPixels, pin, NEO_GRB + NEO_KHZ800),
+      state(LedState::OFF),
+#else
+    : state(LedState::OFF),
+#endif
       lastChange(0), ledOn(false), brightness(0.0f), direction(1), 
       currentColor(0x000000) {
 }
