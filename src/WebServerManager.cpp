@@ -1,6 +1,7 @@
 #include "WebServerManager.h"
 
 #include <cstdio>
+#include <cstring>
 
 #include "Config.h"
 #include "Network.h"
@@ -156,14 +157,27 @@ void WebServerManager::setupAPIRoutes() {
         }
 
         // Sensor info
-        const auto &sensorData = sensorController.getCurrentData();
         doc["sensor_connected"] = sensorController.hasConnectedSensors();
-        doc["sensor_valid"] = sensorData.valid;
-        
-        if (sensorData.valid) {
-            doc["temperature"] = sensorData.temperature;
-            doc["humidity"] = sensorData.humidity;
-            doc["sensor_timestamp"] = sensorData.timestamp;
+        doc["sensor_valid"] = sensorController.isDataValid();
+
+        if (sensorController.isDataValid()) {
+            // Backward-compatible top-level fields
+            float temp = sensorController.getTemperature();
+            float hum = sensorController.getHumidity();
+            if (!isnan(temp)) doc["temperature"] = temp;
+            if (!isnan(hum)) doc["humidity"] = hum;
+            doc["sensor_timestamp"] = sensorController.getLastReadingTimestamp();
+
+            // Generic measurements array
+            JsonArray measurements = doc.createNestedArray("measurements");
+            for (const auto &m : sensorController.getMeasurements()) {
+                JsonObject mObj = measurements.createNestedObject();
+                mObj["type"] = m.type;
+                mObj["value"] = m.value;
+                mObj["unit"] = m.unit;
+                mObj["sensor"] = m.sensor;
+                mObj["calculated"] = m.calculated;
+            }
         }
 
         // Temperature control info
@@ -198,11 +212,25 @@ void WebServerManager::setupAPIRoutes() {
         }
 
         // Add current sensor data
-        const auto &currentData = sensorController.getCurrentData();
-        doc["current_temperature"] = currentData.valid ? currentData.temperature : static_cast<float>(NAN);
-        doc["current_humidity"] = currentData.valid ? currentData.humidity : static_cast<float>(NAN);
-        doc["data_valid"] = currentData.valid;
-        doc["data_timestamp"] = currentData.timestamp;
+        float currentTemp = sensorController.getTemperature();
+        float currentHum = sensorController.getHumidity();
+        doc["current_temperature"] = sensorController.isDataValid() ? currentTemp : static_cast<float>(NAN);
+        doc["current_humidity"] = sensorController.isDataValid() ? currentHum : static_cast<float>(NAN);
+        doc["data_valid"] = sensorController.isDataValid();
+        doc["data_timestamp"] = sensorController.getLastReadingTimestamp();
+
+        // Add measurements array
+        JsonArray measurements = doc.createNestedArray("measurements");
+        if (sensorController.isDataValid()) {
+            for (const auto &m : sensorController.getMeasurements()) {
+                JsonObject mObj = measurements.createNestedObject();
+                mObj["type"] = m.type;
+                mObj["value"] = m.value;
+                mObj["unit"] = m.unit;
+                mObj["sensor"] = m.sensor;
+                mObj["calculated"] = m.calculated;
+            }
+        }
 
         String sensorResponse;
         serializeJson(doc, sensorResponse);
@@ -290,10 +318,24 @@ void WebServerManager::setupAPIRoutes() {
         for (const auto &entry : entries) {
             JsonObject dataObj = dataArray.createNestedObject();
             dataObj["timestamp"] = entry.logTime;
-            dataObj["time"] = entry.data.timestamp;
-            dataObj["temperature"] = entry.data.temperature;
-            dataObj["humidity"] = entry.data.humidity;
-            dataObj["valid"] = entry.data.valid;
+            dataObj["time"] = entry.timestamp;
+
+            // Backward-compatible top-level fields
+            for (const auto &m : entry.measurements) {
+                if (strcmp(m.type, "temperature") == 0) dataObj["temperature"] = m.value;
+                else if (strcmp(m.type, "humidity") == 0) dataObj["humidity"] = m.value;
+            }
+
+            // Generic measurements array
+            JsonArray measurements = dataObj.createNestedArray("measurements");
+            for (const auto &m : entry.measurements) {
+                JsonObject mObj = measurements.createNestedObject();
+                mObj["type"] = m.type;
+                mObj["value"] = m.value;
+                mObj["unit"] = m.unit;
+                mObj["sensor"] = m.sensor;
+                mObj["calculated"] = m.calculated;
+            }
         }
         
         doc["total_entries"] = logger->getEntryCount();

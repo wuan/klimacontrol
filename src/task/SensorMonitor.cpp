@@ -46,10 +46,11 @@ namespace Task {
                 lastReadingTime = currentTime;
                 
                 // Log sensor readings
-                const auto &data = controller.getCurrentData();
-                if (data.valid) {
+                if (controller.isDataValid()) {
+                    float temp = controller.getTemperature();
+                    float hum = controller.getHumidity();
                     Serial.printf("Sensors: T=%.1f°C, H=%.1f%%, age=%lu ms\n",
-                                 data.temperature, data.humidity,
+                                 temp, hum,
                                  controller.getTimeSinceLastReading());
                 } else {
                     Serial.println("Sensors: No valid data");

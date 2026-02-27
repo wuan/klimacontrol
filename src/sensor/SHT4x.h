@@ -29,7 +29,7 @@ namespace Sensor {
         explicit SHT4x(uint8_t address = 0x44);
         
         bool begin() override;
-        SensorData read() override;
+        SensorReading read() override;
         const char* getName() const override;
         const char* getType() const override;
         bool isConnected() override;

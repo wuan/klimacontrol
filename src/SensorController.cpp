@@ -1,5 +1,6 @@
 #include "SensorController.h"
 #include <algorithm>
+#include <cmath>
 #include "SensorDataLogger.h"
 #include "StatusLed.h"
 #include "Network.h"
@@ -18,10 +19,9 @@ namespace {
 }
 
 SensorController::SensorController(Config::ConfigManager &config)
-    : config(config), network(nullptr), targetTemperature(22.0f), controlEnabled(false), lastReadingTime(0),
+    : config(config), network(nullptr), lastReadingTimestamp(0), dataValid(false),
+      targetTemperature(22.0f), controlEnabled(false), lastReadingTime(0),
       logInterval(60000), lastLogTime(0) {
-    // Initialize current data to invalid state
-    currentData.valid = false;
     // Initialize data logger with capacity for 1000 entries
     dataLogger = std::make_unique<SensorDataLogger>(1000);
 }
@@ -32,7 +32,7 @@ void SensorController::setNetwork(Network *network) {
 
 void SensorController::begin() {
     Serial.println("SensorController: Beginning sensor initialization...");
-    
+
     // Initialize all sensors
     for (auto &sensor : sensors) {
         if (sensor) {
@@ -40,18 +40,17 @@ void SensorController::begin() {
             if (!sensor->begin()) {
                 Serial.printf("SensorController: Failed to initialize sensor %s\n", sensor->getName());
             } else {
-                Serial.printf("SensorController: Successfully initialized sensor %s (%s)\n", 
+                Serial.printf("SensorController: Successfully initialized sensor %s (%s)\n",
                              sensor->getName(), sensor->getType());
             }
         }
     }
-    
+
     Serial.printf("SensorController: Found %u sensors total\n", sensors.size());
-    
+
     // Load configuration
-    // TODO: Load target temperature and control settings from config
-    targetTemperature = 22.0f; // Default comfortable room temperature
-    controlEnabled = false; // Start with control disabled
+    targetTemperature = 22.0f;
+    controlEnabled = false;
 }
 
 void SensorController::addSensor(std::unique_ptr<Sensor::Sensor> sensor) {
@@ -61,35 +60,31 @@ void SensorController::addSensor(std::unique_ptr<Sensor::Sensor> sensor) {
 }
 
 void SensorController::readSensors() {
-    bool anyValid = false;
-    Sensor::SensorData combinedData;
-    combinedData.timestamp = millis();
-    
     // Set LED to yellow during measurement
     setStatusLedMeasuring();
-    
+
     Serial.println("SensorController: Reading sensors...");
     Serial.printf("SensorController: Found %u sensors, checking connections...\n", sensors.size());
-    
-    // Read all sensors and average the results
-    float tempSum = 0.0f;
-    float humiditySum = 0.0f;
-    int validCount = 0;
-    
+
+    std::vector<Sensor::Measurement> allMeasurements;
+    bool anyValid = false;
+    uint32_t timestamp = millis();
+
     for (auto &sensor : sensors) {
         if (sensor) {
-            Serial.printf("SensorController: Checking sensor %s - connected: %d\n", 
+            Serial.printf("SensorController: Checking sensor %s - connected: %d\n",
                          sensor->getName(), sensor->isConnected());
-            
+
             if (sensor->isConnected()) {
                 Serial.printf("SensorController: Reading from sensor %s...\n", sensor->getName());
-                Sensor::SensorData data = sensor->read();
-                Serial.printf("SensorController: Sensor %s returned valid: %d", sensor->getName(), data.valid);
-                if (data.valid) {
-                    Serial.printf(", temp: %.1f°C, humidity: %.1f%%\n", data.temperature, data.humidity);
-                    tempSum += data.temperature;
-                    humiditySum += data.humidity;
-                    validCount++;
+                Sensor::SensorReading reading = sensor->read();
+                Serial.printf("SensorController: Sensor %s returned valid: %d", sensor->getName(), reading.valid);
+                if (reading.valid) {
+                    Serial.printf(", %d measurements\n", reading.measurements.size());
+                    for (const auto &m : reading.measurements) {
+                        Serial.printf("  %s: %.1f %s\n", m.type, m.value, m.unit);
+                        allMeasurements.push_back(m);
+                    }
                     anyValid = true;
                 } else {
                     Serial.println(" (invalid data)");
@@ -97,26 +92,43 @@ void SensorController::readSensors() {
             }
         }
     }
-    
-    if (anyValid && validCount > 0) {
-        combinedData.temperature = tempSum / validCount;
-        combinedData.humidity = humiditySum / validCount;
-        combinedData.valid = true;
-        currentData = combinedData;
-        lastReadingTime = combinedData.timestamp;
-        
+
+    if (anyValid) {
+        currentMeasurements = std::move(allMeasurements);
+        lastReadingTimestamp = timestamp;
+        dataValid = true;
+        lastReadingTime = timestamp;
+
         // Log the data if logging is enabled
         uint32_t now = millis();
         if (now - lastLogTime >= logInterval) {
-            dataLogger->addReading(combinedData);
+            dataLogger->addReading(currentMeasurements, timestamp);
             lastLogTime = now;
         }
     } else {
-        currentData.valid = false;
+        dataValid = false;
     }
-    
+
     // Set LED back to normal after measurement
     setStatusLedNormal();
+}
+
+float SensorController::getTemperature() const {
+    for (const auto &m : currentMeasurements) {
+        if (strcmp(m.type, "temperature") == 0) {
+            return m.value;
+        }
+    }
+    return NAN;
+}
+
+float SensorController::getHumidity() const {
+    for (const auto &m : currentMeasurements) {
+        if (strcmp(m.type, "humidity") == 0) {
+            return m.value;
+        }
+    }
+    return NAN;
 }
 
 Sensor::Sensor *SensorController::getSensor(size_t index) {
@@ -135,49 +147,48 @@ void SensorController::setTargetTemperature(float temperature) {
 void SensorController::setControlEnabled(bool enabled) {
     if (controlEnabled != enabled) {
         controlEnabled = enabled;
-        Serial.printf("SensorController: Temperature control %s\n", 
+        Serial.printf("SensorController: Temperature control %s\n",
                      enabled ? "enabled" : "disabled");
     }
 }
 
 float SensorController::updateControl() {
-    if (!controlEnabled || !currentData.valid) {
-        return 0.0f; // No control if disabled or no valid data
+    float currentTemp = getTemperature();
+    if (!controlEnabled || !dataValid || std::isnan(currentTemp)) {
+        return 0.0f;
     }
-    
+
     // Simple PID controller implementation
     static float integral = 0.0f;
     static float previousError = 0.0f;
     static uint32_t lastControlTime = 0;
-    
+
     uint32_t now = millis();
-    float dt = (now - lastControlTime) / 1000.0f; // Convert to seconds
+    float dt = (now - lastControlTime) / 1000.0f;
     lastControlTime = now;
-    
-    // Calculate error
-    float error = targetTemperature - currentData.temperature;
-    
+
+    float error = targetTemperature - currentTemp;
+
     // Proportional term
     float proportional = Kp * error;
-    
+
     // Integral term (with anti-windup)
     integral += Ki * error * dt;
     integral = std::max(MinOutput, std::min(MaxOutput, integral));
-    
+
     // Derivative term
     float derivative = Kd * (error - previousError) / dt;
     previousError = error;
-    
+
     // Calculate control output
     float output = proportional + integral + derivative;
     output = std::max(MinOutput, std::min(MaxOutput, output));
-    
-    // Debug output
-    if (dt > 0) { // Only log if we have a valid time delta
+
+    if (dt > 0) {
         Serial.printf("Control: T=%.1f°C (target=%.1f°C), output=%.2f, P=%.2f, I=%.2f, D=%.2f\n",
-                     currentData.temperature, targetTemperature, output, proportional, integral, derivative);
+                     currentTemp, targetTemperature, output, proportional, integral, derivative);
     }
-    
+
     return output;
 }
 
