@@ -388,9 +388,10 @@ void Network::configureUsingAPMode() {
                 mqttClient->loop();
 
                 if (mqttClient->isConnected() && sensorController.isDataValid()) {
-                    uint32_t readingTs = sensorController.getLastReadingTimestamp();
-                    if (readingTs != lastMqttPublish) {
-                        lastMqttPublish = readingTs;
+                    Config::MqttConfig mqttConfig = config.loadMqttConfig();
+                    uint32_t intervalMs = static_cast<uint32_t>(mqttConfig.interval) * 1000;
+                    if (intervalMs > 0 && (now - lastMqttPublish >= intervalMs)) {
+                        lastMqttPublish = now;
                         publishMeasurements(sensorController.getMeasurements());
                     }
                 }

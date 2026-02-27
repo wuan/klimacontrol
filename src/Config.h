@@ -165,9 +165,10 @@ namespace Config {
         char username[64];
         char password[64];
         char prefix[64];         // topic prefix, e.g. "sensors/bedroom"
+        uint16_t interval;       // publish interval in seconds
         bool enabled;
 
-        MqttConfig() : port(1883), enabled(false) {
+        MqttConfig() : port(1883), interval(15), enabled(false) {
             host[0] = '\0';
             username[0] = '\0';
             password[0] = '\0';

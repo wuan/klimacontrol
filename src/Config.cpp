@@ -512,6 +512,7 @@ namespace Config {
         prefs.getString("mqtt_user", mqttConfig.username, sizeof(mqttConfig.username));
         prefs.getString("mqtt_pass", mqttConfig.password, sizeof(mqttConfig.password));
         prefs.getString("mqtt_prefix", mqttConfig.prefix, sizeof(mqttConfig.prefix));
+        mqttConfig.interval = prefs.getUShort("mqtt_interval", 15);
 
         if (mqttConfig.prefix[0] == '\0') {
             strcpy(mqttConfig.prefix, "sensors");
@@ -533,6 +534,7 @@ namespace Config {
         prefs.putString("mqtt_user", config.username);
         prefs.putString("mqtt_pass", config.password);
         prefs.putString("mqtt_prefix", config.prefix);
+        prefs.putUShort("mqtt_interval", config.interval);
 
         prefs.end();
 
