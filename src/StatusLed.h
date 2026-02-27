@@ -42,6 +42,9 @@ private:
     float progress;                // 0.0 = green, 1.0 = red (MQTT interval progress)
     unsigned long mqttFlashStart;  // timestamp for MQTT_ACTIVE white flash
     static constexpr unsigned long MQTT_FLASH_DURATION_MS = 150;
+    uint32_t lastShownColor = 0xFFFFFFFF; // init to impossible value to force first write
+
+    void showColor(uint32_t color);
 
 public:
     /**

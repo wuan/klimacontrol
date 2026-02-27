@@ -28,19 +28,13 @@ void setup() {
     config.begin();
 
 #ifdef ARDUINO
-    // Load device configuration
     Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
 
-    // Hardwired I2C pins for QT Py ESP32-S2
-    const uint8_t i2c_sda_pin = 8;
-    const uint8_t i2c_scl_pin = 9;
+    Serial.printf("Initializing I2C");
 
-    Serial.printf("Initializing I2C on pins SDA=%u, SCL=%u\n", i2c_sda_pin, i2c_scl_pin);
+    // Initialize secondary I2C bus (STEMMA QT connector)
+    Wire.begin(SDA1, SCL1);
 
-    // Initialize I2C with hardwired pins
-    Wire.begin(i2c_sda_pin, i2c_scl_pin);
-
-    // Config-driven sensor creation
     Config::SensorConfig sensorConfig = config.loadSensorConfig();
 
     if (sensorConfig.sht4x_enabled) {

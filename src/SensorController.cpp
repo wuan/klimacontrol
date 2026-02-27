@@ -84,10 +84,14 @@ void SensorController::readSensors() {
                 if (reading.valid) {
                     Serial.printf(", %d measurements\n", reading.measurements.size());
                     for (const auto &m : reading.measurements) {
-                        Serial.printf("  %s: %.1f %s\n", m.type, m.value, m.unit);
+                        if (auto* i = std::get_if<int32_t>(&m.value)) {
+                            Serial.printf("  %s: %d %s\n", m.type, *i, m.unit);
+                        } else {
+                            Serial.printf("  %s: %.1f %s\n", m.type, std::get<float>(m.value), m.unit);
+                        }
                         allMeasurements.push_back(m);
                     }
-                    allMeasurements.push_back({"time", static_cast<float>(readTime), "ms", sensor->getName(), false});
+                    allMeasurements.push_back({"time", (int32_t)readTime, "ms", sensor->getName(), false});
                     anyValid = true;
                 } else {
                     Serial.println(" (invalid data)");
@@ -119,7 +123,7 @@ void SensorController::readSensors() {
 float SensorController::getTemperature() const {
     for (const auto &m : currentMeasurements) {
         if (strcmp(m.type, "temperature") == 0) {
-            return m.value;
+            return std::get<float>(m.value);
         }
     }
     return NAN;
@@ -128,7 +132,7 @@ float SensorController::getTemperature() const {
 float SensorController::getHumidity() const {
     for (const auto &m : currentMeasurements) {
         if (strcmp(m.type, "humidity") == 0) {
-            return m.value;
+            return std::get<float>(m.value);
         }
     }
     return NAN;

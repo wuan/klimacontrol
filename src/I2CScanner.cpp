@@ -21,14 +21,11 @@ namespace I2CScanner {
         std::vector<I2CDevice> devices;
 
 #ifdef ARDUINO
-        Wire1.setPins(SDA1, SCL1);
-        Wire1.begin();
-
-        Serial.println("I2CScanner: Scanning Wire1 bus...");
+        Serial.println("I2CScanner: Scanning Wire bus...");
 
         for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
-            Wire1.beginTransmission(addr);
-            uint8_t error = Wire1.endTransmission();
+            Wire.beginTransmission(addr);
+            uint8_t error = Wire.endTransmission();
 
             if (error == 0) {
                 const char* type = identifyAddress(addr);

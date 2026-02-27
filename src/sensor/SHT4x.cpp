@@ -16,13 +16,6 @@ namespace Sensor {
 #ifdef ARDUINO
         Serial.println("SHT4x: Initializing sensor...");
 
-        Wire1.setPins(SDA1, SCL1); // Zwingend erforderlich für ESP32-S2!
-
-        if (!Wire1.begin()) {
-            Serial.println("SHT4x: Failed to initialize I2C");
-            return false;
-        }
-
         if (!sht4x.begin(&Wire1)) {
             Serial.println("SHT4x: Failed to initialize sensor");
             return false;
@@ -55,8 +48,12 @@ namespace Sensor {
         sensors_event_t humidity, temp;
 
         if (sht4x.getEvent(&humidity, &temp)) {
-            reading.measurements.push_back({"temperature", temp.temperature, "°C", "SHT4x", false});
-            reading.measurements.push_back({"humidity", humidity.relative_humidity, "%", "SHT4x", false});
+            float t = temp.temperature;
+            float rh = humidity.relative_humidity;
+            reading.measurements.push_back({"temperature", t, "°C", "SHT4x", false});
+            reading.measurements.push_back({"humidity", rh, "%", "SHT4x", false});
+            reading.measurements.push_back({"dew_point", calcDewPoint(t, rh), "°C", "SHT4x", true});
+
             reading.valid = true;
         } else {
             reading.valid = false;
@@ -64,8 +61,13 @@ namespace Sensor {
         }
 #else
         // For native testing, return some dummy values
-        reading.measurements.push_back({"temperature", 22.5f, "°C", "SHT4x", false});
-        reading.measurements.push_back({"humidity", 45.0f, "%", "SHT4x", false});
+        float t = 22.5f;
+        float rh = 45.0f;
+        reading.measurements.push_back({"temperature", t, "°C", "SHT4x", false});
+        reading.measurements.push_back({"humidity", rh, "%", "SHT4x", false});
+
+        reading.measurements.push_back({"dew_point", calcDewPoint(t, rh), "°C", "SHT4x", true});
+
         reading.valid = true;
 #endif
 

@@ -65,57 +65,56 @@ void StatusLed::setState(LedState newState) {
     update(); // Apply immediately
 }
 
+void StatusLed::showColor(uint32_t color) {
+#ifdef ARDUINO
+    if (color == lastShownColor) return;
+    lastShownColor = color;
+    pixel.setPixelColor(0, color);
+    pixel.show();
+#endif
+}
+
 void StatusLed::update() {
     unsigned long now = millis();
 
-    if (state == LedState::MQTT_ACTIVE && now - mqttFlashStart >= MQTT_FLASH_DURATION_MS) {
-        state = LedState::ON;
-        progress = 0.0f; // Reset to green after publish
-    }
-
-#ifdef ARDUINO
     switch (state) {
         case LedState::OFF:
-            pixel.setPixelColor(0, 0x000000);
-            pixel.show();
+            showColor(0x000000);
             break;
-            
+
         case LedState::ON: {
             // Green→Red gradient based on MQTT progress
             uint8_t r = static_cast<uint8_t>(15 * progress);
             uint8_t g = static_cast<uint8_t>(15 * (1.0f - progress));
-            pixel.setPixelColor(0, r, g, 0);
-            pixel.show();
+            showColor((r << 16) | (g << 8));
             break;
         }
-            
+
         case LedState::BLINK_SLOW: {
             unsigned long interval = 500; // 500ms on, 500ms off
             if (now - lastChange >= interval) {
                 ledOn = !ledOn;
                 lastChange = now;
             }
-            pixel.setPixelColor(0, ledOn ? currentColor : 0x000000);
-            pixel.show();
+            showColor(ledOn ? currentColor : 0x000000);
             break;
         }
-        
+
         case LedState::BLINK_FAST: {
             unsigned long interval = 250; // 250ms on, 250ms off
             if (now - lastChange >= interval) {
                 ledOn = !ledOn;
                 lastChange = now;
             }
-            pixel.setPixelColor(0, ledOn ? currentColor : 0x000000);
-            pixel.show();
+            showColor(ledOn ? currentColor : 0x000000);
             break;
         }
-        
+
         case LedState::PULSE: {
             unsigned long interval = 20; // Update every 20ms
             if (now - lastChange >= interval) {
                 brightness += 0.05f * direction;
-                
+
                 if (brightness >= 1.0f) {
                     brightness = 1.0f;
                     direction = -1;
@@ -123,30 +122,33 @@ void StatusLed::update() {
                     brightness = 0.1f;
                     direction = 1;
                 }
-                
+
                 // Apply brightness to the current color
                 uint8_t r = (currentColor >> 16) & 0xFF;
                 uint8_t g = (currentColor >> 8) & 0xFF;
                 uint8_t b = currentColor & 0xFF;
-                
+
                 r = static_cast<uint8_t>(r * brightness);
                 g = static_cast<uint8_t>(g * brightness);
                 b = static_cast<uint8_t>(b * brightness);
-                
-                pixel.setPixelColor(0, r, g, b);
-                pixel.show();
+
+                showColor((r << 16) | (g << 8) | b);
                 lastChange = now;
             }
             break;
         }
         case LedState::MEASURING:
-            pixel.setPixelColor(0, currentColor);
-            pixel.show();
+            showColor(currentColor);
             break;
 
         case LedState::MQTT_ACTIVE:
-            pixel.setPixelColor(0, currentColor); // White flash
-            pixel.show();
+            if (now - mqttFlashStart >= MQTT_FLASH_DURATION_MS) {
+                state = LedState::ON;
+                progress = 0.0f; // Reset to green after publish
+                showColor((0 << 16) | (15 << 8));
+            } else {
+                showColor(currentColor); // White flash
+            }
             break;
     }
 #endif
