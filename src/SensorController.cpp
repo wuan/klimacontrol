@@ -63,8 +63,8 @@ void SensorController::readSensors() {
     // Set LED to yellow during measurement
     setStatusLedMeasuring();
 
-    Serial.println("SensorController: Reading sensors...");
-    Serial.printf("SensorController: Found %u sensors, checking connections...\n", sensors.size());
+    // Serial.println("SensorController: Reading sensors...");
+    // Serial.printf("SensorController: Found %u sensors, checking connections...\n", sensors.size());
 
     std::vector<Sensor::Measurement> allMeasurements;
     bool anyValid = false;
@@ -72,30 +72,34 @@ void SensorController::readSensors() {
 
     for (auto &sensor : sensors) {
         if (sensor) {
-            Serial.printf("SensorController: Checking sensor %s - connected: %d\n",
-                         sensor->getName(), sensor->isConnected());
 
             if (sensor->isConnected()) {
-                Serial.printf("SensorController: Reading from sensor %s...\n", sensor->getName());
+                // Serial.printf("SensorController: Reading from sensor %s...\n", sensor->getName());
                 uint32_t readStart = millis();
                 Sensor::SensorReading reading = sensor->read();
                 uint32_t readTime = millis() - readStart;
-                Serial.printf("SensorController: Sensor %s returned valid: %d (read took %u ms)", sensor->getName(), reading.valid, readTime);
                 if (reading.valid) {
-                    Serial.printf(", %d measurements\n", reading.measurements.size());
+                    Serial.printf("SensorController: Sensor %s #%d (%u ms): ", sensor->getName(), reading.measurements.size(), readTime);
+                    bool first = true;
                     for (const auto &m : reading.measurements) {
+                        if (!first) Serial.print(", ");
                         if (auto* i = std::get_if<int32_t>(&m.value)) {
-                            Serial.printf("  %s: %d %s\n", m.type, *i, m.unit);
+                            Serial.printf("%s: %d %s", m.type, *i, m.unit);
                         } else {
-                            Serial.printf("  %s: %.1f %s\n", m.type, std::get<float>(m.value), m.unit);
+                            Serial.printf("%s: %.1f %s", m.type, std::get<float>(m.value), m.unit);
                         }
+                        first = false;
                         allMeasurements.push_back(m);
                     }
+                    Serial.print("\n");
+
                     allMeasurements.push_back({"time", (int32_t)readTime, "ms", sensor->getName(), false});
                     anyValid = true;
                 } else {
-                    Serial.println(" (invalid data)");
+                    Serial.printf("SensorController: Sensor %s - invalid data\n", sensor->getName());
                 }
+            } else {
+                Serial.printf("SensorController: Sensor %s - not connected\n", sensor->getName());
             }
         }
     }

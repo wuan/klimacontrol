@@ -44,17 +44,6 @@ namespace Task {
             if (currentTime - lastReadingTime >= readingInterval) {
                 controller.readSensors();
                 lastReadingTime = currentTime;
-                
-                // Log sensor readings
-                if (controller.isDataValid()) {
-                    float temp = controller.getTemperature();
-                    float hum = controller.getHumidity();
-                    Serial.printf("Sensors: T=%.1f°C, H=%.1f%%, age=%lu ms\n",
-                                 temp, hum,
-                                 controller.getTimeSinceLastReading());
-                } else {
-                    Serial.println("Sensors: No valid data");
-                }
             }
             
             // Update temperature control every second
