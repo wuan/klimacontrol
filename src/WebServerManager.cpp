@@ -168,6 +168,8 @@ void WebServerManager::setupAPIRoutes() {
             if (!isnan(relativeHumidity)) doc["relativeHumidity"] = relativeHumidity;
             float dewPoint = sensorController.getDewPoint();
             if (!isnan(dewPoint)) doc["dewPoint"] = dewPoint;
+            int32_t vocIndex = sensorController.getVocIndex();
+            if (vocIndex >= 0) doc["vocIndex"] = vocIndex;
             doc["sensor_timestamp"] = sensorController.getLastReadingTimestamp();
         }
 
@@ -196,7 +198,6 @@ void WebServerManager::setupAPIRoutes() {
             Sensor::Sensor *sensor = sensorController.getSensor(i);
             if (sensor) {
                 JsonObject sensorObj = sensors.createNestedObject();
-                sensorObj["name"] = sensor->getName();
                 sensorObj["type"] = sensor->getType();
                 sensorObj["connected"] = sensor->isConnected();
             }
@@ -987,7 +988,7 @@ void WebServerManager::setupAPIRoutes() {
         request->send(success ? 200 : 500, CONTENT_TYPE_JSON, response);
     });
 
-    // GET /api/i2c/scan - Scan I2C bus for devices
+    // GET /api/i2c/scan - Scan I2C bus for devices (with possible sensor types)
     server.on("/api/i2c/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
         auto devices = I2CScanner::scan();
 
@@ -1002,8 +1003,10 @@ void WebServerManager::setupAPIRoutes() {
             snprintf(hexBuf, sizeof(hexBuf), "0x%02X", dev.address);
             obj["address_hex"] = String(hexBuf);
 
-            if (dev.knownType) {
-                obj["type"] = dev.knownType;
+            auto types = I2CScanner::sensorsForAddress(dev.address);
+            JsonArray typesArr = obj.createNestedArray("types");
+            for (const char* t : types) {
+                typesArr.add(t);
             }
         }
 
@@ -1012,15 +1015,32 @@ void WebServerManager::setupAPIRoutes() {
         request->send(200, CONTENT_TYPE_JSON, response);
     });
 
-    // GET /api/sensors/config - Get sensor configuration
+    // GET /api/sensors/config - Get sensor configuration as devices array
     server.on("/api/sensors/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
         Config::SensorConfig sensorConfig = config.loadSensorConfig();
 
-        StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
-        doc["sht4x_enabled"] = sensorConfig.sht4x_enabled;
-        doc["sht4x_address"] = sensorConfig.sht4x_address;
-        doc["bme680_enabled"] = sensorConfig.bme680_enabled;
-        doc["bme680_address"] = sensorConfig.bme680_address;
+        StaticJsonDocument<Config::JSON_DOC_MEDIUM> doc;
+        JsonArray arr = doc.createNestedArray("devices");
+
+        // Parse assignment string "44=SHT4x,77=BME680" into JSON array
+        char buf[128];
+        strncpy(buf, sensorConfig.assignments, sizeof(buf));
+        buf[sizeof(buf) - 1] = '\0';
+
+        char* token = strtok(buf, ",");
+        while (token) {
+            char* eq = strchr(token, '=');
+            if (eq) {
+                *eq = '\0';
+                uint8_t addr = (uint8_t)strtoul(token, nullptr, 10);
+                const char* name = eq + 1;
+
+                JsonObject obj = arr.createNestedObject();
+                obj["address"] = addr;
+                obj["type"] = name;
+            }
+            token = strtok(nullptr, ",");
+        }
 
         String response;
         serializeJson(doc, response);
@@ -1028,13 +1048,14 @@ void WebServerManager::setupAPIRoutes() {
     });
 
     // POST /api/sensors/config - Save sensor configuration (triggers restart)
+    // Accepts: {"devices": [{"address": 68, "type": "SHT4x"}, ...]}
     server.on("/api/sensors/config", HTTP_POST,
               []([[maybe_unused]] AsyncWebServerRequest *request) {
               },
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+                      StaticJsonDocument<Config::JSON_DOC_MEDIUM> doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -1042,12 +1063,24 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      Config::SensorConfig sensorConfig = config.loadSensorConfig();
+                      Config::SensorConfig sensorConfig;
+                      char* p = sensorConfig.assignments;
+                      size_t remaining = sizeof(sensorConfig.assignments);
 
-                      if (doc.containsKey("sht4x_enabled")) sensorConfig.sht4x_enabled = doc["sht4x_enabled"];
-                      if (doc.containsKey("sht4x_address")) sensorConfig.sht4x_address = doc["sht4x_address"];
-                      if (doc.containsKey("bme680_enabled")) sensorConfig.bme680_enabled = doc["bme680_enabled"];
-                      if (doc.containsKey("bme680_address")) sensorConfig.bme680_address = doc["bme680_address"];
+                      JsonArray devices = doc["devices"];
+                      for (size_t i = 0; i < devices.size(); i++) {
+                          uint8_t addr = devices[i]["address"];
+                          const char* type = devices[i]["type"];
+                          if (!type) continue;
+
+                          int written = snprintf(p, remaining, "%s%u=%s",
+                                                 (p != sensorConfig.assignments) ? "," : "",
+                                                 addr, type);
+                          if (written > 0 && (size_t)written < remaining) {
+                              p += written;
+                              remaining -= written;
+                          }
+                      }
 
                       config.saveSensorConfig(sensorConfig);
                       config.requestRestart(1000);

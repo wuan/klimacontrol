@@ -62,6 +62,12 @@ public:
     float getDewPoint() const;
 
     /**
+     * Get current VOC index (first voc index measurement found)
+     * @return VOC index value, or -1 if not available
+     */
+    int32_t getVocIndex() const;
+
+    /**
      * Get timestamp of last reading
      */
     uint32_t getLastReadingTimestamp() const { return lastReadingTimestamp; }

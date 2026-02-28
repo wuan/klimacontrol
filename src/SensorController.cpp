@@ -32,12 +32,11 @@ void SensorController::begin() {
     // Initialize all sensors
     for (auto &sensor : sensors) {
         if (sensor) {
-            Serial.printf("SensorController: Initializing sensor %s...\n", sensor->getName());
+            Serial.printf("SensorController: Initializing sensor %s...\n", sensor->getType());
             if (!sensor->begin()) {
-                Serial.printf("SensorController: Failed to initialize sensor %s\n", sensor->getName());
+                Serial.printf("SensorController: Failed to initialize sensor %s\n", sensor->getType());
             } else {
-                Serial.printf("SensorController: Successfully initialized sensor %s (%s)\n",
-                             sensor->getName(), sensor->getType());
+                Serial.printf("SensorController: Successfully initialized sensor %s\n", sensor->getType());
             }
         }
     }
@@ -69,13 +68,13 @@ void SensorController::readSensors() {
     for (auto &sensor : sensors) {
         if (sensor) {
             // if (sensor->isConnected()) {
-                // Serial.printf("SensorController: Reading from sensor %s...\n", sensor->getName());
+                // Serial.printf("SensorController: Reading from sensor %s...\n", sensor->getType());
                 uint32_t readStart = millis();
                 Sensor::SensorReading reading = sensor->read();
                 uint32_t readTime = millis() - readStart;
                 if (reading.valid) {
 #if DEBUG
-                    Serial.printf("SensorController: Sensor %s #%d (%u ms): ", sensor->getName(), reading.measurements.size(), readTime);
+                    Serial.printf("SensorController: Sensor %s #%d (%u ms): ", sensor->getType(), reading.measurements.size(), readTime);
                     bool first = true;
 #endif
                     for (const auto &m : reading.measurements) {
@@ -94,13 +93,13 @@ void SensorController::readSensors() {
                     Serial.print("\n");
 #endif
 
-                    allMeasurements.push_back({"time", (int32_t)readTime, "ms", sensor->getName(), false});
+                    allMeasurements.push_back({"time", (int32_t)readTime, "ms", sensor->getType(), false});
                     anyValid = true;
                 } else {
-                    Serial.printf("SensorController: Sensor %s - invalid data\n", sensor->getName());
+                    Serial.printf("SensorController: Sensor %s - invalid data\n", sensor->getType());
                 }
             } else {
-                Serial.printf("SensorController: Sensor %s - not connected\n", sensor->getName());
+                Serial.printf("SensorController: Sensor %s - not connected\n", sensor->getType());
             }
         // }
     }
@@ -143,6 +142,15 @@ float SensorController::getDewPoint() const {
         }
     }
     return NAN;
+}
+
+int32_t SensorController::getVocIndex() const {
+    for (const auto &m : currentMeasurements) {
+        if (strcmp(m.type, "voc index") == 0) {
+            return std::get<int32_t>(m.value);
+        }
+    }
+    return -1;
 }
 
 Sensor::Sensor *SensorController::getSensor(size_t index) {

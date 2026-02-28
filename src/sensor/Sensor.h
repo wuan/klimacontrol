@@ -42,7 +42,6 @@ namespace Sensor {
         virtual ~Sensor() = default;
         virtual bool begin() = 0;
         virtual SensorReading read() = 0;
-        virtual const char* getName() const = 0;
         virtual const char* getType() const = 0;
         virtual bool isConnected() = 0;
     };

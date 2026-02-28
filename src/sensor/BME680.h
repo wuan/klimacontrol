@@ -17,10 +17,13 @@ namespace Sensor {
     public:
         explicit BME680(uint8_t address = 0x77);
 
+        static const char* type() { return "BME680"; }
+        static const uint8_t* addresses() { static const uint8_t a[] = {0x76, 0x77}; return a; }
+        static uint8_t addressCount() { return 2; }
+
         bool begin() override;
         SensorReading read() override;
-        const char* getName() const override;
-        const char* getType() const override;
+        const char* getType() const override { return type(); }
     };
 
 } // namespace Sensor

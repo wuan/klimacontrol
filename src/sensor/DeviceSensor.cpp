@@ -41,14 +41,6 @@ namespace Sensor {
         return reading;
     }
 
-    const char* DeviceSensor::getName() const {
-        return "ESP32";
-    }
-
-    const char* DeviceSensor::getType() const {
-        return "Device";
-    }
-
     bool DeviceSensor::isConnected() {
         return true;  // Always available
     }

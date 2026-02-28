@@ -1,4 +1,6 @@
 #include <memory>
+#include <cstring>
+#include <cstdlib>
 
 #ifdef ARDUINO
 #include <Wire.h>
@@ -9,6 +11,7 @@
 #include "WebServerManager.h"
 #include "sensor/SHT4x.h"
 #include "sensor/BME680.h"
+#include "sensor/SGP40.h"
 #include "sensor/DeviceSensor.h"
 #include "task/SensorMonitor.h"
 #include "StatusLed.h"
@@ -36,21 +39,39 @@ void setup() {
 
     Config::SensorConfig sensorConfig = config.loadSensorConfig();
 
-    if (sensorConfig.sht4x_enabled) {
-        try {
-            sensorController.addSensor(std::make_unique<Sensor::SHT4x>(sensorConfig.sht4x_address));
-            Serial.printf("SHT4x sensor added at 0x%02X\n", sensorConfig.sht4x_address);
-        } catch (...) {
-            Serial.println("Error initializing SHT4x sensor");
-        }
-    }
+    // Parse assignment string and instantiate sensors
+    // Format: "44=SHT4x,77=BME680,59=SGP40"
+    {
+        char buf[128];
+        strncpy(buf, sensorConfig.assignments, sizeof(buf));
+        buf[sizeof(buf) - 1] = '\0';
 
-    if (sensorConfig.bme680_enabled) {
-        try {
-            sensorController.addSensor(std::make_unique<Sensor::BME680>(sensorConfig.bme680_address));
-            Serial.printf("BME680 sensor added at 0x%02X\n", sensorConfig.bme680_address);
-        } catch (...) {
-            Serial.println("Error initializing BME680 sensor");
+        char* token = strtok(buf, ",");
+        while (token) {
+            char* eq = strchr(token, '=');
+            if (eq) {
+                *eq = '\0';
+                uint8_t addr = (uint8_t)strtoul(token, nullptr, 10);
+                const char* name = eq + 1;
+
+                try {
+                    if (strcmp(name, Sensor::SHT4x::type()) == 0) {
+                        sensorController.addSensor(std::make_unique<Sensor::SHT4x>(addr));
+                    } else if (strcmp(name, Sensor::BME680::type()) == 0) {
+                        sensorController.addSensor(std::make_unique<Sensor::BME680>(addr));
+                    } else if (strcmp(name, Sensor::SGP40::type()) == 0) {
+                        sensorController.addSensor(std::make_unique<Sensor::SGP40>(addr));
+                    } else {
+                        Serial.printf("Unknown sensor type: %s\n", name);
+                        token = strtok(nullptr, ",");
+                        continue;
+                    }
+                    Serial.printf("Sensor %s added at 0x%02X\n", name, addr);
+                } catch (...) {
+                    Serial.printf("Error initializing %s sensor at 0x%02X\n", name, addr);
+                }
+            }
+            token = strtok(nullptr, ",");
         }
     }
 

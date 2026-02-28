@@ -72,12 +72,4 @@ namespace Sensor {
         return reading;
     }
 
-    const char* BME680::getName() const {
-        return "BME680";
-    }
-
-    const char* BME680::getType() const {
-        return "Environmental";
-    }
-
 } // namespace Sensor

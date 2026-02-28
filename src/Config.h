@@ -116,17 +116,11 @@ namespace Config {
 
     /**
      * Sensor configuration structure
-     * Controls which I2C sensors are enabled and their addresses
+     * Stores sensor assignments as a compact string like "44=SHT4x,77=BME680,59=SGP40"
      */
     struct SensorConfig {
-        bool sht4x_enabled;
-        uint8_t sht4x_address;   // 0x44 or 0x45
-        bool bme680_enabled;
-        uint8_t bme680_address;   // 0x76 or 0x77
-
-        SensorConfig()
-            : sht4x_enabled(true), sht4x_address(0x44),
-              bme680_enabled(false), bme680_address(0x77) {}
+        char assignments[128]; // e.g. "44=SHT4x,77=BME680,59=SGP40"
+        SensorConfig() { assignments[0] = '\0'; }
     };
 
     /**

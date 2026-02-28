@@ -11,10 +11,11 @@ namespace Sensor {
      */
     class DeviceSensor : public Sensor {
     public:
+        static const char* type() { return "ESP32"; }
+
         bool begin() override;
         SensorReading read() override;
-        const char* getName() const override;
-        const char* getType() const override;
+        const char* getType() const override { return type(); }
         bool isConnected() override;
     };
 

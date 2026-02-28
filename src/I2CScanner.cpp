@@ -1,4 +1,7 @@
 #include "I2CScanner.h"
+#include "sensor/SHT4x.h"
+#include "sensor/BME680.h"
+#include "sensor/SGP40.h"
 
 #ifdef ARDUINO
 #include <Wire.h>
@@ -7,14 +10,34 @@
 
 namespace I2CScanner {
 
-    const char* identifyAddress(uint8_t address) {
-        switch (address) {
-            case 0x44: return "SHT4x";
-            case 0x45: return "SHT4x (alt)";
-            case 0x76: return "BME680";
-            case 0x77: return "BME680 (alt)";
-            default: return nullptr;
+    static const SensorInfo REGISTRY[] = {
+        {Sensor::SHT4x::type(), Sensor::SHT4x::addresses(), Sensor::SHT4x::addressCount()},
+        {Sensor::BME680::type(), Sensor::BME680::addresses(), Sensor::BME680::addressCount()},
+        {Sensor::SGP40::type(), Sensor::SGP40::addresses(), Sensor::SGP40::addressCount()},
+    };
+    static constexpr size_t REGISTRY_SIZE = sizeof(REGISTRY) / sizeof(REGISTRY[0]);
+
+    const SensorInfo* getRegistry(size_t &count) {
+        count = REGISTRY_SIZE;
+        return REGISTRY;
+    }
+
+    std::vector<const char*> sensorsForAddress(uint8_t address) {
+        std::vector<const char*> result;
+        for (size_t i = 0; i < REGISTRY_SIZE; i++) {
+            for (uint8_t j = 0; j < REGISTRY[i].addressCount; j++) {
+                if (REGISTRY[i].addresses[j] == address) {
+                    result.push_back(REGISTRY[i].name);
+                    break;
+                }
+            }
         }
+        return result;
+    }
+
+    const char* identifyAddress(uint8_t address) {
+        auto names = sensorsForAddress(address);
+        return names.empty() ? nullptr : names[0];
     }
 
     std::vector<I2CDevice> scan() {

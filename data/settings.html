@@ -33,39 +33,16 @@
             </div>
         </div>
 
-
-
-        <div class="section">
-            <h2>Touch Control</h2>
-            <p>Configure capacitive touch pins to load presets. Touch pins GPIO 5, 7, 9 can each trigger a preset.</p>
-
-            <div class="form-group">
-                <label>
-                    <input type="checkbox" id="touchEnabled" onchange="updateTouchEnabled()">
-                    Enable touch control
-                </label>
-            </div>
-
-            <div class="form-group">
-                <label for="touchThreshold">Touch Threshold</label>
-                <input type="number" id="touchThreshold" placeholder="45000" min="1000" max="100000"
-                       style="width: 120px;">
-                <button class="btn btn-primary" onclick="updateTouchThreshold()"
-                        style="width: auto; margin-top: 0; margin-left: 8px; padding: 12px 16px;">Update
-                </button>
-                <small style="display:block; margin-top:4px; color:#666;">Lower value = more sensitive. Default:
-                    45000</small>
-            </div>
-
-            <div class="info-box" id="touchStatus">
-                <strong>Current Values: </strong><span id="touchValues">Loading...</span><br>
-                <small style="color: #666;">Values below threshold trigger touch. Refresh page to update.</small>
-            </div>
-        </div>
-
         <div class="section">
             <h2>I2C Sensors</h2>
             <p>Configure which sensors are connected to the I2C bus (STEMMA QT connector). Changes require a restart.</p>
+
+            <div id="currentAssignments" style="margin-bottom: 15px;">
+                <div class="info-box">
+                    <strong>Current Sensors:</strong>
+                    <div id="currentSensorList" style="margin-top: 5px;">Loading...</div>
+                </div>
+            </div>
 
             <button class="btn btn-primary" onclick="scanI2C()" id="scanBtn">Scan I2C Bus</button>
             <div id="scanResults" style="display: none; margin-top: 10px;">
@@ -73,42 +50,12 @@
                     <strong>Discovered Devices:</strong>
                     <div id="scanDeviceList" style="margin-top: 5px;"></div>
                 </div>
-            </div>
 
-            <div style="margin-top: 15px;">
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="sht4xEnabled">
-                        Enable SHT4x (Temperature / Humidity)
-                    </label>
-                </div>
-                <div class="form-group">
-                    <label for="sht4xAddress">SHT4x Address</label>
-                    <select id="sht4xAddress" style="width: 120px; padding: 8px;">
-                        <option value="68">0x44</option>
-                        <option value="69">0x45</option>
-                    </select>
-                </div>
+                <button class="btn btn-primary" onclick="saveSensorConfig()" style="margin-top: 10px;">Save Sensor Settings</button>
 
-                <div class="form-group" style="margin-top: 15px;">
-                    <label>
-                        <input type="checkbox" id="bme680Enabled">
-                        Enable BME680 (Temperature / Humidity / Pressure)
-                    </label>
+                <div class="warning-box">
+                    <strong>Note:</strong> The device will restart after saving sensor settings to apply changes.
                 </div>
-                <div class="form-group">
-                    <label for="bme680Address">BME680 Address</label>
-                    <select id="bme680Address" style="width: 120px; padding: 8px;">
-                        <option value="118">0x76</option>
-                        <option value="119">0x77</option>
-                    </select>
-                </div>
-            </div>
-
-            <button class="btn btn-primary" onclick="saveSensorConfig()" style="margin-top: 10px;">Save Sensor Settings</button>
-
-            <div class="warning-box">
-                <strong>Note:</strong> The device will restart after saving sensor settings to apply changes.
             </div>
         </div>
 
@@ -159,6 +106,34 @@
 
             <div class="info-box" id="mqttStatus">
                 <strong>Status: </strong><span id="mqttConnectionStatus">Loading...</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Touch Control</h2>
+            <p>Configure capacitive touch pins to load presets. Touch pins GPIO 5, 7, 9 can each trigger a preset.</p>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="touchEnabled" onchange="updateTouchEnabled()">
+                    Enable touch control
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="touchThreshold">Touch Threshold</label>
+                <input type="number" id="touchThreshold" placeholder="45000" min="1000" max="100000"
+                       style="width: 120px;">
+                <button class="btn btn-primary" onclick="updateTouchThreshold()"
+                        style="width: auto; margin-top: 0; margin-left: 8px; padding: 12px 16px;">Update
+                </button>
+                <small style="display:block; margin-top:4px; color:#666;">Lower value = more sensitive. Default:
+                    45000</small>
+            </div>
+
+            <div class="info-box" id="touchStatus">
+                <strong>Current Values: </strong><span id="touchValues">Loading...</span><br>
+                <small style="color: #666;">Values below threshold trigger touch. Refresh page to update.</small>
             </div>
         </div>
 
@@ -569,27 +544,38 @@
     }
 
     // I2C Sensor Functions
+    let currentAssignments = {}; // address -> type
+
     async function loadSensorConfig() {
         try {
             const response = await fetch('/api/sensors/config');
             const data = await response.json();
 
-            document.getElementById('sht4xEnabled').checked = data.sht4x_enabled;
-            document.getElementById('sht4xAddress').value = data.sht4x_address;
-            document.getElementById('bme680Enabled').checked = data.bme680_enabled;
-            document.getElementById('bme680Address').value = data.bme680_address;
+            currentAssignments = {};
+            const list = document.getElementById('currentSensorList');
+            if (data.devices && data.devices.length > 0) {
+                data.devices.forEach(d => { currentAssignments[d.address] = d.type; });
+                list.innerHTML = data.devices.map(d =>
+                    `0x${d.address.toString(16).toUpperCase().padStart(2,'0')} &mdash; ${d.type}`
+                ).join('<br>');
+            } else {
+                list.textContent = 'No sensors configured.';
+            }
         } catch (error) {
             console.error('Failed to load sensor config:', error);
+            document.getElementById('currentSensorList').textContent = 'Error loading';
         }
     }
 
     async function saveSensorConfig() {
-        const config = {
-            sht4x_enabled: document.getElementById('sht4xEnabled').checked,
-            sht4x_address: parseInt(document.getElementById('sht4xAddress').value),
-            bme680_enabled: document.getElementById('bme680Enabled').checked,
-            bme680_address: parseInt(document.getElementById('bme680Address').value)
-        };
+        // Collect all non-disabled selections from scan dropdowns
+        const selects = document.querySelectorAll('#scanDeviceList select');
+        const devices = [];
+        selects.forEach(sel => {
+            if (sel.value !== 'DISABLED') {
+                devices.push({address: parseInt(sel.dataset.address), type: sel.value});
+            }
+        });
 
         if (!confirm('Save sensor settings?\n\nThe device will restart to apply changes.')) {
             return;
@@ -599,7 +585,7 @@
             const response = await fetch('/api/sensors/config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(config)
+                body: JSON.stringify({devices})
             });
 
             if (response.ok) {
@@ -627,9 +613,53 @@
             if (data.devices.length === 0) {
                 list.textContent = 'No devices found.';
             } else {
-                list.innerHTML = data.devices.map(d =>
-                    `${d.address_hex}` + (d.type ? ` - ${d.type}` : ' - Unknown')
-                ).join('<br>');
+                list.innerHTML = '';
+                data.devices.forEach(d => {
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display:flex; align-items:center; gap:8px; margin:6px 0;';
+
+                    const label = document.createElement('span');
+                    label.textContent = d.address_hex;
+                    label.style.fontFamily = 'monospace';
+                    row.appendChild(label);
+
+                    if (d.types && d.types.length > 0) {
+                        const select = document.createElement('select');
+                        select.dataset.address = d.address;
+                        select.style.padding = '6px 8px';
+
+                        // Add Disabled option
+                        const disOpt = document.createElement('option');
+                        disOpt.value = 'DISABLED';
+                        disOpt.textContent = 'Disabled';
+                        select.appendChild(disOpt);
+
+                        d.types.forEach(t => {
+                            const opt = document.createElement('option');
+                            opt.value = t;
+                            opt.textContent = t;
+                            // Pre-select if currently assigned
+                            if (currentAssignments[d.address] === t) {
+                                opt.selected = true;
+                            }
+                            select.appendChild(opt);
+                        });
+
+                        // If address has a current assignment, make sure it's selected
+                        if (currentAssignments[d.address]) {
+                            select.value = currentAssignments[d.address];
+                        }
+
+                        row.appendChild(select);
+                    } else {
+                        const unknown = document.createElement('span');
+                        unknown.textContent = 'Unknown device';
+                        unknown.style.color = '#666';
+                        row.appendChild(unknown);
+                    }
+
+                    list.appendChild(row);
+                });
             }
             document.getElementById('scanResults').style.display = 'block';
         } catch (error) {

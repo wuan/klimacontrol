@@ -74,12 +74,4 @@ namespace Sensor {
         return reading;
     }
 
-    const char* SHT4x::getName() const {
-        return "SHT4x";
-    }
-
-    const char* SHT4x::getType() const {
-        return "Temperature/Humidity";
-    }
-
 } // namespace Sensor
