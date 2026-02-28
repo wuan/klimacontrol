@@ -1,9 +1,5 @@
 #include "SGP40.h"
 
-#ifdef ARDUINO
-#include <Wire.h>
-#endif
-
 namespace Sensor {
 
     SGP40::SGP40(uint8_t address) : I2CSensor(address) {
@@ -13,7 +9,7 @@ namespace Sensor {
 #ifdef ARDUINO
         Serial.println("SGP40: Initializing sensor...");
 
-        if (!sgp.begin(&Wire1)) {
+        if (!sgp.begin(&wire)) {
             Serial.println("SGP40: Failed to initialize sensor");
             return false;
         }

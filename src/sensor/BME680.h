@@ -11,7 +11,7 @@ namespace Sensor {
 
     class BME680 : public I2CSensor {
 #ifdef ARDUINO
-        Adafruit_BME680 bme;
+        std::unique_ptr<Adafruit_BME680> bme;
 #endif
 
     public:

@@ -1,9 +1,5 @@
 #include "SHT4x.h"
 
-#ifdef ARDUINO
-#include <Wire.h>
-#endif
-
 namespace Sensor {
 
     SHT4x::SHT4x(uint8_t address) : I2CSensor(address) {
@@ -16,7 +12,7 @@ namespace Sensor {
 #ifdef ARDUINO
         Serial.println("SHT4x: Initializing sensor...");
 
-        if (!sht4x.begin(&Wire1)) {
+        if (!sht4x.begin(&wire)) {
             Serial.println("SHT4x: Failed to initialize sensor");
             return false;
         }
