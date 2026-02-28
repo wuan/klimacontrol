@@ -46,7 +46,7 @@ private:
     SensorController &sensorController;
     std::unique_ptr<WebServerManager> webServer;
     std::unique_ptr<TimerScheduler> timerScheduler;
-    std::unique_ptr<TouchController> touchController;
+    // std::unique_ptr<TouchController> touchController;
     std::unique_ptr<StatusLed> statusLed;
     std::unique_ptr<MqttClient> mqttClient;
     uint32_t lastMqttPublish;
@@ -123,7 +123,8 @@ public:
      * Get touch controller (for API access)
      * @return Pointer to touch controller, or nullptr if not initialized
      */
-    TouchController* getTouchController() { return touchController.get(); }
+    // TouchController* getTouchController() { return touchController.get(); }
+    TouchController* getTouchController() { return nullptr; }
 
     /**
      * Get MQTT client (for API access)

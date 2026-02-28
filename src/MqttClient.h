@@ -30,6 +30,7 @@ public:
     bool publish(const char* topic, const char* payload);
     bool isConnected();
     bool isEnabled() const;
+    uint32_t getIntervalMs() const { return static_cast<uint32_t>(config.interval) * 1000; }
 };
 
 #endif // KLIMACONTROL_MQTT_CLIENT_H

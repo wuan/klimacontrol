@@ -271,8 +271,8 @@ void Network::configureUsingAPMode() {
     statusLed->setState(LedState::BLINK_SLOW); // Indicate booting
     
     // Initialize touch controller early (works without WiFi)
-    touchController = std::make_unique<TouchController>(config, sensorController);
-    touchController->begin();
+    // touchController = std::make_unique<TouchController>(config, sensorController);
+    // touchController->begin();
 
     // Check if WiFi is configured
     if (!config.isConfigured()) {
@@ -351,9 +351,9 @@ void Network::configureUsingAPMode() {
             statusLed->update();
         }
 
-        if (touchController) {
-            touchController->update();
-        }
+        // if (touchController) {
+        //     touchController->update();
+        // }
 
         // Check WiFi and timers every second
         if (now - lastSecond >= 1000) {
@@ -400,8 +400,7 @@ void Network::configureUsingAPMode() {
                 mqttClient->loop();
 
                 if (mqttClient->isConnected() && sensorController.isDataValid()) {
-                    Config::MqttConfig mqttConfig = config.loadMqttConfig();
-                    uint32_t intervalMs = static_cast<uint32_t>(mqttConfig.interval) * 1000;
+                    uint32_t intervalMs = mqttClient->getIntervalMs();
                     if (intervalMs > 0 && (now - lastMqttPublish >= intervalMs)) {
                         lastMqttPublish = now;
                         publishMeasurements(sensorController.getMeasurements());
