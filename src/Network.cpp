@@ -13,6 +13,10 @@
 #include "WebServerManager.h"
 
 #ifdef ARDUINO
+#include <esp_pm.h>
+#endif
+
+#ifdef ARDUINO
 #include <set>
 #endif
 
@@ -118,9 +122,20 @@ void Network::startSTA(const char *ssid, const char *password) {
     // Reduce transmit power (8.5 dBm is sufficient for indoor range)
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
 
+    // Enable automatic power management - CPU clocks down during idle (vTaskDelay)
+    // Requires CONFIG_PM_ENABLE in sdkconfig (not set in default Arduino framework)
+    esp_pm_config_esp32s2_t pm_config = {
+        .max_freq_mhz = 80,
+        .min_freq_mhz = 10,
+        .light_sleep_enable = true
+    };
+    esp_err_t pm_err = esp_pm_configure(&pm_config);
+
     Serial.println("WiFi Configuration:");
     Serial.printf("  Power save: MIN_MODEM\n");
     Serial.printf("  TX Power: 8.5dBm\n");
+    Serial.printf("  PM: %s (CPU 10-80 MHz, light sleep)\n",
+        pm_err == ESP_OK ? "enabled" : (pm_err == ESP_ERR_NOT_SUPPORTED ? "not supported (needs CONFIG_PM_ENABLE)" : "failed"));
 
     WiFi.begin(ssid, password);
 
@@ -327,22 +342,17 @@ void Network::configureUsingAPMode() {
 
     unsigned long lastCheck = millis();
     unsigned long lastSecond = millis();
-    unsigned long lastTouchUpdate = 0;
     while (true) {
-        // Short delay for responsive touch/LED control
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
 
         unsigned long now = millis();
 
-        // Update status LED frequently (every 50ms)
         if (statusLed) {
             statusLed->update();
         }
-        
-        // Check touch controller every 100ms (has 500ms debounce)
-        if (touchController && (now - lastTouchUpdate >= 100)) {
+
+        if (touchController) {
             touchController->update();
-            lastTouchUpdate = now;
         }
 
         // Check WiFi and timers every second

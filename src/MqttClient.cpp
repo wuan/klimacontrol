@@ -1,11 +1,12 @@
 #include "MqttClient.h"
+#include "DeviceId.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
 #endif
 
 MqttClient::MqttClient()
-    : configured(false), lastConnectAttempt(0)
+    : clientId("klima-" + DeviceId::getDeviceId()), configured(false), lastConnectAttempt(0)
 #ifdef ARDUINO
       , mqttClient(wifiClient)
 #endif
@@ -92,9 +93,9 @@ void MqttClient::loop() {
 
     bool connected;
     if (config.username[0] != '\0') {
-        connected = mqttClient.connect("klimacontrol", config.username, config.password);
+        connected = mqttClient.connect(clientId.c_str(), config.username, config.password);
     } else {
-        connected = mqttClient.connect("klimacontrol");
+        connected = mqttClient.connect(clientId.c_str());
     }
 
     if (connected) {

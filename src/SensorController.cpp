@@ -74,9 +74,12 @@ void SensorController::readSensors() {
                 Sensor::SensorReading reading = sensor->read();
                 uint32_t readTime = millis() - readStart;
                 if (reading.valid) {
+#if DEBUG
                     Serial.printf("SensorController: Sensor %s #%d (%u ms): ", sensor->getName(), reading.measurements.size(), readTime);
                     bool first = true;
+#endif
                     for (const auto &m : reading.measurements) {
+#if DEBUG
                         if (!first) Serial.print(", ");
                         if (auto* i = std::get_if<int32_t>(&m.value)) {
                             Serial.printf("%s: %d %s", m.type, *i, m.unit);
@@ -84,9 +87,12 @@ void SensorController::readSensors() {
                             Serial.printf("%s: %.1f %s", m.type, std::get<float>(m.value), m.unit);
                         }
                         first = false;
+#endif
                         allMeasurements.push_back(m);
                     }
+#ifdef DEBUG
                     Serial.print("\n");
+#endif
 
                     allMeasurements.push_back({"time", (int32_t)readTime, "ms", sensor->getName(), false});
                     anyValid = true;

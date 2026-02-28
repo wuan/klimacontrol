@@ -15,6 +15,7 @@ private:
     PubSubClient mqttClient;
 #endif
     Config::MqttConfig config;
+    String clientId;
     bool configured;
     uint32_t lastConnectAttempt;
     static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
