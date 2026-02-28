@@ -68,19 +68,6 @@ body {
     font-weight: 600;
 }
 
-.form-group input {
-    width: 100%;
-    padding: 12px;
-    border: 2px solid #e9ecef;
-    border-radius: 8px;
-    font-size: 16px;
-}
-
-.form-group input:focus {
-    outline: none;
-    border-color: #667eea;
-}
-
 /* Buttons */
 .btn {
     width: 100%;
@@ -111,6 +98,11 @@ body {
     background-color: #c9302c;
 }
 
+.btn:focus-visible {
+    outline: 2px solid #667eea;
+    outline-offset: 2px;
+}
+
 /* Info/warning boxes */
 .info-box {
     background-color: #f8f9fa;
@@ -139,6 +131,31 @@ body {
     margin-top: 10px;
     font-size: 13px;
     color: #155724;
+}
+
+/* Status messages (config/setup pages) */
+.status {
+    margin-top: 20px;
+    margin-bottom: 30px;
+    padding: 15px;
+    border-radius: 8px;
+    display: none;
+}
+
+.status.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.status.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.status a {
+    color: inherit;
 }
 
 /* Section styles */
@@ -463,4 +480,139 @@ input[type="color"] {
     font-weight: 600;
     color: #495057;
     margin-bottom: 8px;
+}
+
+/* Timer clock header */
+.clock-section {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 12px;
+}
+
+.clock-layout {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.clock-label {
+    font-size: 13px;
+    opacity: 0.9;
+    margin-bottom: 4px;
+}
+
+.clock-time {
+    font-size: 32px;
+    font-weight: 600;
+    font-family: monospace;
+    letter-spacing: 2px;
+}
+
+.clock-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.clock-select {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    font-size: 13px;
+    min-width: 180px;
+}
+
+.clock-btn {
+    padding: 8px 20px;
+    border-radius: 6px;
+    border: none;
+    background: rgba(255, 255, 255, 0.3);
+    color: white;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+/* Timer card */
+.timer-card {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    border-left: 4px solid var(--timer-color, #667eea);
+}
+
+.timer-card-body {
+    flex: 1;
+}
+
+.timer-card-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.timer-type-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.timer-time {
+    font-size: 28px;
+    font-weight: 600;
+    font-family: monospace;
+    letter-spacing: 2px;
+    color: #333;
+}
+
+.timer-action {
+    font-size: 13px;
+    color: #666;
+}
+
+/* Device info subtitle */
+.device-subtitle {
+    font-size: 11px;
+    font-weight: normal;
+}
+
+.device-subtitle a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+/* Nav footer (bottom links) */
+.nav-footer {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.nav-footer .about-link {
+    flex: 1;
+    text-align: center;
+}
+
+/* Inline form row (input + button side by side) */
+.inline-form {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.form-hint {
+    display: block;
+    margin-top: 4px;
+    color: #666;
+    font-size: small;
 }

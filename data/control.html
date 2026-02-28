@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Klima-Control - Temperature Controller</title>
+    <title>KlimaControl</title>
     <link rel="stylesheet" href="/common.css">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
@@ -47,15 +47,21 @@
             </div>
         </div>
 
-        <div style="display: flex; gap: 10px; margin-top: 20px;">
-            <a href="/settings" class="about-link" style="flex: 1; text-align: center;">Settings</a>
-            <a href="/timers" class="about-link" style="flex: 1; text-align: center;">Timers</a>
-            <a href="/about" class="about-link" style="flex: 1; text-align: center;">Device Info</a>
+        <div class="nav-footer">
+            <a href="/settings" class="about-link">Settings</a>
+            <a href="/timers" class="about-link">Timers</a>
+            <a href="/about" class="about-link">Device Info</a>
         </div>
     </div>
 
     <script>
         let currentStatus = {};
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
 
         // Update device info display
         function updateDeviceInfo() {
@@ -68,22 +74,22 @@
 
                 // Update page title with custom name if set
                 if (hasCustomName) {
-                    pageTitleElement.textContent = 'Klima-Control ' + currentStatus.device_name;
+                    pageTitleElement.textContent = 'KlimaControl ' + currentStatus.device_name;
                 } else {
-                    pageTitleElement.textContent = 'Klima-Control';
+                    pageTitleElement.textContent = 'KlimaControl';
                 }
 
                 // Device ID and technical details
-                let infoHTML = currentStatus.device_id;
+                let infoHTML = esc(currentStatus.device_id);
 
                 if (currentStatus.wifi_connected && currentStatus.wifi_ssid) {
-                    infoHTML += `<br><small style="font-size: 11px; font-weight: normal;">
-                        WiFi: ${currentStatus.wifi_ssid}<br>
-                        Access at: <a href="http://${hostname}.local/" style="color: inherit; text-decoration: underline;">${hostname}.local</a>
+                    infoHTML += `<br><small class="device-subtitle">
+                        WiFi: ${esc(currentStatus.wifi_ssid)}<br>
+                        Access at: <a href="http://${hostname}.local/">${hostname}.local</a>
                     </small>`;
                 } else {
-                    infoHTML += `<br><small style="font-size: 11px; font-weight: normal;">
-                        Access at: <a href="http://${hostname}.local/" style="color: inherit; text-decoration: underline;">${hostname}.local</a>
+                    infoHTML += `<br><small class="device-subtitle">
+                        Access at: <a href="http://${hostname}.local/">${hostname}.local</a>
                     </small>`;
                 }
 

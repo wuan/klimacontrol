@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings - Klima-Control</title>
+    <title>Settings - KlimaControl</title>
     <link rel="stylesheet" href="/common.css">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
@@ -44,7 +44,7 @@
                 </div>
             </div>
 
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div class="inline-form">
                 <button class="btn btn-primary" onclick="scanI2C()" id="scanBtn">Scan I2C Bus</button>
                 <button class="btn btn-primary" onclick="saveSensorConfig()" id="saveSensorBtn" style="display:none;">Save Sensor Settings</button>
             </div>
@@ -60,7 +60,7 @@
 
             <div class="form-group">
                 <label>
-                    <input type="checkbox" id="mqttEnabled" onchange="updateMqtt()">
+                    <input type="checkbox" id="mqttEnabled">
                     Enable MQTT
                 </label>
             </div>
@@ -88,13 +88,13 @@
             <div class="form-group">
                 <label for="mqttPrefix">Topic Prefix</label>
                 <input type="text" id="mqttPrefix" placeholder="e.g. sensors/bedroom" maxlength="63">
-                <small style="display:block; margin-top:4px; color:#666;">Topics: {prefix}/temperature, {prefix}/humidity, ...</small>
+                <small class="form-hint">Topics: {prefix}/temperature, {prefix}/humidity, ...</small>
             </div>
 
             <div class="form-group">
                 <label for="mqttInterval">Publish Interval (seconds)</label>
                 <input type="number" id="mqttInterval" placeholder="15" min="5" max="3600" style="width: 120px;">
-                <small style="display:block; margin-top:4px; color:#666;">How often to publish measurements. Default: 15s</small>
+                <small class="form-hint">How often to publish measurements. Default: 15s</small>
             </div>
 
             <button class="btn btn-primary" onclick="updateMqtt()">Save MQTT Settings</button>
@@ -122,7 +122,7 @@
                 <button class="btn btn-primary" onclick="updateTouchThreshold()"
                         style="width: auto; margin-top: 0; margin-left: 8px; padding: 12px 16px;">Update
                 </button>
-                <small style="display:block; margin-top:4px; color:#666;">Lower value = more sensitive. Default:
+                <small class="form-hint">Lower value = more sensitive. Default:
                     45000</small>
             </div>
 

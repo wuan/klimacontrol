@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>About - klimacontrol</title>
+    <title>About - KlimaControl</title>
     <link rel="stylesheet" href="/common.css">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
@@ -50,8 +50,13 @@
             if (hours > 0) return hours + 'h ' + (minutes % 60) + 'm';
             return minutes + 'm ' + (seconds % 60) + 's';
         }
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
         function createRow(label, value) {
-            return `<div class="info-row"><span class="info-label">${label}</span><span class="info-value">${value}</span></div>`;
+            return `<div class="info-row"><span class="info-label">${esc(label)}</span><span class="info-value">${esc(value)}</span></div>`;
         }
         async function loadInfo() {
             try {
