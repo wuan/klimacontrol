@@ -6,7 +6,7 @@
 
 namespace Sensor {
 
-    SHT4x::SHT4x(uint8_t address) : i2cAddress(address), initialized(false) {
+    SHT4x::SHT4x(uint8_t address) : I2CSensor(address) {
 #ifdef ARDUINO
         sht4x = Adafruit_SHT4x();
 #endif
@@ -80,18 +80,6 @@ namespace Sensor {
 
     const char* SHT4x::getType() const {
         return "Temperature/Humidity";
-    }
-
-    bool SHT4x::isConnected() {
-#ifdef ARDUINO
-        if (!initialized) return false;
-
-        // Try to read the serial number to check connection
-        uint32_t serial = sht4x.readSerial();
-        return serial != 0;
-#else
-        return initialized;
-#endif
     }
 
 } // namespace Sensor

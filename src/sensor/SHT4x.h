@@ -1,7 +1,7 @@
 #ifndef SHT4X_H
 #define SHT4X_H
 
-#include "Sensor.h"
+#include "I2CSensor.h"
 
 #ifdef ARDUINO
 #include <Adafruit_SHT4x.h>
@@ -12,15 +12,11 @@ namespace Sensor {
     /**
      * SHT4x temperature and humidity sensor implementation
      */
-    class SHT4x : public Sensor {
-    private:
-        uint8_t i2cAddress;
-        
+    class SHT4x : public I2CSensor {
 #ifdef ARDUINO
         Adafruit_SHT4x sht4x;
 #endif
-        bool initialized;
-        
+
     public:
         /**
          * Constructor
@@ -32,8 +28,7 @@ namespace Sensor {
         SensorReading read() override;
         const char* getName() const override;
         const char* getType() const override;
-        bool isConnected() override;
-        
+
         /**
          * Factory for creating SHT4x sensors
          */

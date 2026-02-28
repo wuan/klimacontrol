@@ -68,8 +68,7 @@ void SensorController::readSensors() {
 
     for (auto &sensor : sensors) {
         if (sensor) {
-
-            if (sensor->isConnected()) {
+            // if (sensor->isConnected()) {
                 // Serial.printf("SensorController: Reading from sensor %s...\n", sensor->getName());
                 uint32_t readStart = millis();
                 Sensor::SensorReading reading = sensor->read();
@@ -97,7 +96,7 @@ void SensorController::readSensors() {
             } else {
                 Serial.printf("SensorController: Sensor %s - not connected\n", sensor->getName());
             }
-        }
+        // }
     }
 
     if (anyValid) {

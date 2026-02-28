@@ -6,7 +6,7 @@
 
 namespace Sensor {
 
-    BME680::BME680(uint8_t address) : i2cAddress(address), initialized(false) {
+    BME680::BME680(uint8_t address) : I2CSensor(address) {
     }
 
     bool BME680::begin() {
@@ -78,17 +78,6 @@ namespace Sensor {
 
     const char* BME680::getType() const {
         return "Environmental";
-    }
-
-    bool BME680::isConnected() {
-#ifdef ARDUINO
-        if (!initialized) return false;
-
-        Wire1.beginTransmission(i2cAddress);
-        return Wire1.endTransmission() == 0;
-#else
-        return initialized;
-#endif
     }
 
 } // namespace Sensor

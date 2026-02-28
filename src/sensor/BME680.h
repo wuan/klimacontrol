@@ -1,7 +1,7 @@
 #ifndef BME680_H
 #define BME680_H
 
-#include "Sensor.h"
+#include "I2CSensor.h"
 
 #ifdef ARDUINO
 #include <Adafruit_BME680.h>
@@ -9,14 +9,10 @@
 
 namespace Sensor {
 
-    class BME680 : public Sensor {
-    private:
-        uint8_t i2cAddress;
-
+    class BME680 : public I2CSensor {
 #ifdef ARDUINO
         Adafruit_BME680 bme;
 #endif
-        bool initialized;
 
     public:
         explicit BME680(uint8_t address = 0x77);
@@ -25,7 +21,6 @@ namespace Sensor {
         SensorReading read() override;
         const char* getName() const override;
         const char* getType() const override;
-        bool isConnected() override;
     };
 
 } // namespace Sensor
