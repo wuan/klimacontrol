@@ -212,6 +212,13 @@
 
 
         <div class="section">
+            <h2>Reboot</h2>
+            <p>Restart the device. Settings are preserved.</p>
+
+            <button class="btn btn-primary" onclick="rebootDevice()">Reboot Device</button>
+        </div>
+
+        <div class="section">
             <h2>Factory Reset</h2>
             <p>Erase all settings and return the device to factory defaults.</p>
 
@@ -762,6 +769,23 @@
         } catch (error) {
             console.error('Failed to update elevation:', error);
             alert('Error updating elevation. Please try again.');
+        }
+    }
+
+    // Reboot
+    async function rebootDevice() {
+        if (!confirm('Reboot the device?')) return;
+
+        try {
+            const response = await fetch('/api/settings/reboot', {method: 'POST'});
+            if (response.ok) {
+                alert('Device is rebooting. Please wait a few seconds, then refresh this page.');
+            } else {
+                alert('Failed to reboot device.');
+            }
+        } catch (error) {
+            console.error('Failed to reboot:', error);
+            alert('Error rebooting device.');
         }
     }
 

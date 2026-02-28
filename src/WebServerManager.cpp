@@ -553,6 +553,13 @@ void WebServerManager::setupAPIRoutes() {
               }
     );
 
+    // POST /api/settings/reboot - Reboot device
+    server.on("/api/settings/reboot", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        Serial.println("Reboot requested");
+        request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+        config.requestRestart(1000);
+    });
+
     // POST /api/settings/factory-reset - Factory reset device
     server.on("/api/settings/factory-reset", HTTP_POST, [this](AsyncWebServerRequest *request) {
         Serial.println("Factory reset requested");
