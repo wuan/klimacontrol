@@ -80,17 +80,12 @@ void setup() {
     Serial.println("Device sensor added to controller");
 #endif
 
-    
     // Initialize sensor controller
     sensorController.begin();
     
     // Apply sensor configuration from the already loaded deviceConfig
     sensorController.setTargetTemperature(deviceConfig.target_temperature);
     sensorController.setControlEnabled(deviceConfig.temperature_control_enabled);
-
-    // Start tasks on their designated cores
-    // Sensor task: Core 1 (isolated from WiFi)
-    // Network task: Core 0 (same as WiFi stack)
 
     try {
         sensorMonitor.startTask();

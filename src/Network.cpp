@@ -120,7 +120,7 @@ void Network::startSTA(const char *ssid, const char *password) {
     WiFi.mode(WIFI_STA);
 
     // Enable WiFi power save (radio sleeps between DTIM beacons, longer sleep intervals)
-    WiFi.setSleep(WIFI_PS_MAX_MODEM);
+    WiFi.setSleep(WIFI_PS_MIN_MODEM);
 
     // Reduce transmit power (8.5 dBm is sufficient for indoor range)
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
@@ -331,7 +331,6 @@ void Network::configureUsingAPMode() {
         //     touchController->update();
         // }
 
-        // Check WiFi and timers every second
         if (now - lastSecond >= 1000) {
             lastSecond = now;
 
