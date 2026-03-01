@@ -1,7 +1,6 @@
 #include "SHT4x.h"
 
 namespace Sensor {
-
     SHT4x::SHT4x(uint8_t address) : I2CSensor(address) {
 #ifdef ARDUINO
         sht4x = Adafruit_SHT4x();
@@ -40,13 +39,18 @@ namespace Sensor {
         sensors_event_t humidity, temp;
 
         if (sht4x.getEvent(&humidity, &temp)) {
-            float t = temp.temperature;
-            float rh = humidity.relative_humidity;
-            reading.measurements.push_back({MeasurementType::Temperature, t, getType(), false});
-            reading.measurements.push_back({MeasurementType::RelativeHumidity, rh, getType(), false});
-            reading.measurements.push_back({MeasurementType::DewPoint, calcDewPoint(t, rh), getType(), true});
-
-            reading.valid = true;
+            float temperature = temp.temperature;
+            float relativeHumidity = humidity.relative_humidity;
+            if (temperature > -30.0f && temperature < 80.0f && relativeHumidity > 5.0f && relativeHumidity < 100.0f) {
+                reading.measurements.push_back({MeasurementType::Temperature, temperature, getType(), false});
+                reading.measurements.push_back({MeasurementType::RelativeHumidity, relativeHumidity, getType(), false});
+                reading.measurements.push_back({
+                    MeasurementType::DewPoint, calcDewPoint(temperature, relativeHumidity), getType(), true
+                });
+                reading.valid = true;
+            } else {
+                reading.valid = false;
+            }
         } else {
             reading.valid = false;
         }
@@ -64,5 +68,4 @@ namespace Sensor {
 
         return reading;
     }
-
 } // namespace Sensor
