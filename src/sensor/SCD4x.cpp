@@ -9,7 +9,7 @@ namespace Sensor {
 #ifdef ARDUINO
         Serial.println("SCD4x: Initializing sensor...");
 
-        scd.begin(wire);
+        scd.begin(wire, i2cAddress);
         scd.stopPeriodicMeasurement();
         scd.startPeriodicMeasurement();
 
@@ -36,7 +36,7 @@ namespace Sensor {
         float humidity = 0.0f;
         bool dataReady = false;
 
-        scd.getDataReadyFlag(dataReady);
+        scd.getDataReadyStatus(dataReady);
         if (dataReady && scd.readMeasurement(co2, temperature, humidity) == 0 && co2 > 0) {
             this->co2 = co2;
         }

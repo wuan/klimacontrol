@@ -119,15 +119,11 @@ void Network::startSTA(const char *ssid, const char *password) {
     // Set WiFi mode explicitly
     WiFi.mode(WIFI_STA);
 
-    // Enable WiFi power save (radio sleeps between DTIM beacons, longer sleep intervals)
-    WiFi.setSleep(WIFI_PS_MIN_MODEM);
-
-    // Reduce transmit power (8.5 dBm is sufficient for indoor range)
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    // Disable WiFi power save for best reception (matches CircuitPython default)
+    WiFi.setSleep(WIFI_PS_NONE);
 
     Serial.println("WiFi Configuration:");
-    Serial.printf("  Power save: MIN_MODEM\n");
-    Serial.printf("  TX Power: 8.5dBm\n");
+    Serial.printf("  Power save: NONE\n");
 
     WiFi.begin(ssid, password);
 

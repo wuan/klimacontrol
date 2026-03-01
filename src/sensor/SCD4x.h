@@ -11,7 +11,7 @@ namespace Sensor {
 
     class SCD4x : public I2CSensor {
 #ifdef ARDUINO
-        SensirionI2CScd4x scd;
+        SensirionI2cScd4x scd;
 #endif
 
         uint16_t co2 = 0;
