@@ -74,11 +74,11 @@ jobs:
       - name: Build for ESP32
         run: |
           echo "Building firmware for ESP32-S3 with build-wrapper..."
-          build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} pio run -e adafruit_qtpy_esp32s3_nopsram
+          build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} pio run -e adafruit_qtpy_esp32s2
 
       - name: Check Firmware Size
         run: |
-          SIZE=$(stat -c%s .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.bin 2>/dev/null || stat -f%z .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.bin)
+          SIZE=$(stat -c%s .pio/build/adafruit_qtpy_esp32s2/firmware.bin 2>/dev/null || stat -f%z .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.bin)
           SIZE_KB=$((SIZE / 1024))
           SIZE_MB=$((SIZE / 1024 / 1024))
           
@@ -102,8 +102,8 @@ jobs:
         with:
           name: firmware-${{ github.sha }}
           path: |
-            .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.bin
-            .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.elf
+            .pio/build/adafruit_qtpy_esp32s2/firmware.bin
+            .pio/build/adafruit_qtpy_esp32s2/firmware.elf
           retention-days: 7
 
       - name: SonarQube Scan
