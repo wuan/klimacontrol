@@ -1,23 +1,23 @@
-#ifndef BME680_H
-#define BME680_H
+#ifndef BMP3XX_H
+#define BMP3XX_H
 
 #include "I2CSensor.h"
 
 #ifdef ARDUINO
-#include <Adafruit_BME680.h>
+#include <Adafruit_BMP3XX.h>
 #endif
 
 namespace Sensor {
 
-    class BME680 : public I2CSensor {
+    class BMP3xx : public I2CSensor {
 #ifdef ARDUINO
-        std::unique_ptr<Adafruit_BME680> bme;
+        Adafruit_BMP3XX bmp;
 #endif
 
     public:
-        explicit BME680(uint8_t address = 0x77);
+        explicit BMP3xx(uint8_t address = 0x77);
 
-        static const char* type() { return "BME680"; }
+        static const char* type() { return "BMP3xx"; }
         static const uint8_t* addresses() { static const uint8_t a[] = {0x76, 0x77}; return a; }
         static uint8_t addressCount() { return 2; }
 
@@ -27,14 +27,12 @@ namespace Sensor {
         [[nodiscard]] const char* getType() const override { return type(); }
         [[nodiscard]] TypeSpan provides() const override {
             static constexpr MeasurementType types[] = {
-                MeasurementType::Temperature, MeasurementType::RelativeHumidity,
-                MeasurementType::DewPoint, MeasurementType::Pressure,
-                MeasurementType::SeaLevelPressure
+                MeasurementType::Pressure, MeasurementType::SeaLevelPressure
             };
-            return {types, 5};
+            return {types, 2};
         }
     };
 
 } // namespace Sensor
 
-#endif // BME680_H
+#endif // BMP3XX_H

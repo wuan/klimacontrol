@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings - Klima-Control</title>
+    <title>Settings - KlimaControl</title>
     <link rel="stylesheet" href="/common.css">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
@@ -33,33 +33,19 @@
             </div>
         </div>
 
-
-
         <div class="section">
-            <h2>Touch Control</h2>
-            <p>Configure capacitive touch pins to load presets. Touch pins GPIO 5, 7, 9 can each trigger a preset.</p>
+            <h2>Elevation</h2>
+            <p>Set the station elevation (meters above sea level) to calculate sea-level pressure from the sensor pressure.</p>
 
             <div class="form-group">
-                <label>
-                    <input type="checkbox" id="touchEnabled" onchange="updateTouchEnabled()">
-                    Enable touch control
-                </label>
+                <label for="elevation">Elevation (meters)</label>
+                <input type="number" id="elevation" placeholder="0" step="1" min="-500" max="8848" style="width: 120px;">
             </div>
 
-            <div class="form-group">
-                <label for="touchThreshold">Touch Threshold</label>
-                <input type="number" id="touchThreshold" placeholder="45000" min="1000" max="100000"
-                       style="width: 120px;">
-                <button class="btn btn-primary" onclick="updateTouchThreshold()"
-                        style="width: auto; margin-top: 0; margin-left: 8px; padding: 12px 16px;">Update
-                </button>
-                <small style="display:block; margin-top:4px; color:#666;">Lower value = more sensitive. Default:
-                    45000</small>
-            </div>
+            <button class="btn btn-primary" onclick="updateElevation()">Update Elevation</button>
 
-            <div class="info-box" id="touchStatus">
-                <strong>Current Values: </strong><span id="touchValues">Loading...</span><br>
-                <small style="color: #666;">Values below threshold trigger touch. Refresh page to update.</small>
+            <div class="info-box">
+                <strong>Current: </strong><span id="currentElevation">Loading...</span> m
             </div>
         </div>
 
@@ -67,47 +53,19 @@
             <h2>I2C Sensors</h2>
             <p>Configure which sensors are connected to the I2C bus (STEMMA QT connector). Changes require a restart.</p>
 
-            <button class="btn btn-primary" onclick="scanI2C()" id="scanBtn">Scan I2C Bus</button>
-            <div id="scanResults" style="display: none; margin-top: 10px;">
+            <div id="sensorListContainer" style="margin-bottom: 15px;">
                 <div class="info-box">
-                    <strong>Discovered Devices:</strong>
-                    <div id="scanDeviceList" style="margin-top: 5px;"></div>
+                    <strong>Configured Sensors:</strong>
+                    <div id="sensorList" style="margin-top: 5px;">Loading...</div>
                 </div>
             </div>
 
-            <div style="margin-top: 15px;">
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" id="sht4xEnabled">
-                        Enable SHT4x (Temperature / Humidity)
-                    </label>
-                </div>
-                <div class="form-group">
-                    <label for="sht4xAddress">SHT4x Address</label>
-                    <select id="sht4xAddress" style="width: 120px; padding: 8px;">
-                        <option value="68">0x44</option>
-                        <option value="69">0x45</option>
-                    </select>
-                </div>
-
-                <div class="form-group" style="margin-top: 15px;">
-                    <label>
-                        <input type="checkbox" id="bme680Enabled">
-                        Enable BME680 (Temperature / Humidity / Pressure)
-                    </label>
-                </div>
-                <div class="form-group">
-                    <label for="bme680Address">BME680 Address</label>
-                    <select id="bme680Address" style="width: 120px; padding: 8px;">
-                        <option value="118">0x76</option>
-                        <option value="119">0x77</option>
-                    </select>
-                </div>
+            <div class="inline-form">
+                <button class="btn btn-primary" onclick="scanI2C()" id="scanBtn">Scan I2C Bus</button>
+                <button class="btn btn-primary" onclick="saveSensorConfig()" id="saveSensorBtn" style="display:none;">Save Sensor Settings</button>
             </div>
 
-            <button class="btn btn-primary" onclick="saveSensorConfig()" style="margin-top: 10px;">Save Sensor Settings</button>
-
-            <div class="warning-box">
+            <div class="warning-box" id="sensorRestartNote" style="display:none; margin-top: 10px;">
                 <strong>Note:</strong> The device will restart after saving sensor settings to apply changes.
             </div>
         </div>
@@ -116,10 +74,11 @@
             <h2>MQTT</h2>
             <p>Publish sensor measurements to an MQTT broker for integration with home automation systems.</p>
 
-            <div class="form-group">
-                <label>
-                    <input type="checkbox" id="mqttEnabled" onchange="updateMqtt()">
-                    Enable MQTT
+            <div class="form-group toggle-row">
+                <span class="toggle-label">Enable MQTT</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="mqttEnabled">
+                    <span class="slider"></span>
                 </label>
             </div>
 
@@ -146,19 +105,48 @@
             <div class="form-group">
                 <label for="mqttPrefix">Topic Prefix</label>
                 <input type="text" id="mqttPrefix" placeholder="e.g. sensors/bedroom" maxlength="63">
-                <small style="display:block; margin-top:4px; color:#666;">Topics: {prefix}/temperature, {prefix}/humidity, ...</small>
+                <small class="form-hint">Topics: {prefix}/temperature, {prefix}/humidity, ...</small>
             </div>
 
             <div class="form-group">
                 <label for="mqttInterval">Publish Interval (seconds)</label>
                 <input type="number" id="mqttInterval" placeholder="15" min="5" max="3600" style="width: 120px;">
-                <small style="display:block; margin-top:4px; color:#666;">How often to publish measurements. Default: 15s</small>
+                <small class="form-hint">How often to publish measurements. Default: 15s</small>
             </div>
 
             <button class="btn btn-primary" onclick="updateMqtt()">Save MQTT Settings</button>
 
             <div class="info-box" id="mqttStatus">
                 <strong>Status: </strong><span id="mqttConnectionStatus">Loading...</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Touch Control</h2>
+            <p>Configure capacitive touch pins to load presets. Touch pins GPIO 5, 7, 9 can each trigger a preset.</p>
+
+            <div class="form-group toggle-row">
+                <span class="toggle-label">Enable touch control</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="touchEnabled" onchange="updateTouchEnabled()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="touchThreshold">Touch Threshold</label>
+                <input type="number" id="touchThreshold" placeholder="45000" min="1000" max="100000"
+                       style="width: 120px;">
+                <button class="btn btn-primary" onclick="updateTouchThreshold()"
+                        style="width: auto; margin-top: 0; margin-left: 8px; padding: 12px 16px;">Update
+                </button>
+                <small class="form-hint">Lower value = more sensitive. Default:
+                    45000</small>
+            </div>
+
+            <div class="info-box" id="touchStatus">
+                <strong>Current Values: </strong><span id="touchValues">Loading...</span><br>
+                <small style="color: #666;">Values below threshold trigger touch. Refresh page to update.</small>
             </div>
         </div>
 
@@ -224,6 +212,13 @@
 
 
         <div class="section">
+            <h2>Reboot</h2>
+            <p>Restart the device. Settings are preserved.</p>
+
+            <button class="btn btn-primary" onclick="rebootDevice()">Reboot Device</button>
+        </div>
+
+        <div class="section">
             <h2>Factory Reset</h2>
             <p>Erase all settings and return the device to factory defaults.</p>
 
@@ -249,35 +244,12 @@
         try {
             const response = await fetch('/api/status');
             const data = await response.json();
-            document.getElementById('currentDeviceName').textContent = data.device_name || data.device_id;
+            const name = data.device_name || data.device_id;
+            document.getElementById('currentDeviceName').textContent = name;
+            document.getElementById('deviceName').value = name;
         } catch (error) {
             console.error('Failed to load device name:', error);
             document.getElementById('currentDeviceName').textContent = 'Error loading';
-        }
-    }
-
-    // Load current hardware settings from /api/status endpoint
-    async function loadHardwareSettings() {
-        try {
-            const response = await fetch('/api/status');
-            const data = await response.json();
-            const numPixels = data.num_pixels || 300;
-            const ledPin = data.led_pin || 35;
-            const cycleTime = data.cycle_time || 10;
-            document.getElementById('currentNumPixels').textContent = numPixels;
-            document.getElementById('currentLedPin').textContent = ledPin;
-            document.getElementById('currentCycleTime').textContent = cycleTime;
-
-            // Set the select value
-            const cycleTimeSelect = document.getElementById('cycleTime');
-            if (cycleTimeSelect) {
-                cycleTimeSelect.value = cycleTime.toString();
-            }
-        } catch (error) {
-            console.error('Failed to load hardware settings:', error);
-            document.getElementById('currentNumPixels').textContent = 'Error';
-            document.getElementById('currentLedPin').textContent = 'Error';
-            document.getElementById('currentCycleTime').textContent = 'Error';
         }
     }
 
@@ -299,7 +271,6 @@
 
             if (response.ok) {
                 alert('Device name updated successfully!');
-                document.getElementById('deviceName').value = '';
                 loadDeviceName();
             } else {
                 const data = await response.json();
@@ -362,7 +333,7 @@
             });
 
             if (response.ok) {
-                alert('Factory reset complete!\n\nDevice is restarting in AP mode.\n\nConnect to the WiFi network "ledz-XXXXXX" to reconfigure the device.');
+                alert('Factory reset complete!\n\nDevice is restarting in AP mode.\n\nConnect to the WiFi network "klima-XXXXXX" to reconfigure the device.');
             } else {
                 alert('Failed to factory reset. Please try again.');
             }
@@ -594,27 +565,104 @@
     }
 
     // I2C Sensor Functions
+    let knownTypes = {}; // {type: [addresses]}
+
+    function addrHex(addr) {
+        return '0x' + addr.toString(16).toUpperCase().padStart(2, '0');
+    }
+
+    function typesForAddress(addr) {
+        const types = [];
+        for (const [type, addresses] of Object.entries(knownTypes)) {
+            if (addresses.includes(addr)) types.push(type);
+        }
+        return types;
+    }
+
+    function createSensorRow(addr, selectedType) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:8px; margin:6px 0;';
+        row.dataset.address = addr;
+
+        const label = document.createElement('span');
+        label.textContent = addrHex(addr);
+        label.style.fontFamily = 'monospace';
+        row.appendChild(label);
+
+        const types = typesForAddress(addr);
+        const select = document.createElement('select');
+        select.dataset.address = addr;
+        select.style.padding = '6px 8px';
+
+        const disOpt = document.createElement('option');
+        disOpt.value = 'DISABLED';
+        disOpt.textContent = 'Disabled';
+        select.appendChild(disOpt);
+
+        types.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            select.appendChild(opt);
+        });
+
+        // If the selected type isn't in the known types for this address, add it
+        if (selectedType && !types.includes(selectedType)) {
+            const opt = document.createElement('option');
+            opt.value = selectedType;
+            opt.textContent = selectedType;
+            select.appendChild(opt);
+        }
+
+        if (selectedType) select.value = selectedType;
+
+        row.appendChild(select);
+
+        return row;
+    }
+
+    function showSensorButtons() {
+        document.getElementById('saveSensorBtn').style.display = '';
+        document.getElementById('sensorRestartNote').style.display = '';
+    }
+
+    function renderSensorList(devices) {
+        const list = document.getElementById('sensorList');
+        list.innerHTML = '';
+        if (devices.length === 0) {
+            list.textContent = 'No sensors configured.';
+        } else {
+            devices.forEach(d => {
+                list.appendChild(createSensorRow(d.address, d.type));
+            });
+        }
+        showSensorButtons();
+    }
+
     async function loadSensorConfig() {
         try {
-            const response = await fetch('/api/sensors/config');
-            const data = await response.json();
-
-            document.getElementById('sht4xEnabled').checked = data.sht4x_enabled;
-            document.getElementById('sht4xAddress').value = data.sht4x_address;
-            document.getElementById('bme680Enabled').checked = data.bme680_enabled;
-            document.getElementById('bme680Address').value = data.bme680_address;
+            const [configRes, registryRes] = await Promise.all([
+                fetch('/api/sensors/config'),
+                fetch('/api/sensors/registry')
+            ]);
+            const configData = await configRes.json();
+            knownTypes = await registryRes.json();
+            const devices = configData.devices || [];
+            renderSensorList(devices);
         } catch (error) {
             console.error('Failed to load sensor config:', error);
+            document.getElementById('sensorList').textContent = 'Error loading';
         }
     }
 
     async function saveSensorConfig() {
-        const config = {
-            sht4x_enabled: document.getElementById('sht4xEnabled').checked,
-            sht4x_address: parseInt(document.getElementById('sht4xAddress').value),
-            bme680_enabled: document.getElementById('bme680Enabled').checked,
-            bme680_address: parseInt(document.getElementById('bme680Address').value)
-        };
+        const selects = document.querySelectorAll('#sensorList select');
+        const devices = [];
+        selects.forEach(sel => {
+            if (sel.value !== 'DISABLED') {
+                devices.push({address: parseInt(sel.dataset.address), type: sel.value});
+            }
+        });
 
         if (!confirm('Save sensor settings?\n\nThe device will restart to apply changes.')) {
             return;
@@ -624,7 +672,7 @@
             const response = await fetch('/api/sensors/config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(config)
+                body: JSON.stringify({devices})
             });
 
             if (response.ok) {
@@ -647,16 +695,31 @@
         try {
             const response = await fetch('/api/i2c/scan');
             const data = await response.json();
+            const addresses = data.devices || [];
 
-            const list = document.getElementById('scanDeviceList');
-            if (data.devices.length === 0) {
-                list.textContent = 'No devices found.';
+            if (addresses.length === 0) {
+                alert('No I2C devices found on the bus.');
             } else {
-                list.innerHTML = data.devices.map(d =>
-                    `${d.address_hex}` + (d.type ? ` - ${d.type}` : ' - Unknown')
-                ).join('<br>');
+                const list = document.getElementById('sensorList');
+
+                // Build map of existing selections keyed by address
+                const existingSelections = {};
+                list.querySelectorAll('select').forEach(s => {
+                    existingSelections[parseInt(s.dataset.address)] = s.value;
+                });
+
+                // Rebuild list with only scanned addresses that have known types
+                list.innerHTML = '';
+                addresses.forEach(addr => {
+                    const types = typesForAddress(addr);
+                    if (types.length === 0) return;
+                    const prev = existingSelections[addr];
+                    const selected = prev && prev !== 'DISABLED' ? prev : types[0];
+                    list.appendChild(createSensorRow(addr, selected));
+                });
+
+                showSensorButtons();
             }
-            document.getElementById('scanResults').style.display = 'block';
         } catch (error) {
             console.error('Failed to scan I2C:', error);
             alert('Error scanning I2C bus');
@@ -666,9 +729,67 @@
         btn.textContent = 'Scan I2C Bus';
     }
 
+    // Elevation Functions
+    async function loadElevation() {
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            const elevation = data.elevation ?? 0;
+            document.getElementById('currentElevation').textContent = elevation;
+            document.getElementById('elevation').value = elevation;
+        } catch (error) {
+            console.error('Failed to load elevation:', error);
+            document.getElementById('currentElevation').textContent = 'Error';
+        }
+    }
+
+    async function updateElevation() {
+        const elevation = parseFloat(document.getElementById('elevation').value);
+        if (isNaN(elevation) || elevation < -500 || elevation > 8848) {
+            alert('Please enter a valid elevation between -500 and 8848 meters');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/settings/elevation', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({elevation})
+            });
+
+            if (response.ok) {
+                alert('Elevation updated successfully!');
+                loadElevation();
+            } else {
+                const data = await response.json();
+                alert('Failed to update elevation: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to update elevation:', error);
+            alert('Error updating elevation. Please try again.');
+        }
+    }
+
+    // Reboot
+    async function rebootDevice() {
+        if (!confirm('Reboot the device?')) return;
+
+        try {
+            const response = await fetch('/api/settings/reboot', {method: 'POST'});
+            if (response.ok) {
+                alert('Device is rebooting. Please wait a few seconds, then refresh this page.');
+            } else {
+                alert('Failed to reboot device.');
+            }
+        } catch (error) {
+            console.error('Failed to reboot:', error);
+            alert('Error rebooting device.');
+        }
+    }
+
     // Load device info on page load
     loadDeviceName();
-    loadHardwareSettings();
+    loadElevation();
     loadOTAStatus();
     loadTouchConfig();
     loadSensorConfig();

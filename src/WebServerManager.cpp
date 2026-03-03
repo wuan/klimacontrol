@@ -6,7 +6,6 @@
 #include "Config.h"
 #include "Network.h"
 #include "SensorController.h"
-#include "SensorDataLogger.h"
 #include "DeviceId.h"
 #include "OTAUpdater.h"
 #include "Constants.h"
@@ -43,13 +42,12 @@ static const char* JSON_KEY_INDEX = "index";
 
 // Common JSON Responses
 static const char* JSON_RESPONSE_SUCCESS = "{\"success\":true}";
-static const char* JSON_RESPONSE_ERROR_INVALID_JSON = "{\"success\":false,\"error\":\"Invalid JSON\"}";
-static const char* JSON_RESPONSE_ERROR_QUEUE_FULL = "{\"success\":false,\"error\":\"Queue full\"}";
+static const char* JSON_RESPONSE_ERROR_INVALID_JSON = R"({"success":false,"error":"Invalid JSON"})";
+static const char* JSON_RESPONSE_ERROR_QUEUE_FULL = R"({"success":false,"error":"Queue full"})";
 
 // API Paths
 static const char* API_PATH_WIFI = "/api/wifi";
 static const char* API_PATH_STATUS = "/api/status";
-static const char* API_PATH_BRIGHTNESS = "/api/brightness";
 static const char* API_PATH_LAYOUT = "/api/layout";
 static const char* API_PATH_TIMERS = "/api/timers";
 static const char* API_PATH_RESTART = "/api/restart";
@@ -144,13 +142,14 @@ void WebServerManager::setupAPIRoutes() {
 
     // GET /api/status - Get device status
     server.on(API_PATH_STATUS, HTTP_GET, [this](AsyncWebServerRequest *request) {
-        StaticJsonDocument<Config::JSON_DOC_LARGE> doc;
+        JsonDocument doc;
 
         // Device info
         Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
         doc["device_id"] = deviceConfig.device_id;
         doc["device_name"] = deviceConfig.device_name;
         doc["firmware_version"] = FIRMWARE_VERSION;
+        doc["elevation"] = deviceConfig.elevation;
 
         // OTA partition info
         const esp_partition_t *running_partition = esp_ota_get_running_partition();
@@ -164,27 +163,15 @@ void WebServerManager::setupAPIRoutes() {
 
         if (sensorController.isDataValid()) {
             // Backward-compatible top-level fields
-            float temp = sensorController.getTemperature();
-            float hum = sensorController.getHumidity();
-            if (!isnan(temp)) doc["temperature"] = temp;
-            if (!isnan(hum)) doc["humidity"] = hum;
+            float temperature = sensorController.getTemperature();
+            if (!isnan(temperature)) doc["temperature"] = temperature;
+            float relativeHumidity = sensorController.getRelativeHumidity();
+            if (!isnan(relativeHumidity)) doc["relative_humidity"] = relativeHumidity;
+            float dewPoint = sensorController.getDewPoint();
+            if (!isnan(dewPoint)) doc["dew_point"] = dewPoint;
             doc["sensor_timestamp"] = sensorController.getLastReadingTimestamp();
-
-            // Generic measurements array
-            JsonArray measurements = doc.createNestedArray("measurements");
-            for (const auto &m : sensorController.getMeasurements()) {
-                JsonObject mObj = measurements.createNestedObject();
-                mObj["type"] = m.type;
-                if (auto* i = std::get_if<int32_t>(&m.value)) {
-                    mObj["value"] = *i;
-                } else {
-                    mObj["value"] = std::get<float>(m.value);
-                }
-                mObj["unit"] = m.unit;
-                mObj["sensor"] = m.sensor;
-                mObj["calculated"] = m.calculated;
-            }
         }
+
 
         // Temperature control info
         doc["target_temperature"] = sensorController.getTargetTemperature();
@@ -202,16 +189,111 @@ void WebServerManager::setupAPIRoutes() {
         request->send(200, CONTENT_TYPE_JSON, response);
     });
 
+    // GET /api/sensors/config - Get sensor configuration as devices array
+    // NOTE: Must be registered before /api/sensors to avoid prefix matching
+    server.on("/api/sensors/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        Config::SensorConfig sensorConfig = config.loadSensorConfig();
+
+        JsonDocument doc;
+        JsonArray arr = doc["devices"].to<JsonArray>();
+
+        // Parse assignment string "44=SHT4x,77=BME680" into JSON array
+        char buf[128];
+        strncpy(buf, sensorConfig.assignments, sizeof(buf));
+        buf[sizeof(buf) - 1] = '\0';
+
+        char* token = strtok(buf, ",");
+        while (token) {
+            char* eq = strchr(token, '=');
+            if (eq) {
+                *eq = '\0';
+                auto addr = (uint8_t)strtoul(token, nullptr, 10);
+                const char* name = eq + 1;
+
+                auto obj = arr.add<JsonObject>();
+                obj["address"] = addr;
+                obj["type"] = name;
+            }
+            token = strtok(nullptr, ",");
+        }
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, CONTENT_TYPE_JSON, response);
+    });
+
+    // GET /api/sensors/registry - Get known sensor types and their I2C addresses
+    // NOTE: Must be registered before /api/sensors to avoid prefix matching
+    server.on("/api/sensors/registry", HTTP_GET, [](AsyncWebServerRequest *request) {
+        JsonDocument doc;
+
+        size_t registryCount;
+        const SensorInfo* registry = I2CScanner::getRegistry(registryCount);
+        for (size_t i = 0; i < registryCount; i++) {
+            JsonArray addrs = doc[registry[i].name].to<JsonArray>();
+            for (uint8_t j = 0; j < registry[i].addressCount; j++) {
+                addrs.add(registry[i].addresses[j]);
+            }
+        }
+        String response;
+        serializeJson(doc, response);
+
+        request->send(200, CONTENT_TYPE_JSON, response);
+    });
+
+    // POST /api/sensors/config - Save sensor configuration (triggers restart)
+    // Accepts: {"devices": [{"address": 68, "type": "SHT4x"}, ...]}
+    // NOTE: Must be registered before /api/sensors to avoid prefix matching
+    server.on("/api/sensors/config", HTTP_POST,
+              []([[maybe_unused]] AsyncWebServerRequest *request) {
+              },
+              nullptr,
+              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
+                  if (index == 0) {
+                      JsonDocument doc;
+                      DeserializationError error = deserializeJson(doc, data, len);
+
+                      if (error) {
+                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
+                          return;
+                      }
+
+                      Config::SensorConfig sensorConfig;
+                      char* p = sensorConfig.assignments;
+                      size_t remaining = sizeof(sensorConfig.assignments);
+
+                      JsonArray devices = doc["devices"];
+                      for (size_t i = 0; i < devices.size(); i++) {
+                          uint8_t addr = devices[i]["address"];
+                          const char* type = devices[i]["type"];
+                          if (!type) continue;
+
+                          int written = snprintf(p, remaining, "%s%u=%s",
+                                                 (p != sensorConfig.assignments) ? "," : "",
+                                                 addr, type);
+                          if (written > 0 && (size_t)written < remaining) {
+                              p += written;
+                              remaining -= written;
+                          }
+                      }
+
+                      config.saveSensorConfig(sensorConfig);
+                      config.requestRestart(1000);
+
+                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+                  }
+              }
+    );
+
     // GET /api/sensors - Get sensor information
     server.on("/api/sensors", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        StaticJsonDocument<Config::JSON_DOC_LARGE> doc;
-        JsonArray sensors = doc.createNestedArray("sensors");
+        JsonDocument doc;
+        JsonArray sensors = doc["sensors"].to<JsonArray>();
 
         for (size_t i = 0; i < sensorController.getSensorCount(); i++) {
             Sensor::Sensor *sensor = sensorController.getSensor(i);
             if (sensor) {
-                JsonObject sensorObj = sensors.createNestedObject();
-                sensorObj["name"] = sensor->getName();
+                auto sensorObj = sensors.add<JsonObject>();
                 sensorObj["type"] = sensor->getType();
                 sensorObj["connected"] = sensor->isConnected();
             }
@@ -219,24 +301,24 @@ void WebServerManager::setupAPIRoutes() {
 
         // Add current sensor data
         float currentTemp = sensorController.getTemperature();
-        float currentHum = sensorController.getHumidity();
+        float currentHum = sensorController.getRelativeHumidity();
         doc["current_temperature"] = sensorController.isDataValid() ? currentTemp : static_cast<float>(NAN);
         doc["current_humidity"] = sensorController.isDataValid() ? currentHum : static_cast<float>(NAN);
         doc["data_valid"] = sensorController.isDataValid();
         doc["data_timestamp"] = sensorController.getLastReadingTimestamp();
 
         // Add measurements array
-        JsonArray measurements = doc.createNestedArray("measurements");
+        JsonArray measurements = doc["measurements"].to<JsonArray>();
         if (sensorController.isDataValid()) {
             for (const auto &m : sensorController.getMeasurements()) {
-                JsonObject mObj = measurements.createNestedObject();
-                mObj["type"] = m.type;
+                auto mObj = measurements.add<JsonObject>();
+                mObj["type"] = Sensor::measurementTypeLabel(m.type);
                 if (auto* i = std::get_if<int32_t>(&m.value)) {
                     mObj["value"] = *i;
                 } else {
                     mObj["value"] = std::get<float>(m.value);
                 }
-                mObj["unit"] = m.unit;
+                mObj["unit"] = Sensor::measurementTypeUnit(m.type);
                 mObj["sensor"] = m.sensor;
                 mObj["calculated"] = m.calculated;
             }
@@ -254,7 +336,7 @@ void WebServerManager::setupAPIRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_TINY> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -262,7 +344,7 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      if (!doc.containsKey(JSON_KEY_VALUE)) {
+                      if (!doc[JSON_KEY_VALUE].is<float>()) {
                           request->send(400, CONTENT_TYPE_JSON,
                                         R"({"success":false,"error":"Value required"})");
                           return;
@@ -305,152 +387,6 @@ void WebServerManager::setupAPIRoutes() {
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
     });
 
-    // GET /api/log - Get logged sensor data
-    server.on("/api/log", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        auto *logger = sensorController.getDataLogger();
-        if (!logger) {
-            request->send(500, CONTENT_TYPE_JSON, R"({"success":false,"error":"Data logger not available"})");
-            return;
-        }
-        
-        // Get query parameters
-        int count = 100; // Default: 100 most recent entries
-        if (request->hasParam("count")) {
-            count = request->getParam("count")->value().toInt();
-            count = std::max(1, std::min(count, 1000)); // Limit to 1-1000
-        }
-        
-        auto entries = logger->getRecentEntries(count);
-        
-        StaticJsonDocument<Config::JSON_DOC_XLARGE> doc;
-        JsonArray dataArray = doc.createNestedArray("data");
-        
-        for (const auto &entry : entries) {
-            JsonObject dataObj = dataArray.createNestedObject();
-            dataObj["timestamp"] = entry.logTime;
-            dataObj["time"] = entry.timestamp;
-
-            // Backward-compatible top-level fields
-            for (const auto &m : entry.measurements) {
-                if (strcmp(m.type, "temperature") == 0) dataObj["temperature"] = std::get<float>(m.value);
-                else if (strcmp(m.type, "humidity") == 0) dataObj["humidity"] = std::get<float>(m.value);
-            }
-
-            // Generic measurements array
-            JsonArray measurements = dataObj.createNestedArray("measurements");
-            for (const auto &m : entry.measurements) {
-                JsonObject mObj = measurements.createNestedObject();
-                mObj["type"] = m.type;
-                if (auto* i = std::get_if<int32_t>(&m.value)) {
-                    mObj["value"] = *i;
-                } else {
-                    mObj["value"] = std::get<float>(m.value);
-                }
-                mObj["unit"] = m.unit;
-                mObj["sensor"] = m.sensor;
-                mObj["calculated"] = m.calculated;
-            }
-        }
-        
-        doc["total_entries"] = logger->getEntryCount();
-        doc["max_capacity"] = logger->getMaxCapacity();
-        doc["has_wrapped"] = logger->hasWrapped();
-        doc["returned_count"] = entries.size();
-        
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
-    });
-
-    // GET /api/log/csv - Export logged data as CSV
-    server.on("/api/log/csv", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        auto *logger = sensorController.getDataLogger();
-        if (!logger) {
-            request->send(500, "text/plain", "Data logger not available");
-            return;
-        }
-        
-        String csv = logger->exportAsCSV();
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/csv", csv);
-        response->addHeader("Content-Disposition", "attachment; filename=sensor_data.csv");
-        request->send(response);
-    });
-
-    // POST /api/log/clear - Clear logged data
-    server.on("/api/log/clear", HTTP_POST, [this](AsyncWebServerRequest *request) {
-        auto *logger = sensorController.getDataLogger();
-        if (logger) {
-            logger->clear();
-            request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
-        } else {
-            request->send(500, CONTENT_TYPE_JSON, R"({"success":false,"error":"Data logger not available"})");
-        }
-    });
-
-
-
-    // POST /api/show - Change current show
-
-
-
-
-    // POST /api/layout - Change strip layout configuration
-    server.on(API_PATH_LAYOUT, HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
-                     [[maybe_unused]] size_t total) {
-                  if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
-                      DeserializationError error = deserializeJson(doc, data, len);
-
-                      if (error) {
-                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
-                          return;
-                      }
-
-                      Config::LayoutConfig layoutConfig = config.loadLayoutConfig();
-
-                      // Update fields if provided
-                      if (doc.containsKey("reverse")) {
-                          layoutConfig.reverse = doc["reverse"];
-                      }
-                      if (doc.containsKey("mirror")) {
-                          layoutConfig.mirror = doc["mirror"];
-                      }
-                      if (doc.containsKey("dead_leds")) {
-                          layoutConfig.dead_leds = doc["dead_leds"];
-                      }
-
-                      // Layout changes don't apply to temperature controller
-                      request->send(404, CONTENT_TYPE_JSON, R"({"success":false,"error":"Layout control not available in temperature controller"})");
-                  }
-              }
-    );
-
-    // GET /api/layout - Get current layout configuration
-    server.on(API_PATH_LAYOUT, HTTP_GET, [this](AsyncWebServerRequest *request) {
-        Config::LayoutConfig layoutConfig = config.loadLayoutConfig();
-
-        StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
-        doc["reverse"] = layoutConfig.reverse;
-        doc["mirror"] = layoutConfig.mirror;
-        doc["dead_leds"] = layoutConfig.dead_leds;
-
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
-    });
-
-    // GET /api/presets - List all presets (REMOVED - obsolete)
-    // POST /api/presets/load - Load a preset by index or name (REMOVED - obsolete)
-
-    // POST /api/presets - Save current state as preset
-    // POST /api/presets - Save current state as preset (REMOVED - obsolete)
-
-    // DELETE /api/presets - Delete a preset by index or name (REMOVED - obsolete)
-
     // POST /api/restart - Restart the device
     server.on(API_PATH_RESTART, HTTP_POST, [](AsyncWebServerRequest *request) {
         request->send(200, CONTENT_TYPE_JSON, R"({"success":true,"message":"Restarting..."})");
@@ -465,7 +401,7 @@ void WebServerManager::setupAPIRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+                      JsonDocument doc;
 
                       if (deserializeJson(doc, data, len)) {
                           request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
@@ -495,7 +431,7 @@ void WebServerManager::setupAPIRoutes() {
                       wifiConfig.configured = true;
                       config.saveWiFiConfig(wifiConfig);
 
-                      Serial.printf("WiFi credentials updated: SSID=%s\n", wifiConfig.ssid);
+                      Serial.printf("WiFi credentials updated: SSID=%s\r\n", wifiConfig.ssid);
 
                       // Send success response and restart
                       request->send(200, CONTENT_TYPE_JSON,
@@ -513,7 +449,7 @@ void WebServerManager::setupAPIRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -535,10 +471,44 @@ void WebServerManager::setupAPIRoutes() {
                       deviceConfig.device_name[sizeof(deviceConfig.device_name) - 1] = '\0';
                       config.saveDeviceConfig(deviceConfig);
 
-                      Serial.printf("Device name updated: %s\n", deviceConfig.device_name);
+                      Serial.printf("Device name updated: %s\r\n", deviceConfig.device_name);
 
                       // Send success response (no restart needed)
                       request->send(200, CONTENT_TYPE_JSON, "{\"success\":true}");
+                  }
+              }
+    );
+
+    // POST /api/settings/elevation - Update station elevation
+    server.on("/api/settings/elevation", HTTP_POST,
+              []([[maybe_unused]] AsyncWebServerRequest *request) {
+              },
+              nullptr,
+              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
+                  if (index == 0) {
+                      JsonDocument doc;
+                      DeserializationError error = deserializeJson(doc, data, len);
+
+                      if (error) {
+                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
+                          return;
+                      }
+
+                      if (!doc["elevation"].is<float>()) {
+                          request->send(400, CONTENT_TYPE_JSON,
+                                        R"({"success":false,"error":"Elevation required"})");
+                          return;
+                      }
+
+                      auto elevation = doc["elevation"].as<float>();
+
+                      Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
+                      deviceConfig.elevation = elevation;
+                      config.saveDeviceConfig(deviceConfig);
+
+                      Serial.printf("Elevation updated: %.0f m\r\n", elevation);
+
+                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
                   }
               }
     );
@@ -551,7 +521,7 @@ void WebServerManager::setupAPIRoutes() {
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
                      [[maybe_unused]] size_t total) {
                   if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -562,51 +532,6 @@ void WebServerManager::setupAPIRoutes() {
                       // Load current config
                       Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
                       bool changed = false;
-
-                      // Update num_pixels if provided
-                      if (doc.containsKey("num_pixels")) {
-                          uint16_t num_pixels = doc["num_pixels"];
-
-                          if (num_pixels < 1 || num_pixels > 1000) {
-                              request->send(400, CONTENT_TYPE_JSON,
-                                            R"({"success":false,"error":"Number of pixels must be between 1 and 1000"})");
-                              return;
-                          }
-
-                          deviceConfig.num_pixels = num_pixels;
-                          Serial.printf("Number of pixels updated: %u\n", num_pixels);
-                          changed = true;
-                      }
-
-                      // Update led_pin if provided
-                      if (doc.containsKey("led_pin")) {
-                          uint8_t led_pin = doc["led_pin"];
-
-                          if (led_pin > 48) {
-                              request->send(400, CONTENT_TYPE_JSON,
-                                            R"({"success":false,"error":"LED pin must be between 0 and 48"})");
-                              return;
-                          }
-
-                          deviceConfig.led_pin = led_pin;
-                          Serial.printf("LED pin updated: %u\n", led_pin);
-                          changed = true;
-                      }
-
-                      // Update cycle_time if provided
-                      if (doc.containsKey("cycle_time")) {
-                          uint16_t cycle_time = doc["cycle_time"];
-
-                          if (cycle_time < 1 || cycle_time > 1000) {
-                              request->send(400, CONTENT_TYPE_JSON,
-                                            R"({"success":false,"error":"Cycle time must be between 1 and 1000"})");
-                              return;
-                          }
-
-                          deviceConfig.cycle_time = cycle_time;
-                          Serial.printf("Cycle time updated: %u ms\n", cycle_time);
-                          changed = true;
-                      }
 
                       if (!changed) {
                           request->send(400, CONTENT_TYPE_JSON,
@@ -624,6 +549,13 @@ void WebServerManager::setupAPIRoutes() {
                   }
               }
     );
+
+    // POST /api/settings/reboot - Reboot device
+    server.on("/api/settings/reboot", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        Serial.println("Reboot requested");
+        request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+        config.requestRestart(1000);
+    });
 
     // POST /api/settings/factory-reset - Factory reset device
     server.on("/api/settings/factory-reset", HTTP_POST, [this](AsyncWebServerRequest *request) {
@@ -644,21 +576,17 @@ void WebServerManager::setupAPIRoutes() {
 
     // GET /api/about - Device information
     server.on("/api/about", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        StaticJsonDocument<Config::JSON_DOC_LARGE> doc;
+        JsonDocument doc;
 
         // Device info
         Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
         doc["device_id"] = deviceConfig.device_id;
-        doc["num_pixels"] = deviceConfig.num_pixels;
-        doc["led_pin"] = deviceConfig.led_pin;
-        doc["cycle_time"] = deviceConfig.cycle_time;
 
         // Sensor statistics
-        JsonObject statsJson = doc.createNestedObject("stats");
+        auto statsJson = doc["stats"].to<JsonObject>();
         statsJson["sensor_count"] = sensorController.getSensorCount();
         statsJson["has_connected_sensors"] = sensorController.hasConnectedSensors();
         statsJson["time_since_last_reading"] = sensorController.getTimeSinceLastReading();
-        statsJson["log_entries"] = sensorController.getDataLogger() ? sensorController.getDataLogger()->getEntryCount() : 0;
 
         // Chip info
         doc["chip_model"] = ESP.getChipModel();
@@ -710,7 +638,7 @@ void WebServerManager::setupAPIRoutes() {
         uint32_t currentEpoch = network.getCurrentEpoch();
         const Config::TimersConfig &timersConfig = scheduler->getTimersConfig();
 
-        StaticJsonDocument<Config::JSON_DOC_LARGE> doc;
+        JsonDocument doc;
         doc["timezone_offset_hours"] = timersConfig.timezone_offset_hours;
         doc["current_epoch"] = currentEpoch;
         
@@ -721,10 +649,10 @@ void WebServerManager::setupAPIRoutes() {
             doc["local_seconds_since_midnight"] = 0;
         }
 
-        JsonArray timers = doc.createNestedArray("timers");
+        auto timers = doc["timers"].to<JsonArray>();
         for (uint8_t i = 0; i < Config::TimersConfig::MAX_TIMERS; i++) {
             const Config::TimerEntry &timer = timersConfig.timers[i];
-            JsonObject timerObj = timers.createNestedObject();
+            auto timerObj = timers.add<JsonObject>();
             timerObj["index"] = i;
             timerObj["enabled"] = timer.enabled;
 
@@ -768,7 +696,7 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -777,7 +705,7 @@ void WebServerManager::setupAPIRoutes() {
                       }
 
                       // Required: duration in seconds
-                      if (!doc.containsKey("duration")) {
+                      if (!doc["duration"].is<uint32_t>()) {
                           request->send(400, CONTENT_TYPE_JSON,
                                         R"({"success":false,"error":"Duration required"})");
                           return;
@@ -809,19 +737,14 @@ void WebServerManager::setupAPIRoutes() {
                       }
 
                       // Optional: action (defaults to TURN_OFF)
-                      Config::TimerAction action = Config::TimerAction::TURN_OFF;
-                      if (doc.containsKey("action")) {
-                          int actionInt = doc["action"];
-                          if (actionInt == 0) action = Config::TimerAction::LOAD_PRESET;
-                          else action = Config::TimerAction::TURN_OFF;
-                      }
+                      Config::TimerAction action = Config::TimerAction::DISABLE_CONTROL;
 
                       // Optional: preset_index (only used if action is LOAD_PRESET)
                       uint8_t presetIndex = doc["preset_index"] | 0;
 
                       uint32_t currentEpoch = network.getCurrentEpoch();
                       if (scheduler->setCountdown(timerIndex, duration, action, presetIndex, currentEpoch)) {
-                          StaticJsonDocument<Config::JSON_DOC_TINY> responseDoc;
+                          JsonDocument responseDoc;
                           responseDoc["success"] = true;
                           responseDoc["index"] = timerIndex;
                           responseDoc["remaining_seconds"] = duration;
@@ -852,7 +775,7 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -861,7 +784,7 @@ void WebServerManager::setupAPIRoutes() {
                       }
 
                       // Required: hour and minute for the alarm time
-                      if (!doc.containsKey("hour") || !doc.containsKey("minute")) {
+                      if (!doc["hour"].is<int>() || !doc["minute"].is<int>()) {
                           request->send(400, CONTENT_TYPE_JSON,
                                         R"({"success":false,"error":"Hour and minute required"})");
                           return;
@@ -893,11 +816,11 @@ void WebServerManager::setupAPIRoutes() {
                       }
 
                       // Optional: action (defaults to TURN_OFF)
-                      Config::TimerAction action = Config::TimerAction::TURN_OFF;
-                      if (doc.containsKey("action")) {
+                      Config::TimerAction action = Config::TimerAction::DISABLE_CONTROL;
+                      if (doc["action"].is<int>()) {
                           int actionInt = doc["action"];
-                          if (actionInt == 0) action = Config::TimerAction::LOAD_PRESET;
-                          else action = Config::TimerAction::TURN_OFF;
+                          if (actionInt == 0) action = Config::TimerAction::UPDATE_SETPOINT;
+                          else action = Config::TimerAction::DISABLE_CONTROL;
                       }
 
                       uint8_t presetIndex = doc["preset_index"] | 0;
@@ -906,7 +829,7 @@ void WebServerManager::setupAPIRoutes() {
                       bool success = scheduler->setDailyAlarm(timerIndex, secondsSinceMidnight, action, presetIndex);
 
                       if (success) {
-                          StaticJsonDocument<Config::JSON_DOC_TINY> responseDoc;
+                          JsonDocument responseDoc;
                           responseDoc["success"] = true;
                           responseDoc["index"] = timerIndex;
 
@@ -936,7 +859,7 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<Config::JSON_DOC_TINY> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -944,7 +867,7 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      if (!doc.containsKey(JSON_KEY_INDEX)) {
+                      if (!doc[JSON_KEY_INDEX].is<int>()) {
                           request->send(400, CONTENT_TYPE_JSON,
                                         R"({"success":false,"error":"Timer index required"})");
                           return;
@@ -982,7 +905,7 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<Config::JSON_DOC_TINY> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -990,7 +913,7 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      if (!doc.containsKey("offset")) {
+                      if (!doc["offset"].is<int>()) {
                           request->send(400, CONTENT_TYPE_JSON,
                                         R"({"success":false,"error":"Timezone offset required"})");
                           return;
@@ -1018,16 +941,16 @@ void WebServerManager::setupAPIRoutes() {
             return;
         }
 
-        StaticJsonDocument<Config::JSON_DOC_MEDIUM> doc;
+        JsonDocument doc;
         const Config::TouchConfig &touchConfig = touch->getTouchConfig();
 
         doc["enabled"] = touchConfig.enabled;
         doc["threshold"] = touchConfig.threshold;
 
         // Pin mappings
-        JsonArray pins = doc.createNestedArray("pins");
+        auto pins = doc["pins"].to<JsonArray>();
         for (uint8_t i = 0; i < Config::TouchConfig::MAX_TOUCH_PINS; i++) {
-            JsonObject pin = pins.createNestedObject();
+            auto pin = pins.add<JsonObject>();
             pin["index"] = i;
             pin["gpio"] = TouchController::getGpioPin(i);
             pin["action"] = (i == 0) ? "Switch Show" : (i == 1) ? "Switch Variant" : "Switch Layout";
@@ -1036,7 +959,7 @@ void WebServerManager::setupAPIRoutes() {
         // Current touch values for debugging/calibration
         uint32_t touchValues[Config::TouchConfig::MAX_TOUCH_PINS];
         touch->getTouchValues(touchValues);
-        JsonArray values = doc.createNestedArray("values");
+        JsonArray values = doc["values"];
         for (uint8_t i = 0; i < Config::TouchConfig::MAX_TOUCH_PINS; i++) {
             values.add(touchValues[i]);
         }
@@ -1061,7 +984,7 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -1072,12 +995,12 @@ void WebServerManager::setupAPIRoutes() {
                       Config::TouchConfig touchConfig = touch->getTouchConfig();
 
                       // Update enabled state if provided
-                      if (doc.containsKey("enabled")) {
+                      if (doc["enabled"].is<bool>()) {
                           touchConfig.enabled = doc["enabled"];
                       }
 
                       // Update threshold if provided
-                      if (doc.containsKey("threshold")) {
+                      if (doc["threshold"].is<int>()) {
                           touchConfig.threshold = doc["threshold"];
                       }
 
@@ -1089,7 +1012,7 @@ void WebServerManager::setupAPIRoutes() {
 
     // GET /api/ota/check - Check for firmware updates
     server.on(API_PATH_OTA_CHECK, HTTP_GET, [](AsyncWebServerRequest *request) {
-        StaticJsonDocument<Config::JSON_DOC_LARGE> doc;
+        JsonDocument doc;
 
         FirmwareInfo info;
         bool releaseFound = OTAUpdater::checkForUpdate(OTA_GITHUB_OWNER, OTA_GITHUB_REPO, info);
@@ -1130,7 +1053,7 @@ void WebServerManager::setupAPIRoutes() {
                   }
 
                   if (index + len == total) {
-                      StaticJsonDocument<Config::JSON_DOC_MEDIUM> doc;
+                      JsonDocument doc;
                       deserializeJson(doc, data, len);
 
                       String downloadUrl = doc["download_url"] | "";
@@ -1140,11 +1063,11 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      Serial.printf("[WebServer] Starting OTA: %s (%zu bytes)\n", downloadUrl.c_str(), size);
+                      Serial.printf("[WebServer] Starting OTA: %s (%zu bytes)\r\n", downloadUrl.c_str(), size);
 
                       // Perform OTA update (this will block)
                       bool success = OTAUpdater::performUpdate(downloadUrl, size, [](int percent, size_t bytes) {
-                          Serial.printf("[OTA] Progress: %d%% (%zu bytes)\n", percent, bytes);
+                          Serial.printf("[OTA] Progress: %d%% (%zu bytes)\r\n", percent, bytes);
                       });
 
                       if (success) {
@@ -1159,7 +1082,7 @@ void WebServerManager::setupAPIRoutes() {
 
     // GET /api/ota/status - Get OTA status
     server.on("/api/ota/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-        StaticJsonDocument<Config::JSON_DOC_MEDIUM> doc;
+        JsonDocument doc;
 
         doc["firmware_version"] = FIRMWARE_VERSION;
         doc["build_date"] = FIRMWARE_BUILD_DATE;
@@ -1177,11 +1100,10 @@ void WebServerManager::setupAPIRoutes() {
         doc["unconfirmed_update"] = OTAUpdater::hasUnconfirmedUpdate();
 
         // Memory info
-        uint32_t freeHeap, minFreeHeap, psramFree;
-        OTAUpdater::getMemoryInfo(freeHeap, minFreeHeap, psramFree);
+        uint32_t freeHeap, minFreeHeap;
+        OTAUpdater::getMemoryInfo(freeHeap, minFreeHeap);
         doc["free_heap"] = freeHeap;
         doc["min_free_heap"] = minFreeHeap;
-        doc["psram_free"] = psramFree;
         doc["ota_safe"] = OTAUpdater::hasEnoughMemory();
 
         String response;
@@ -1193,7 +1115,7 @@ void WebServerManager::setupAPIRoutes() {
     server.on("/api/ota/confirm", HTTP_POST, [](AsyncWebServerRequest *request) {
         bool success = OTAUpdater::confirmBoot();
 
-        StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+        JsonDocument doc;
         doc[JSON_KEY_SUCCESS] = success;
         doc["message"] = success ? "Boot confirmed, rollback disabled" : "Failed to confirm boot";
 
@@ -1202,24 +1124,15 @@ void WebServerManager::setupAPIRoutes() {
         request->send(success ? 200 : 500, CONTENT_TYPE_JSON, response);
     });
 
-    // GET /api/i2c/scan - Scan I2C bus for devices
+    // GET /api/i2c/scan - Scan I2C bus for devices (addresses only, types come from registry)
     server.on("/api/i2c/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
         auto devices = I2CScanner::scan();
 
-        StaticJsonDocument<Config::JSON_DOC_MEDIUM> doc;
-        JsonArray arr = doc.createNestedArray("devices");
+        JsonDocument doc;
+        JsonArray arr = doc["devices"].to<JsonArray>();
 
         for (const auto& dev : devices) {
-            JsonObject obj = arr.createNestedObject();
-            obj["address"] = dev.address;
-
-            char hexBuf[8];
-            snprintf(hexBuf, sizeof(hexBuf), "0x%02X", dev.address);
-            obj["address_hex"] = String(hexBuf);
-
-            if (dev.knownType) {
-                obj["type"] = dev.knownType;
-            }
+            arr.add(dev.address);
         }
 
         String response;
@@ -1227,56 +1140,11 @@ void WebServerManager::setupAPIRoutes() {
         request->send(200, CONTENT_TYPE_JSON, response);
     });
 
-    // GET /api/sensors/config - Get sensor configuration
-    server.on("/api/sensors/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        Config::SensorConfig sensorConfig = config.loadSensorConfig();
-
-        StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
-        doc["sht4x_enabled"] = sensorConfig.sht4x_enabled;
-        doc["sht4x_address"] = sensorConfig.sht4x_address;
-        doc["bme680_enabled"] = sensorConfig.bme680_enabled;
-        doc["bme680_address"] = sensorConfig.bme680_address;
-
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
-    });
-
-    // POST /api/sensors/config - Save sensor configuration (triggers restart)
-    server.on("/api/sensors/config", HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
-                  if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
-                      DeserializationError error = deserializeJson(doc, data, len);
-
-                      if (error) {
-                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
-                          return;
-                      }
-
-                      Config::SensorConfig sensorConfig = config.loadSensorConfig();
-
-                      if (doc.containsKey("sht4x_enabled")) sensorConfig.sht4x_enabled = doc["sht4x_enabled"];
-                      if (doc.containsKey("sht4x_address")) sensorConfig.sht4x_address = doc["sht4x_address"];
-                      if (doc.containsKey("bme680_enabled")) sensorConfig.bme680_enabled = doc["bme680_enabled"];
-                      if (doc.containsKey("bme680_address")) sensorConfig.bme680_address = doc["bme680_address"];
-
-                      config.saveSensorConfig(sensorConfig);
-                      config.requestRestart(1000);
-
-                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
-                  }
-              }
-    );
-
     // GET /api/mqtt - Get MQTT configuration
     server.on("/api/mqtt", HTTP_GET, [this](AsyncWebServerRequest *request) {
         Config::MqttConfig mqttConfig = config.loadMqttConfig();
 
-        StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+        JsonDocument doc;
         doc["enabled"] = mqttConfig.enabled;
         doc["host"] = mqttConfig.host;
         doc["port"] = mqttConfig.port;
@@ -1299,7 +1167,7 @@ void WebServerManager::setupAPIRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
-                      StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -1309,13 +1177,13 @@ void WebServerManager::setupAPIRoutes() {
 
                       Config::MqttConfig mqttConfig = config.loadMqttConfig();
 
-                      if (doc.containsKey("enabled")) mqttConfig.enabled = doc["enabled"];
-                      if (doc.containsKey("host")) strlcpy(mqttConfig.host, doc["host"] | "", sizeof(mqttConfig.host));
-                      if (doc.containsKey("port")) mqttConfig.port = doc["port"];
-                      if (doc.containsKey("username")) strlcpy(mqttConfig.username, doc["username"] | "", sizeof(mqttConfig.username));
-                      if (doc.containsKey("password")) strlcpy(mqttConfig.password, doc["password"] | "", sizeof(mqttConfig.password));
-                      if (doc.containsKey("prefix")) strlcpy(mqttConfig.prefix, doc["prefix"] | "", sizeof(mqttConfig.prefix));
-                      if (doc.containsKey("interval")) mqttConfig.interval = doc["interval"];
+                      if (doc["enabled"].is<bool>()) mqttConfig.enabled = doc["enabled"];
+                      if (doc["host"].is<const char*>()) strlcpy(mqttConfig.host, doc["host"] | "", sizeof(mqttConfig.host));
+                      if (doc["port"].is<int>()) mqttConfig.port = doc["port"];
+                      if (doc["username"].is<const char*>()) strlcpy(mqttConfig.username, doc["username"] | "", sizeof(mqttConfig.username));
+                      if (doc["password"].is<const char*>()) strlcpy(mqttConfig.password, doc["password"] | "", sizeof(mqttConfig.password));
+                      if (doc["prefix"].is<const char*>()) strlcpy(mqttConfig.prefix, doc["prefix"] | "", sizeof(mqttConfig.prefix));
+                      if (doc["interval"].is<int>()) mqttConfig.interval = doc["interval"];
 
                       config.saveMqttConfig(mqttConfig);
                       network.updateMqttConfig(mqttConfig);
@@ -1356,7 +1224,7 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
     // Only process the first chunk (index == 0)
     if (index == 0) {
         // Parse JSON body
-        StaticJsonDocument<Config::JSON_DOC_SMALL> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -1399,7 +1267,7 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
         hostname.toLowerCase();
 
         // Send success response with hostname
-        StaticJsonDocument<Config::JSON_DOC_TINY> responseDoc;
+        JsonDocument responseDoc;
         responseDoc["success"] = true;
         responseDoc["hostname"] = hostname + ".local";
 
@@ -1469,7 +1337,7 @@ void OperationalWebServerManager::setupRoutes() {
 
     // Add 404 handler
     server.onNotFound([](AsyncWebServerRequest *request) {
-        Serial.printf("[HTTP] 404 Not Found: %s\n", request->url().c_str());
+        Serial.printf("[HTTP] 404 Not Found: %s\r\n", request->url().c_str());
         request->send(404, "text/plain", "Not found");
     });
 #endif

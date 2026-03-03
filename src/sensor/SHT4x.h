@@ -1,7 +1,7 @@
 #ifndef SHT4X_H
 #define SHT4X_H
 
-#include "Sensor.h"
+#include "I2CSensor.h"
 
 #ifdef ARDUINO
 #include <Adafruit_SHT4x.h>
@@ -12,15 +12,11 @@ namespace Sensor {
     /**
      * SHT4x temperature and humidity sensor implementation
      */
-    class SHT4x : public Sensor {
-    private:
-        uint8_t i2cAddress;
-        
+    class SHT4x : public I2CSensor {
 #ifdef ARDUINO
         Adafruit_SHT4x sht4x;
 #endif
-        bool initialized;
-        
+
     public:
         /**
          * Constructor
@@ -28,12 +24,20 @@ namespace Sensor {
          */
         explicit SHT4x(uint8_t address = 0x44);
         
+        static const char* type() { return "SHT4x"; }
+        static const uint8_t* addresses() { static const uint8_t a[] = {0x44, 0x45}; return a; }
+        static uint8_t addressCount() { return 2; }
+
         bool begin() override;
         SensorReading read() override;
-        const char* getName() const override;
-        const char* getType() const override;
-        bool isConnected() override;
-        
+        [[nodiscard]] const char* getType() const override { return type(); }
+        [[nodiscard]] TypeSpan provides() const override {
+            static constexpr MeasurementType types[] = {
+                MeasurementType::Temperature, MeasurementType::RelativeHumidity, MeasurementType::DewPoint
+            };
+            return {types, 3};
+        }
+
         /**
          * Factory for creating SHT4x sensors
          */

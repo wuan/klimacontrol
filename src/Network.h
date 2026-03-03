@@ -46,7 +46,7 @@ private:
     SensorController &sensorController;
     std::unique_ptr<WebServerManager> webServer;
     std::unique_ptr<TimerScheduler> timerScheduler;
-    std::unique_ptr<TouchController> touchController;
+    // std::unique_ptr<TouchController> touchController;
     std::unique_ptr<StatusLed> statusLed;
     std::unique_ptr<MqttClient> mqttClient;
     uint32_t lastMqttPublish;
@@ -55,7 +55,7 @@ private:
 
     /**
      * Generate mDNS hostname from device ID
-     * Creates hostname like "ledz-aabbcc" from device ID (removes dash)
+     * Creates hostname like "klima-aabbcc" from device ID (removes dash)
      */
     String generateHostname();
 
@@ -72,6 +72,11 @@ private:
     void startSTA(const char *ssid, const char *password);
 
     void configureUsingAPMode();
+
+    /**
+     * Configure mDNS responder with hostname and HTTP service advertisement
+     */
+    void configureMDNS();
 
 public:
     /**
@@ -123,7 +128,8 @@ public:
      * Get touch controller (for API access)
      * @return Pointer to touch controller, or nullptr if not initialized
      */
-    TouchController* getTouchController() { return touchController.get(); }
+    // TouchController* getTouchController() { return touchController.get(); }
+    TouchController* getTouchController() { return nullptr; }
 
     /**
      * Get MQTT client (for API access)

@@ -1,9 +1,6 @@
 #include "SensorController.h"
 #include <algorithm>
 #include <cmath>
-#include "SensorDataLogger.h"
-#include "StatusLed.h"
-#include "Network.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -19,15 +16,8 @@ namespace {
 }
 
 SensorController::SensorController(Config::ConfigManager &config)
-    : config(config), network(nullptr), lastReadingTimestamp(0), dataValid(false),
-      targetTemperature(22.0f), controlEnabled(false), lastReadingTime(0),
-      logInterval(60000), lastLogTime(0) {
-    // Initialize data logger with capacity for 1000 entries
-    dataLogger = std::make_unique<SensorDataLogger>(1000);
-}
-
-void SensorController::setNetwork(Network *network) {
-    this->network = network;
+    : config(config), lastReadingTimestamp(0), dataValid(false),
+      targetTemperature(22.0f), controlEnabled(false), lastReadingTime(0) {
 }
 
 void SensorController::begin() {
@@ -36,17 +26,18 @@ void SensorController::begin() {
     // Initialize all sensors
     for (auto &sensor : sensors) {
         if (sensor) {
-            Serial.printf("SensorController: Initializing sensor %s...\n", sensor->getName());
+            Serial.printf("SensorController: Initializing sensor %s...\r\n", sensor->getType());
             if (!sensor->begin()) {
-                Serial.printf("SensorController: Failed to initialize sensor %s\n", sensor->getName());
+                Serial.printf("SensorController: Failed to initialize sensor %s\r\n", sensor->getType());
             } else {
-                Serial.printf("SensorController: Successfully initialized sensor %s (%s)\n",
-                             sensor->getName(), sensor->getType());
+                Serial.printf("SensorController: Successfully initialized sensor %s\r\n", sensor->getType());
             }
         }
     }
 
-    Serial.printf("SensorController: Found %u sensors total\n", sensors.size());
+    Serial.printf("SensorController: Found %u sensors total\r\n", sensors.size());
+
+    sortSensors();
 
     // Load configuration
     targetTemperature = 22.0f;
@@ -59,45 +50,105 @@ void SensorController::addSensor(std::unique_ptr<Sensor::Sensor> sensor) {
     }
 }
 
-void SensorController::readSensors() {
-    // Set LED to yellow during measurement
-    setStatusLedMeasuring();
+void SensorController::sortSensors() {
+    // Topological sort: repeatedly pick sensors whose requires() are satisfied
+    // by already-placed sensors' provides(). Simple quadratic — only 3-5 sensors.
+    std::vector<std::unique_ptr<Sensor::Sensor>> sorted;
+    sorted.reserve(sensors.size());
 
-    Serial.println("SensorController: Reading sensors...");
-    Serial.printf("SensorController: Found %u sensors, checking connections...\n", sensors.size());
+    std::vector<bool> placed(sensors.size(), false);
+
+    for (size_t round = 0; round < sensors.size(); ++round) {
+        bool progress = false;
+        for (size_t i = 0; i < sensors.size(); ++i) {
+            if (placed[i]) continue;
+
+            Sensor::TypeSpan reqs = sensors[i]->requires();
+            bool satisfied = true;
+
+            for (uint8_t r = 0; r < reqs.count && satisfied; ++r) {
+                bool found = false;
+                for (auto& s : sorted) {
+                    Sensor::TypeSpan prov = s->provides();
+                    for (uint8_t p = 0; p < prov.count; ++p) {
+                        if (prov.data[p] == reqs.data[r]) { found = true; break; }
+                    }
+                    if (found) break;
+                }
+                if (!found) satisfied = false;
+            }
+
+            if (satisfied) {
+                Serial.printf("SensorController: Read order [%u] %s\r\n",
+                    sorted.size(), sensors[i]->getType());
+                sorted.push_back(std::move(sensors[i]));
+                placed[i] = true;
+                progress = true;
+            }
+        }
+        if (!progress) break;
+    }
+
+    // Append any sensors with unmet dependencies (with warning)
+    for (size_t i = 0; i < sensors.size(); ++i) {
+        if (!placed[i]) {
+            Serial.printf("SensorController: WARNING: %s has unmet dependencies, appending last\r\n",
+                sensors[i]->getType());
+            sorted.push_back(std::move(sensors[i]));
+        }
+    }
+
+    sensors = std::move(sorted);
+}
+
+void SensorController::readSensors() {
+    // Serial.println("SensorController: Reading sensors...");
+    // Serial.printf("SensorController: Found %u sensors, checking connections...\r\n", sensors.size());
 
     std::vector<Sensor::Measurement> allMeasurements;
     bool anyValid = false;
     uint32_t timestamp = millis();
 
+    Sensor::ReadConfig readConfig;
+    readConfig.elevation = config.loadDeviceConfig().elevation;
+
     for (auto &sensor : sensors) {
         if (sensor) {
-            Serial.printf("SensorController: Checking sensor %s - connected: %d\n",
-                         sensor->getName(), sensor->isConnected());
-
-            if (sensor->isConnected()) {
-                Serial.printf("SensorController: Reading from sensor %s...\n", sensor->getName());
+            // if (sensor->isConnected()) {
+                // Serial.printf("SensorController: Reading from sensor %s...\r\n", sensor->getType());
                 uint32_t readStart = millis();
-                Sensor::SensorReading reading = sensor->read();
+                Sensor::SensorReading reading = sensor->read(readConfig, allMeasurements);
                 uint32_t readTime = millis() - readStart;
-                Serial.printf("SensorController: Sensor %s returned valid: %d (read took %u ms)", sensor->getName(), reading.valid, readTime);
                 if (reading.valid) {
-                    Serial.printf(", %d measurements\n", reading.measurements.size());
+#if DEBUG
+                    Serial.printf("SensorController: Sensor %s #%d (%u ms): ", sensor->getType(), reading.measurements.size(), readTime);
+                    bool first = true;
+#endif
                     for (const auto &m : reading.measurements) {
+#if DEBUG
+                        if (!first) Serial.print(", ");
                         if (auto* i = std::get_if<int32_t>(&m.value)) {
-                            Serial.printf("  %s: %d %s\n", m.type, *i, m.unit);
+                            Serial.printf("%s: %d %s", Sensor::measurementTypeLabel(m.type), *i, Sensor::measurementTypeUnit(m.type));
                         } else {
-                            Serial.printf("  %s: %.1f %s\n", m.type, std::get<float>(m.value), m.unit);
+                            Serial.printf("%s: %.1f %s", Sensor::measurementTypeLabel(m.type), std::get<float>(m.value), Sensor::measurementTypeUnit(m.type));
                         }
+                        first = false;
+#endif
                         allMeasurements.push_back(m);
                     }
-                    allMeasurements.push_back({"time", (int32_t)readTime, "ms", sensor->getName(), false});
+#ifdef DEBUG
+                    Serial.print("\r\n");
+#endif
+
+                    allMeasurements.push_back({Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
                     anyValid = true;
                 } else {
-                    Serial.println(" (invalid data)");
+                    Serial.printf("SensorController: Sensor %s - invalid data\r\n", sensor->getType());
                 }
+            } else {
+                Serial.printf("SensorController: Sensor %s - not connected\r\n", sensor->getType());
             }
-        }
+        // }
     }
 
     if (anyValid) {
@@ -105,37 +156,30 @@ void SensorController::readSensors() {
         lastReadingTimestamp = timestamp;
         dataValid = true;
         lastReadingTime = timestamp;
-
-        // Log the data if logging is enabled
-        uint32_t now = millis();
-        if (now - lastLogTime >= logInterval) {
-            dataLogger->addReading(currentMeasurements, timestamp);
-            lastLogTime = now;
-        }
     } else {
         dataValid = false;
     }
 
-    // Set LED back to normal after measurement
-    setStatusLedNormal();
 }
 
 float SensorController::getTemperature() const {
-    for (const auto &m : currentMeasurements) {
-        if (strcmp(m.type, "temperature") == 0) {
-            return std::get<float>(m.value);
-        }
-    }
-    return NAN;
+    auto* m = Sensor::findMeasurement(currentMeasurements, Sensor::MeasurementType::Temperature);
+    return m ? std::get<float>(m->value) : NAN;
 }
 
-float SensorController::getHumidity() const {
-    for (const auto &m : currentMeasurements) {
-        if (strcmp(m.type, "humidity") == 0) {
-            return std::get<float>(m.value);
-        }
-    }
-    return NAN;
+float SensorController::getRelativeHumidity() const {
+    auto* m = Sensor::findMeasurement(currentMeasurements, Sensor::MeasurementType::RelativeHumidity);
+    return m ? std::get<float>(m->value) : NAN;
+}
+
+float SensorController::getDewPoint() const {
+    auto* m = Sensor::findMeasurement(currentMeasurements, Sensor::MeasurementType::DewPoint);
+    return m ? std::get<float>(m->value) : NAN;
+}
+
+int32_t SensorController::getVocIndex() const {
+    auto* m = Sensor::findMeasurement(currentMeasurements, Sensor::MeasurementType::VocIndex);
+    return m ? std::get<int32_t>(m->value) : -1;
 }
 
 Sensor::Sensor *SensorController::getSensor(size_t index) {
@@ -148,13 +192,13 @@ Sensor::Sensor *SensorController::getSensor(size_t index) {
 void SensorController::setTargetTemperature(float temperature) {
     // Clamp to reasonable range for room temperature control
     targetTemperature = std::max(10.0f, std::min(30.0f, temperature));
-    Serial.printf("SensorController: Target temperature set to %.1f°C\n", targetTemperature);
+    Serial.printf("SensorController: Target temperature set to %.1f°C\r\n", targetTemperature);
 }
 
 void SensorController::setControlEnabled(bool enabled) {
     if (controlEnabled != enabled) {
         controlEnabled = enabled;
-        Serial.printf("SensorController: Temperature control %s\n",
+        Serial.printf("SensorController: Temperature control %s\r\n",
                      enabled ? "enabled" : "disabled");
     }
 }
@@ -192,7 +236,7 @@ float SensorController::updateControl() {
     output = std::max(MinOutput, std::min(MaxOutput, output));
 
     if (dt > 0) {
-        Serial.printf("Control: T=%.1f°C (target=%.1f°C), output=%.2f, P=%.2f, I=%.2f, D=%.2f\n",
+        Serial.printf("Control: T=%.1f°C (target=%.1f°C), output=%.2f, P=%.2f, I=%.2f, D=%.2f\r\n",
                      currentTemp, targetTemperature, output, proportional, integral, derivative);
     }
 
@@ -215,14 +259,3 @@ bool SensorController::hasConnectedSensors() const {
     return false;
 }
 
-void SensorController::setStatusLedMeasuring() {
-    if (network) {
-        network->setStatusLedState(LedState::MEASURING);
-    }
-}
-
-void SensorController::setStatusLedNormal() {
-    if (network) {
-        network->setStatusLedState(LedState::ON);
-    }
-}

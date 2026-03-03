@@ -1,5 +1,5 @@
 //
-// Timer Scheduler for ledz
+// Timer Scheduler for klimacontrol
 // Manages countdown timers and alarms
 //
 

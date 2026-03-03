@@ -13,6 +13,10 @@
 #include "WebServerManager.h"
 
 #ifdef ARDUINO
+#include <esp_pm.h>
+#endif
+
+#ifdef ARDUINO
 #include <set>
 #endif
 
@@ -32,6 +36,37 @@ String Network::generateHostname() {
     return hostname;
 #else
     return Constants::PROJECT_NAME;
+#endif
+}
+
+void Network::configureMDNS() {
+#ifdef ARDUINO
+    String hostname = generateHostname();
+
+    if (MDNS.begin(hostname.c_str())) {
+        Serial.print("mDNS responder started: ");
+        Serial.print(hostname);
+        Serial.println(".local");
+
+        Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
+        bool deviceNameNotEmpty = deviceConfig.device_name[0] != '\0';
+        bool deviceNameIsNotDeviceId = strcmp(deviceConfig.device_name, deviceConfig.device_id) != 0;
+        bool hasCustomName = (deviceNameNotEmpty && deviceNameIsNotDeviceId);
+
+        String instanceName;
+        if (hasCustomName) {
+            instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_name);
+        } else {
+            instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_id);
+        }
+
+        Serial.printf("mDNS instance name: '%s'\r\n", instanceName.c_str());
+        MDNS.setInstanceName(instanceName.c_str());
+
+        MDNS.addService("http", "tcp", 80);
+    } else {
+        Serial.println("Error starting mDNS responder!");
+    }
 #endif
 }
 
@@ -65,35 +100,7 @@ void Network::startAP() {
     Serial.print("AP IP address: ");
     Serial.println(ip_address);
 
-    // Start mDNS responder
-    String hostname = generateHostname();
-
-    if (MDNS.begin(hostname.c_str())) {
-        Serial.print("mDNS responder started: ");
-        Serial.print(hostname);
-        Serial.println(".local");
-
-        // Load device config for custom name
-        Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-        bool hasCustomName = (deviceConfig.device_name[0] != '\0' &&
-                              strcmp(deviceConfig.device_name, deviceConfig.device_id) != 0);
-
-        // Set instance name with custom device name or device ID
-        String instanceName;
-        if (hasCustomName) {
-            instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_name);
-        } else {
-            instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_id);
-        }
-        MDNS.setInstanceName(instanceName.c_str());
-        Serial.print("mDNS instance name: ");
-        Serial.println(instanceName);
-
-        // Advertise HTTP service
-        MDNS.addService("http", "tcp", 80);
-    } else {
-        Serial.println("Error starting mDNS responder!");
-    }
+    configureMDNS();
 
     // Start captive portal (redirects all DNS to this device)
     captivePortal.begin();
@@ -112,15 +119,11 @@ void Network::startSTA(const char *ssid, const char *password) {
     // Set WiFi mode explicitly
     WiFi.mode(WIFI_STA);
 
-    // Enable WiFi power save (radio sleeps between DTIM beacons)
-    WiFi.setSleep(WIFI_PS_MIN_MODEM);
-
-    // Reduce transmit power (8.5 dBm is sufficient for indoor range)
-    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    // Disable WiFi power save for best reception (matches CircuitPython default)
+    WiFi.setSleep(WIFI_PS_NONE);
 
     Serial.println("WiFi Configuration:");
-    Serial.printf("  Power save: MIN_MODEM\n");
-    Serial.printf("  TX Power: 8.5dBm\n");
+    Serial.printf("  Power save: NONE\r\n");
 
     WiFi.begin(ssid, password);
 
@@ -143,57 +146,30 @@ void Network::startSTA(const char *ssid, const char *password) {
         Serial.println(WiFi.localIP());
 
         // Print detailed WiFi diagnostics
-        Serial.println("\nWiFi Diagnostics:");
-        Serial.printf("  SSID: %s\n", WiFi.SSID().c_str());
-        Serial.printf("  BSSID: %s\n", WiFi.BSSIDstr().c_str());
-        Serial.printf("  Channel: %d\n", WiFi.channel());
-        Serial.printf("  RSSI: %d dBm\n", WiFi.RSSI());
-        Serial.printf("  MAC: %s\n", WiFi.macAddress().c_str());
-        Serial.printf("  Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
-        Serial.printf("  DNS: %s\n", WiFi.dnsIP().toString().c_str());
-        Serial.printf("  TX Power: %d\n", WiFi.getTxPower());
-        Serial.printf("  Sleep Mode: %d (0=NONE)\n", WiFi.getSleep());
-        Serial.printf("  Auto Reconnect: %d\n", WiFi.getAutoReconnect());
+        Serial.println("\r\nWiFi Diagnostics:");
+        Serial.printf("  SSID: %s\r\n", WiFi.SSID().c_str());
+        Serial.printf("  BSSID: %s\r\n", WiFi.BSSIDstr().c_str());
+        Serial.printf("  Channel: %d\r\n", WiFi.channel());
+        Serial.printf("  RSSI: %d dBm\r\n", WiFi.RSSI());
+        Serial.printf("  MAC: %s\r\n", WiFi.macAddress().c_str());
+        Serial.printf("  Gateway: %s\r\n", WiFi.gatewayIP().toString().c_str());
+        Serial.printf("  DNS: %s\r\n", WiFi.dnsIP().toString().c_str());
+        Serial.printf("  TX Power: %d\r\n", WiFi.getTxPower());
+        Serial.printf("  Sleep Mode: %d (0=NONE)\r\n", WiFi.getSleep());
+        Serial.printf("  Auto Reconnect: %d\r\n", WiFi.getAutoReconnect());
         Serial.println();
 
-        // Start mDNS responder
+        configureMDNS();
+
         String hostname = generateHostname();
-
-        if (MDNS.begin(hostname.c_str())) {
-            Serial.print("mDNS responder started: ");
-            Serial.print(hostname);
-            Serial.println(".local");
-
-            // Load device config for custom name
-            Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-            bool hasCustomName = (deviceConfig.device_name[0] != '\0' &&
-                                  strcmp(deviceConfig.device_name, deviceConfig.device_id) != 0);
-
-            // Set instance name with custom device name or device ID
-            String instanceName;
-            if (hasCustomName) {
-                instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_name);
-            } else {
-                instanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_id);
-            }
-            MDNS.setInstanceName(instanceName.c_str());
-            Serial.print("mDNS instance name: ");
-            Serial.println(instanceName);
-
-            // Advertise HTTP service
-            MDNS.addService("http", "tcp", 80);
-
-            Serial.print("You can now access ");
-            Serial.print(Constants::PROJECT_NAME);
-            Serial.println(" at:");
-            Serial.print("  http://");
-            Serial.print(hostname);
-            Serial.println(".local/");
-            Serial.print("  or http://");
-            Serial.println(WiFi.localIP());
-        } else {
-            Serial.println("Error starting mDNS responder!");
-        }
+        Serial.print("You can now access ");
+        Serial.print(Constants::PROJECT_NAME);
+        Serial.println(" at:");
+        Serial.print("  http://");
+        Serial.print(hostname);
+        Serial.println(".local/");
+        Serial.print("  or http://");
+        Serial.println(WiFi.localIP());
 
         // Start NTP client
         ntpClient.begin();
@@ -212,7 +188,7 @@ void Network::startSTA(const char *ssid, const char *password) {
         Config::MqttConfig mqttConfig = config.loadMqttConfig();
         mqttClient->begin(mqttConfig);
     } else {
-        Serial.println("\nConnection failed");
+        Serial.println("\r\nConnection failed");
     }
 #endif
 }
@@ -251,13 +227,13 @@ void Network::configureUsingAPMode() {
     Serial.println("Network task started");
 
     // Initialize status LED early (works without WiFi) - uses built-in NeoPixel
-    statusLed = std::make_unique<StatusLed>(PIN_NEOPIXEL, 1); // Built-in NeoPixel, 1 pixel
+    statusLed = std::make_unique<StatusLed>(); // Built-in NeoPixel, 1 pixel
     statusLed->begin();
     statusLed->setState(LedState::BLINK_SLOW); // Indicate booting
     
     // Initialize touch controller early (works without WiFi)
-    touchController = std::make_unique<TouchController>(config, sensorController);
-    touchController->begin();
+    // touchController = std::make_unique<TouchController>(config, sensorController);
+    // touchController->begin();
 
     // Check if WiFi is configured
     if (!config.isConfigured()) {
@@ -320,38 +296,32 @@ void Network::configureUsingAPMode() {
     webServer->begin();
 
     Serial.println("Webserver started - system ready");
-    Serial.printf("Free heap: %u bytes\n", ESP.getFreeHeap());
+    Serial.printf("Free heap: %u bytes\r\n", ESP.getFreeHeap());
 
     // Main loop - NTP updates and touch control
     auto lastNtpUpdate = ntpClient.getEpochTime();
 
     unsigned long lastCheck = millis();
     unsigned long lastSecond = millis();
-    unsigned long lastTouchUpdate = 0;
     while (true) {
-        // Short delay for responsive touch/LED control
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
 
         unsigned long now = millis();
 
-        // Update status LED frequently (every 50ms)
         if (statusLed) {
             statusLed->update();
         }
-        
-        // Check touch controller every 100ms (has 500ms debounce)
-        if (touchController && (now - lastTouchUpdate >= 100)) {
-            touchController->update();
-            lastTouchUpdate = now;
-        }
 
-        // Check WiFi and timers every second
+        // if (touchController) {
+        //     touchController->update();
+        // }
+
         if (now - lastSecond >= 1000) {
             lastSecond = now;
 
             auto wl_status = WiFi.status();
             if (now - lastCheck > 1100) {
-                Serial.printf("WiFi status: %d delayed %lu\n", wl_status, now - lastCheck);
+                Serial.printf("WiFi status: %d delayed %lu\r\n", wl_status, now - lastCheck);
             }
             lastCheck = now;
 
@@ -367,11 +337,11 @@ void Network::configureUsingAPMode() {
                 }
 
                 if (WiFi.status() == WL_CONNECTED) {
-                    Serial.printf("WiFi reconnected (%d attempts)\n", attempts);
+                    Serial.printf("WiFi reconnected (%d attempts)\r\n", attempts);
                 }
             }
 
-            if (ntpClient.getEpochTime() - lastNtpUpdate > 600) {
+            if (ntpClient.getEpochTime() - lastNtpUpdate > 3600) {
                 bool result = ntpClient.update();
                 Serial.print("NTP update: ");
                 Serial.print(ntpClient.getFormattedTime());
@@ -390,9 +360,12 @@ void Network::configureUsingAPMode() {
                 mqttClient->loop();
 
                 if (mqttClient->isConnected() && sensorController.isDataValid()) {
-                    Config::MqttConfig mqttConfig = config.loadMqttConfig();
-                    uint32_t intervalMs = static_cast<uint32_t>(mqttConfig.interval) * 1000;
-                    if (intervalMs > 0 && (now - lastMqttPublish >= intervalMs)) {
+                    uint32_t intervalMs = mqttClient->getIntervalMs();
+
+                    // Seed lastMqttPublish on first eligible cycle
+                    if (lastMqttPublish == 0) lastMqttPublish = now;
+
+                    if (intervalMs > 0 && now >= 60000 && (now - lastMqttPublish >= intervalMs)) {
                         lastMqttPublish = now;
                         publishMeasurements(sensorController.getMeasurements());
                         if (statusLed) statusLed->setState(LedState::MQTT_ACTIVE);
@@ -422,17 +395,17 @@ void Network::publishMeasurements(const std::vector<Sensor::Measurement>& measur
 
     for (const auto& m : measurements) {
         char topic[128];
-        snprintf(topic, sizeof(topic), "%s/%s", mqttConfig.prefix, m.type);
+        snprintf(topic, sizeof(topic), "%s/%s", mqttConfig.prefix, Sensor::measurementTypeLabel(m.type));
 
         char payload[256];
         if (auto* i = std::get_if<int32_t>(&m.value)) {
             snprintf(payload, sizeof(payload),
                 "{\"time\":%u,\"value\":%d,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
-                epoch, *i, m.unit, m.sensor, m.calculated ? "true" : "false");
+                epoch, *i, Sensor::measurementTypeUnit(m.type), m.sensor, m.calculated ? "true" : "false");
         } else {
             snprintf(payload, sizeof(payload),
                 "{\"time\":%u,\"value\":%.2f,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
-                epoch, std::get<float>(m.value), m.unit, m.sensor, m.calculated ? "true" : "false");
+                epoch, std::get<float>(m.value), Sensor::measurementTypeUnit(m.type), m.sensor, m.calculated ? "true" : "false");
         }
 
         mqttClient->publish(topic, payload);

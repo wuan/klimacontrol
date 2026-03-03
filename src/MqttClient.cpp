@@ -1,11 +1,12 @@
 #include "MqttClient.h"
+#include "DeviceId.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
 #endif
 
 MqttClient::MqttClient()
-    : configured(false), lastConnectAttempt(0)
+    : clientId("klima-" + DeviceId::getDeviceId()), configured(false), lastConnectAttempt(0)
 #ifdef ARDUINO
       , mqttClient(wifiClient)
 #endif
@@ -30,12 +31,12 @@ void MqttClient::applyServer() {
         IPAddress ip;
         if (ip.fromString(config.host)) {
             mqttClient.setServer(ip, config.port);
-            Serial.printf("MQTT: Server set to IP %s:%u\n", config.host, config.port);
+            Serial.printf("MQTT: Server set to IP %s:%u\r\n", config.host, config.port);
         }
     } else {
         // Use const char* overload — must point to long-lived member (dangling pointer fix)
         mqttClient.setServer(this->config.host, config.port);
-        Serial.printf("MQTT: Server set to hostname %s:%u\n", config.host, config.port);
+        Serial.printf("MQTT: Server set to hostname %s:%u\r\n", config.host, config.port);
     }
 #endif
 }
@@ -46,7 +47,7 @@ void MqttClient::begin(const Config::MqttConfig& mqttConfig) {
     applyServer();
 
 #ifdef ARDUINO
-    Serial.printf("MQTT: Initialized (enabled=%d, host=%s, prefix=%s)\n",
+    Serial.printf("MQTT: Initialized (enabled=%d, host=%s, prefix=%s)\r\n",
                   config.enabled, config.host, config.prefix);
 #endif
 }
@@ -66,7 +67,7 @@ void MqttClient::setConfig(const Config::MqttConfig& mqttConfig) {
     applyServer();
 
 #ifdef ARDUINO
-    Serial.printf("MQTT: Config updated (enabled=%d, host=%s, prefix=%s)\n",
+    Serial.printf("MQTT: Config updated (enabled=%d, host=%s, prefix=%s)\r\n",
                   config.enabled, config.host, config.prefix);
 #endif
 }
@@ -92,15 +93,15 @@ void MqttClient::loop() {
 
     bool connected;
     if (config.username[0] != '\0') {
-        connected = mqttClient.connect("klimacontrol", config.username, config.password);
+        connected = mqttClient.connect(clientId.c_str(), config.username, config.password);
     } else {
-        connected = mqttClient.connect("klimacontrol");
+        connected = mqttClient.connect(clientId.c_str());
     }
 
     if (connected) {
         Serial.println("MQTT: Connected");
     } else {
-        Serial.printf("MQTT: Connect failed, rc=%d\n", mqttClient.state());
+        Serial.printf("MQTT: Connect failed, rc=%d\r\n", mqttClient.state());
     }
 #endif
 }

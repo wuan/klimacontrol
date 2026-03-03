@@ -113,7 +113,7 @@
 // ============================================================================
 
 #ifdef OTA_DEBUG_LOGGING
-#define OTA_LOG(fmt, ...) Serial.printf("[OTA] " fmt "\n", ##__VA_ARGS__)
+#define OTA_LOG(fmt, ...) Serial.printf("[OTA] " fmt "\r\n", ##__VA_ARGS__)
 #else
 #define OTA_LOG(fmt, ...)
 #endif
@@ -131,7 +131,7 @@ In your code, use the configuration like:
 void checkForUpdates() {
   FirmwareInfo info;
   if (OTAUpdater::checkForUpdate(OTA_GITHUB_OWNER, OTA_GITHUB_REPO, info)) {
-    Serial.printf("Current: %s, Available: %s\n", FIRMWARE_VERSION, info.version.c_str());
+    Serial.printf("Current: %s, Available: %s\r\n", FIRMWARE_VERSION, info.version.c_str());
 
     if (OTAUpdater::performUpdate(info.downloadUrl, info.size)) {
       #if OTA_AUTO_CONFIRM_DELAY_MS > 0

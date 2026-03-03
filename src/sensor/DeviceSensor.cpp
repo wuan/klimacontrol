@@ -21,32 +21,24 @@ namespace Sensor {
 
         // WiFi RSSI (only when connected)
         if (WiFi.status() == WL_CONNECTED) {
-            reading.measurements.push_back({"rssi", (int32_t)WiFi.RSSI(), "dBm", "ESP32", false});
-            reading.measurements.push_back({"channel", WiFi.channel(), "", "ESP32", false});
+            reading.measurements.push_back({MeasurementType::Rssi, (int32_t)WiFi.RSSI(), getType(), false});
+            reading.measurements.push_back({MeasurementType::Channel, WiFi.channel(), getType(), false});
         }
 
         // Internal chip temperature
         float chipTemp = temperatureRead();
         if (chipTemp > -40.0f && chipTemp < 125.0f) {
-            reading.measurements.push_back({"system", chipTemp, "°C", "ESP32", false});
+            reading.measurements.push_back({MeasurementType::System, chipTemp, getType(), false});
         }
 
         // Free heap memory (in bytes)
-        reading.measurements.push_back({"free_heap", static_cast<float>(ESP.getFreeHeap()/1024.0), "kB", "ESP32", false});
+        reading.measurements.push_back({MeasurementType::FreeHeap, static_cast<float>(ESP.getFreeHeap()/1024.0), getType(), false});
 
         // Uptime in seconds
-        reading.measurements.push_back({"uptime", (int32_t)(millis() / 1000), "s", "ESP32", false});
+        reading.measurements.push_back({MeasurementType::Uptime, (int32_t)(millis() / 1000), getType(), false});
 #endif
 
         return reading;
-    }
-
-    const char* DeviceSensor::getName() const {
-        return "ESP32";
-    }
-
-    const char* DeviceSensor::getType() const {
-        return "Device";
     }
 
     bool DeviceSensor::isConnected() {

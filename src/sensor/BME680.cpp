@@ -1,32 +1,26 @@
 #include "BME680.h"
 
-#ifdef ARDUINO
-#include <Wire.h>
-#endif
-
 namespace Sensor {
 
-    BME680::BME680(uint8_t address) : i2cAddress(address), initialized(false) {
+    BME680::BME680(uint8_t address) : I2CSensor(address) {
+        bme = std::make_unique<Adafruit_BME680>(&wire);
     }
 
     bool BME680::begin() {
 #ifdef ARDUINO
-        Serial.println("BME680: Initializing sensor...");
 
-        if (!bme.begin(i2cAddress)) {
-            Serial.println("BME680: Failed to initialize sensor");
+        if (!bme->begin(i2cAddress)) {
             return false;
         }
 
         // Configure oversampling and filter
-        bme.setTemperatureOversampling(BME680_OS_8X);
-        bme.setHumidityOversampling(BME680_OS_2X);
-        bme.setPressureOversampling(BME680_OS_4X);
-        bme.setIIRFilterSize(BME680_FILTER_SIZE_3);
-        bme.setGasHeater(320, 150); // 320°C for 150ms
+        bme->setTemperatureOversampling(BME680_OS_8X);
+        bme->setHumidityOversampling(BME680_OS_2X);
+        bme->setPressureOversampling(BME680_OS_4X);
+        bme->setIIRFilterSize(BME680_FILTER_SIZE_3);
+        bme->setGasHeater(320, 150); // 320°C for 150ms
 
         initialized = true;
-        Serial.println("BME680: Sensor initialized successfully");
         return true;
 #else
         initialized = true;
@@ -35,6 +29,11 @@ namespace Sensor {
     }
 
     SensorReading BME680::read() {
+        return read({}, {});
+    }
+
+    SensorReading BME680::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
+        (void) prior;
         SensorReading reading;
         reading.timestamp = millis();
 
@@ -44,51 +43,42 @@ namespace Sensor {
         }
 
 #ifdef ARDUINO
-        if (bme.performReading()) {
-            float t = bme.temperature;
-            float rh = bme.humidity;
-            reading.measurements.push_back({"temperature", t, "°C", "BME680", false});
-            reading.measurements.push_back({"humidity", rh, "%", "BME680", false});
-            reading.measurements.push_back({"dew_point", calcDewPoint(t, rh), "°C", "BME680", true});
-            reading.measurements.push_back({"pressure", bme.pressure / 100.0f, "hPa", "BME680", false});
+        if (bme->performReading()) {
+            float temperature = bme->temperature;
+            float relative_humidity = bme->humidity;
+            float stationPressure = bme->pressure / 100.0f;
+            reading.measurements.push_back({MeasurementType::Temperature, temperature, getType(), false});
+            reading.measurements.push_back({MeasurementType::RelativeHumidity, relative_humidity, getType(), false});
+            reading.measurements.push_back({MeasurementType::DewPoint, calcDewPoint(temperature, relative_humidity), getType(), true});
+            reading.measurements.push_back({MeasurementType::Pressure, stationPressure, getType(), false});
+
+            if (config.elevation > 0.0f) {
+                float seaLevel = calcSeaLevelPressure(stationPressure, temperature, config.elevation);
+                reading.measurements.push_back({MeasurementType::SeaLevelPressure, seaLevel, getType(), true});
+            }
 
             reading.valid = true;
         } else {
             reading.valid = false;
-            Serial.println("BME680: Failed to read sensor data");
         }
 #else
         float t = 23.0f;
         float rh = 50.0f;
-        reading.measurements.push_back({"temperature", t, "°C", "BME680", false});
-        reading.measurements.push_back({"humidity", rh, "%", "BME680", false});
-        reading.measurements.push_back({"pressure", 1013.25f, "hPa", "BME680", false});
+        float stationPressure = 1013.25f;
+        reading.measurements.push_back({MeasurementType::Temperature, t, getType(), false});
+        reading.measurements.push_back({MeasurementType::RelativeHumidity, rh, getType(), false});
+        reading.measurements.push_back({MeasurementType::Pressure, stationPressure, getType(), false});
+        reading.measurements.push_back({MeasurementType::DewPoint, calcDewPoint(t, rh), getType(), true});
 
-        reading.measurements.push_back({"dew_point", calcDewPoint(t, rh), "°C", "BME680", true});
+        if (config.elevation > 0.0f) {
+            float seaLevel = calcSeaLevelPressure(stationPressure, t, config.elevation);
+            reading.measurements.push_back({MeasurementType::SeaLevelPressure, seaLevel, getType(), true});
+        }
 
         reading.valid = true;
 #endif
 
         return reading;
-    }
-
-    const char* BME680::getName() const {
-        return "BME680";
-    }
-
-    const char* BME680::getType() const {
-        return "Environmental";
-    }
-
-    bool BME680::isConnected() {
-#ifdef ARDUINO
-        if (!initialized) return false;
-
-        Wire.beginTransmission(i2cAddress);
-        return Wire.endTransmission() == 0;
-#else
-        return initialized;
-#endif
     }
 
 } // namespace Sensor

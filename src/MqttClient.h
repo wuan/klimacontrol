@@ -15,6 +15,7 @@ private:
     PubSubClient mqttClient;
 #endif
     Config::MqttConfig config;
+    String clientId;
     bool configured;
     uint32_t lastConnectAttempt;
     static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
@@ -29,6 +30,7 @@ public:
     bool publish(const char* topic, const char* payload);
     bool isConnected();
     bool isEnabled() const;
+    uint32_t getIntervalMs() const { return static_cast<uint32_t>(config.interval) * 1000; }
 };
 
 #endif // KLIMACONTROL_MQTT_CLIENT_H

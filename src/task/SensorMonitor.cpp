@@ -34,47 +34,16 @@ namespace Task {
     }
     
     void SensorMonitor::task() {
-        unsigned long lastStatsTime = millis();
-        unsigned long lastControlUpdate = millis();
-        
         while (true) {
-            unsigned long currentTime = millis();
-            
-            // Read sensors at the configured interval
-            if (currentTime - lastReadingTime >= readingInterval) {
-                controller.readSensors();
-                lastReadingTime = currentTime;
-                
-                // Log sensor readings
-                if (controller.isDataValid()) {
-                    float temp = controller.getTemperature();
-                    float hum = controller.getHumidity();
-                    Serial.printf("Sensors: T=%.1f°C, H=%.1f%%, age=%lu ms\n",
-                                 temp, hum,
-                                 controller.getTimeSinceLastReading());
-                } else {
-                    Serial.println("Sensors: No valid data");
-                }
+            auto startTime = millis();
+            controller.readSensors();
+
+            if (controller.isControlEnabled()) {
+                controller.updateControl();
             }
-            
-            // Update temperature control every second
-            if (currentTime - lastControlUpdate >= 1000) {
-                if (controller.isControlEnabled()) {
-                    float controlOutput = controller.updateControl();
-                    // TODO: Apply control output to actuator (relay, etc.)
-                }
-                lastControlUpdate = currentTime;
-            }
-            
-            // Log statistics every 60 seconds
-            if (currentTime - lastStatsTime >= 60000) {
-                Serial.printf("SensorMonitor: Running for %lu ms, interval=%lu ms\n",
-                             currentTime, readingInterval);
-                lastStatsTime = currentTime;
-            }
-            
-            // Small delay to prevent task from hogging CPU
-            vTaskDelay(500 / portTICK_PERIOD_MS);
+            auto duration = std::max(readingInterval - (millis() - startTime), 1ul);
+
+            vTaskDelay(duration / portTICK_PERIOD_MS);
         }
     }
 #endif

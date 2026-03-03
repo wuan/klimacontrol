@@ -4,9 +4,9 @@
 unsigned long millis();
 #endif
 
-StatusLed::StatusLed(uint8_t pin, uint8_t numPixels) 
+StatusLed::StatusLed() 
 #ifdef ARDUINO
-    : pixel(numPixels, pin, NEO_GRB + NEO_KHZ800), state(LedState::OFF),
+    : pixel(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800), state(LedState::OFF),
 #else
     : state(LedState::OFF),
 #endif

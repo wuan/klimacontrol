@@ -52,7 +52,7 @@ public:
      * @param pin GPIO pin connected to the NeoPixel
      * @param numPixels Number of pixels (usually 1 for built-in)
      */
-    StatusLed(uint8_t pin, uint8_t numPixels = 1);
+    StatusLed();
 
     /**
      * Initialize the LED

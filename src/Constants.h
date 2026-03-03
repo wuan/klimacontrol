@@ -12,10 +12,10 @@ namespace Constants {
     constexpr const char* HOSTNAME_PREFIX = "klima-";
     
     // AP mode SSID prefix
-    constexpr const char* AP_SSID_PREFIX = "klima ";
+    constexpr const char* AP_SSID_PREFIX = "Klima ";
     
     // mDNS instance name prefix
-    constexpr const char* INSTANCE_NAME_PREFIX = "klima ";
+    constexpr const char* INSTANCE_NAME_PREFIX = "Klima ";
     
     // NVS namespace
     constexpr const char* NVS_NAMESPACE = "klima";

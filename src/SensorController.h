@@ -6,9 +6,6 @@
 #include "sensor/Sensor.h"
 #include "Config.h"
 
-class SensorDataLogger;
-class Network;
-
 namespace Sensor {
     class Sensor;
 }
@@ -19,26 +16,20 @@ namespace Sensor {
 class SensorController {
 private:
     Config::ConfigManager &config;
-    Network *network; // Pointer to network for status LED control
     std::vector<std::unique_ptr<Sensor::Sensor>> sensors;
     std::vector<Sensor::Measurement> currentMeasurements;
     uint32_t lastReadingTimestamp;
     bool dataValid;
+
+    void sortSensors();
 
     // Temperature control state
     float targetTemperature;
     bool controlEnabled;
     uint32_t lastReadingTime;
 
-    // Data logging
-    std::unique_ptr<SensorDataLogger> dataLogger;
-    uint32_t lastLogTime;
-    uint32_t logInterval;
-
 public:
     explicit SensorController(Config::ConfigManager &config);
-
-    void setNetwork(Network *network);
 
     // Delete copy constructor and assignment operator
     SensorController(const SensorController &) = delete;
@@ -63,7 +54,15 @@ public:
      * Get current humidity (first humidity measurement found)
      * @return humidity value, or NAN if not available
      */
-    float getHumidity() const;
+    float getRelativeHumidity() const;
+
+    float getDewPoint() const;
+
+    /**
+     * Get current VOC index (first voc index measurement found)
+     * @return VOC index value, or -1 if not available
+     */
+    int32_t getVocIndex() const;
 
     /**
      * Get timestamp of last reading
@@ -88,12 +87,6 @@ public:
     uint32_t getTimeSinceLastReading() const;
     bool hasConnectedSensors() const;
 
-    void setStatusLedMeasuring();
-    void setStatusLedNormal();
-
-    SensorDataLogger* getDataLogger() const { return dataLogger.get(); }
-    void setLogInterval(uint32_t intervalMs) { logInterval = intervalMs; }
-    uint32_t getLogInterval() const { return logInterval; }
 };
 
 #endif // SENSOR_CONTROLLER_H

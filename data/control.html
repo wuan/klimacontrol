@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Klima-Control - Temperature Controller</title>
+    <title>KlimaControl</title>
     <link rel="stylesheet" href="/common.css">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1 id="pageTitle">ledz</h1>
+            <h1 id="pageTitle">klimacontrol</h1>
             <div class="device-id">
                 <span id="deviceId">Loading...</span>
                 <span id="firmwareVersion" style="opacity: 0.7; font-size: 0.9em; margin-left: 10px;"></span>
@@ -25,8 +25,12 @@
                     <div class="status-value" id="currentTemp">-</div>
                 </div>
                 <div class="status-item">
-                    <div class="status-label">Humidity</div>
+                    <div class="status-label">Rel. Humidity</div>
                     <div class="status-value" id="currentHumidity">-</div>
+                </div>
+                <div class="status-item">
+                    <div class="status-label">Dew Point</div>
+                    <div class="status-value" id="currentDewPoint">-</div>
                 </div>
                 <div class="status-item">
                     <div class="status-label">Target</div>
@@ -43,15 +47,21 @@
             </div>
         </div>
 
-        <div style="display: flex; gap: 10px; margin-top: 20px;">
-            <a href="/settings" class="about-link" style="flex: 1; text-align: center;">Settings</a>
-            <a href="/timers" class="about-link" style="flex: 1; text-align: center;">Timers</a>
-            <a href="/about" class="about-link" style="flex: 1; text-align: center;">Device Info</a>
+        <div class="nav-footer">
+            <a href="/settings" class="about-link">Settings</a>
+            <a href="/timers" class="about-link">Timers</a>
+            <a href="/about" class="about-link">Device Info</a>
         </div>
     </div>
 
     <script>
         let currentStatus = {};
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
 
         // Update device info display
         function updateDeviceInfo() {
@@ -59,27 +69,27 @@
             const deviceIdElement = document.getElementById('deviceId');
 
             if (currentStatus.device_id) {
-                const hostname = "ledz-" + currentStatus.device_id.toLowerCase();
+                const hostname = "klima-" + currentStatus.device_id.toLowerCase();
                 const hasCustomName = currentStatus.device_name && currentStatus.device_name !== currentStatus.device_id;
 
                 // Update page title with custom name if set
                 if (hasCustomName) {
-                    pageTitleElement.textContent = 'Klima-Control ' + currentStatus.device_name;
+                    pageTitleElement.textContent = 'KlimaControl ' + currentStatus.device_name;
                 } else {
-                    pageTitleElement.textContent = 'Klima-Control';
+                    pageTitleElement.textContent = 'KlimaControl';
                 }
 
                 // Device ID and technical details
-                let infoHTML = currentStatus.device_id;
+                let infoHTML = esc(currentStatus.device_id);
 
                 if (currentStatus.wifi_connected && currentStatus.wifi_ssid) {
-                    infoHTML += `<br><small style="font-size: 11px; font-weight: normal;">
-                        WiFi: ${currentStatus.wifi_ssid}<br>
-                        Access at: <a href="http://${hostname}.local/" style="color: inherit; text-decoration: underline;">${hostname}.local</a>
+                    infoHTML += `<br><small class="device-subtitle">
+                        WiFi: ${esc(currentStatus.wifi_ssid)}<br>
+                        Access at: <a href="http://${hostname}.local/">${hostname}.local</a>
                     </small>`;
                 } else {
-                    infoHTML += `<br><small style="font-size: 11px; font-weight: normal;">
-                        Access at: <a href="http://${hostname}.local/" style="color: inherit; text-decoration: underline;">${hostname}.local</a>
+                    infoHTML += `<br><small class="device-subtitle">
+                        Access at: <a href="http://${hostname}.local/">${hostname}.local</a>
                     </small>`;
                 }
 
@@ -121,13 +131,19 @@
                 // Update temperature display
                 const tempElement = document.getElementById('currentTemp');
                 if (tempElement && currentStatus.temperature !== undefined) {
-                    tempElement.textContent = `${currentStatus.temperature.toFixed(1)}°C`;
+                    tempElement.textContent = `${currentStatus.temperature.toFixed(1)} °C`;
                 }
                 
                 // Update humidity display
                 const humidityElement = document.getElementById('currentHumidity');
-                if (humidityElement && currentStatus.humidity !== undefined) {
-                    humidityElement.textContent = `${currentStatus.humidity.toFixed(1)}%`;
+                if (humidityElement && currentStatus.relative_humidity !== undefined) {
+                    humidityElement.textContent = `${currentStatus.relative_humidity.toFixed(1)} %`;
+                }
+
+                // Update dew point display from measurements array
+                const dewPointElement = document.getElementById('currentDewPoint');
+                if (dewPointElement && currentStatus.dew_point !== undefined) {
+                    dewPointElement.textContent = `${currentStatus.dew_point.toFixed(1)} °C`;
                 }
                 
                 // Update target temperature display

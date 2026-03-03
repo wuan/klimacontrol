@@ -1,5 +1,5 @@
 //
-// Touch Controller for ledz
+// Touch Controller for klimacontrol
 // Handles capacitive touch input for loading presets
 //
 

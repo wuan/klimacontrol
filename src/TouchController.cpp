@@ -93,10 +93,10 @@ void TouchController::begin() {
     Serial.println("TouchController: Initializing touch pins");
     for (uint8_t i = 0; i < Config::TouchConfig::MAX_TOUCH_PINS; i++) {
         const char* action = (i == 0) ? "Switch Show" : (i == 1) ? "Switch Variant" : "Switch Layout";
-        Serial.printf("  Touch pin %u (GPIO %u) -> %s\n",
+        Serial.printf("  Touch pin %u (GPIO %u) -> %s\r\n",
                       i, TOUCH_PINS[i], action);
     }
-    Serial.printf("  Enabled: %s, Threshold: %u\n",
+    Serial.printf("  Enabled: %s, Threshold: %u\r\n",
                   touchConfig.enabled ? "yes" : "no", touchConfig.threshold);
 #endif
 }
@@ -128,20 +128,20 @@ void TouchController::update() {
                     float newTemp = std::min(30.0f, currentTemp + 2.0f);
                     sensorController.setTargetTemperature(newTemp);
                     
-                    Serial.printf("TouchController: Increased target temperature to %.1f°C\n", newTemp);
+                    Serial.printf("TouchController: Increased target temperature to %.1f°C\r\n", newTemp);
                 } else if (i == 1) {
                     // Button 2: Decrease target temperature (-2°C)
                     float currentTemp = sensorController.getTargetTemperature();
                     float newTemp = std::max(10.0f, currentTemp - 2.0f);
                     sensorController.setTargetTemperature(newTemp);
                     
-                    Serial.printf("TouchController: Decreased target temperature to %.1f°C\n", newTemp);
+                    Serial.printf("TouchController: Decreased target temperature to %.1f°C\r\n", newTemp);
                 } else if (i == 2) {
                     // Button 3: Toggle temperature control
                     bool currentlyEnabled = sensorController.isControlEnabled();
                     sensorController.setControlEnabled(!currentlyEnabled);
                     
-                    Serial.printf("TouchController: Temperature control %s\n",
+                    Serial.printf("TouchController: Temperature control %s\r\n",
                                   currentlyEnabled ? "disabled" : "enabled");
                 }
             }
@@ -168,7 +168,7 @@ void TouchController::setEnabled(bool enabled) {
     touchConfig.enabled = enabled;
     config.saveTouchConfig(touchConfig);
 #ifdef ARDUINO
-    Serial.printf("TouchController: %s\n", enabled ? "Enabled" : "Disabled");
+    Serial.printf("TouchController: %s\r\n", enabled ? "Enabled" : "Disabled");
 #endif
 }
 
@@ -176,7 +176,7 @@ void TouchController::setThreshold(uint16_t threshold) {
     touchConfig.threshold = threshold;
     config.saveTouchConfig(touchConfig);
 #ifdef ARDUINO
-    Serial.printf("TouchController: Threshold set to %u\n", threshold);
+    Serial.printf("TouchController: Threshold set to %u\r\n", threshold);
 #endif
 }
 

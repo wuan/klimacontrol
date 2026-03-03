@@ -11,7 +11,7 @@ namespace Config {
     void ConfigManager::requestRestart(uint32_t delayMs) {
         restartAt = millis() + delayMs;
         restartRequested = true;
-        Serial.printf("Config: Restart requested in %u ms\n", delayMs);
+        Serial.printf("Config: Restart requested in %u ms\r\n", delayMs);
     }
 
     void ConfigManager::checkRestart() {
@@ -79,59 +79,19 @@ namespace Config {
 #endif
     }
 
-    ShowConfig ConfigManager::loadShowConfig() {
-        ShowConfig config;
-
-#ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
-
-        prefs.getString("show_name", config.current_show, sizeof(config.current_show));
-
-        // If no show name is stored, default constructor already set "Rainbow"
-        if (config.current_show[0] == '\0') {
-            strcpy(config.current_show, "Rainbow");
-        }
-
-        prefs.getString("show_params", config.params_json, sizeof(config.params_json));
-
-        // If no params stored, default constructor already set "{}"
-        if (config.params_json[0] == '\0') {
-            strcpy(config.params_json, "{}");
-        }
-
-        prefs.end();
-#endif
-
-        return config;
-    }
-
-    void ConfigManager::saveShowConfig(const ShowConfig &config) {
-#ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
-
-        prefs.putString("show_name", config.current_show);
-        prefs.putString("show_params", config.params_json);
-
-        prefs.end();
-#endif
-    }
-
     DeviceConfig ConfigManager::loadDeviceConfig() {
         DeviceConfig config;
 
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, true); // Read-only mode
 
-        config.brightness = prefs.getUChar("brightness", 128);
-        config.num_pixels = prefs.getUShort("num_pixels", 1);
-        config.led_pin = prefs.getUChar("led_pin", PIN_NEOPIXEL);
-        config.cycle_time = prefs.getUShort("cycle_time", 10);
         prefs.getString("device_name", config.device_name, sizeof(config.device_name));
         
         // Load sensor configuration
         config.sensor_i2c_address = prefs.getUChar("sensor_i2c_address", 0x44);
         config.target_temperature = prefs.getFloat("target_temperature", 22.0f);
         config.temperature_control_enabled = prefs.getBool("temperature_control_enabled", false);
+        config.elevation = prefs.getFloat("elevation", 0.0f);
 
         prefs.end();
 
@@ -154,18 +114,13 @@ namespace Config {
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, false); // Read-write mode
 
-        prefs.putUChar("brightness", config.brightness);
-        prefs.putUShort("num_pixels", config.num_pixels);
-        prefs.putUChar("led_pin", config.led_pin);
-        prefs.putUShort("cycle_time", config.cycle_time);
         prefs.putString("device_name", config.device_name);
         
         // Save sensor configuration
         prefs.putUChar("sensor_i2c_address", config.sensor_i2c_address);
         prefs.putFloat("target_temperature", config.target_temperature);
         prefs.putBool("temperature_control_enabled", config.temperature_control_enabled);
-        
-        // Note: device_id is derived from MAC, not stored
+        prefs.putFloat("elevation", config.elevation);
 
         prefs.end();
 #endif
@@ -190,7 +145,7 @@ namespace Config {
                  mac_bytes[3], mac_bytes[4], mac_bytes[5]);
         return String(id);
 #else
-        return String("ledz-000000");
+        return String("klima-000000");
 #endif
     }
 
@@ -224,177 +179,6 @@ namespace Config {
 #else
         return 0;
 #endif
-    }
-
-    LayoutConfig ConfigManager::loadLayoutConfig() {
-        LayoutConfig config;
-
-#ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
-        config.reverse = prefs.getBool("layout_reverse", false);
-        config.mirror = prefs.getBool("layout_mirror", false);
-        config.dead_leds = prefs.getUShort("layout_dead", 0);
-        prefs.end();
-#endif
-
-        return config;
-    }
-
-    void ConfigManager::saveLayoutConfig(const LayoutConfig &config) {
-#ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
-        prefs.putBool("layout_reverse", config.reverse);
-        prefs.putBool("layout_mirror", config.mirror);
-        prefs.putUShort("layout_dead", config.dead_leds);
-        prefs.end();
-
-        Serial.printf("Config: Saved layout - reverse=%d, mirror=%d, dead_leds=%u\n",
-                      config.reverse, config.mirror, config.dead_leds);
-#endif
-    }
-
-    PresetsConfig ConfigManager::loadPresetsConfig() {
-        PresetsConfig presetsConfig;
-
-#ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
-
-        char key[20];
-        for (uint8_t i = 0; i < PresetsConfig::MAX_PRESETS; i++) {
-            snprintf(key, sizeof(key), "preset_%u_valid", i);
-            presetsConfig.presets[i].valid = prefs.getBool(key, false);
-
-            if (presetsConfig.presets[i].valid) {
-                snprintf(key, sizeof(key), "preset_%u_name", i);
-                prefs.getString(key, presetsConfig.presets[i].name, sizeof(presetsConfig.presets[i].name));
-
-                snprintf(key, sizeof(key), "preset_%u_show", i);
-                prefs.getString(key, presetsConfig.presets[i].show_name, sizeof(presetsConfig.presets[i].show_name));
-
-                snprintf(key, sizeof(key), "preset_%u_params", i);
-                prefs.getString(key, presetsConfig.presets[i].params_json, sizeof(presetsConfig.presets[i].params_json));
-
-                snprintf(key, sizeof(key), "preset_%u_rev", i);
-                presetsConfig.presets[i].layout_reverse = prefs.getBool(key, false);
-
-                snprintf(key, sizeof(key), "preset_%u_mir", i);
-                presetsConfig.presets[i].layout_mirror = prefs.getBool(key, false);
-
-                snprintf(key, sizeof(key), "preset_%u_dead", i);
-                presetsConfig.presets[i].layout_dead_leds = prefs.getShort(key, 0);
-            }
-        }
-
-        prefs.end();
-#endif
-
-        return presetsConfig;
-    }
-
-    bool ConfigManager::savePreset(uint8_t index, const Preset &preset) {
-        if (index >= PresetsConfig::MAX_PRESETS) {
-            return false;
-        }
-
-#ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
-
-        char key[20];
-
-        snprintf(key, sizeof(key), "preset_%u_valid", index);
-        prefs.putBool(key, preset.valid);
-
-        snprintf(key, sizeof(key), "preset_%u_name", index);
-        prefs.putString(key, preset.name);
-
-        snprintf(key, sizeof(key), "preset_%u_show", index);
-        prefs.putString(key, preset.show_name);
-
-        snprintf(key, sizeof(key), "preset_%u_params", index);
-        prefs.putString(key, preset.params_json);
-
-        snprintf(key, sizeof(key), "preset_%u_rev", index);
-        prefs.putBool(key, preset.layout_reverse);
-
-        snprintf(key, sizeof(key), "preset_%u_mir", index);
-        prefs.putBool(key, preset.layout_mirror);
-
-        snprintf(key, sizeof(key), "preset_%u_dead", index);
-        prefs.putShort(key, preset.layout_dead_leds);
-
-        prefs.end();
-
-        Serial.printf("Config: Saved preset %u '%s'\n", index, preset.name);
-        return true;
-#else
-        return false;
-#endif
-    }
-
-    bool ConfigManager::deletePreset(uint8_t index) {
-        if (index >= PresetsConfig::MAX_PRESETS) {
-            return false;
-        }
-
-#ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
-
-        char key[20];
-
-        // Just mark as invalid - NVS keys remain but won't be loaded
-        snprintf(key, sizeof(key), "preset_%u_valid", index);
-        prefs.putBool(key, false);
-
-        prefs.end();
-
-        Serial.printf("Config: Deleted preset %u\n", index);
-        return true;
-#else
-        return false;
-#endif
-    }
-
-    int ConfigManager::findPresetByName(const char *name) {
-#ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
-
-        char key[20];
-        char storedName[32];
-
-        for (uint8_t i = 0; i < PresetsConfig::MAX_PRESETS; i++) {
-            snprintf(key, sizeof(key), "preset_%u_valid", i);
-            if (prefs.getBool(key, false)) {
-                snprintf(key, sizeof(key), "preset_%u_name", i);
-                prefs.getString(key, storedName, sizeof(storedName));
-                if (strcmp(storedName, name) == 0) {
-                    prefs.end();
-                    return i;
-                }
-            }
-        }
-
-        prefs.end();
-#endif
-        return -1;
-    }
-
-    int ConfigManager::getNextPresetSlot() {
-#ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
-
-        char key[20];
-
-        for (uint8_t i = 0; i < PresetsConfig::MAX_PRESETS; i++) {
-            snprintf(key, sizeof(key), "preset_%u_valid", i);
-            if (!prefs.getBool(key, false)) {
-                prefs.end();
-                return i;
-            }
-        }
-
-        prefs.end();
-#endif
-        return -1;
     }
 
     TimersConfig ConfigManager::loadTimersConfig() {
@@ -480,7 +264,7 @@ namespace Config {
 
         prefs.end();
 
-        Serial.printf("TouchConfig: Loaded - enabled=%d, threshold=%u\n",
+        Serial.printf("TouchConfig: Loaded - enabled=%d, threshold=%u\r\n",
                       touchConfig.enabled, touchConfig.threshold);
 #endif
 
@@ -496,7 +280,7 @@ namespace Config {
 
         prefs.end();
 
-        Serial.printf("TouchConfig: Saved - enabled=%d, threshold=%u\n",
+        Serial.printf("TouchConfig: Saved - enabled=%d, threshold=%u\r\n",
                       config.enabled, config.threshold);
 #endif
     }
@@ -506,16 +290,14 @@ namespace Config {
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, true); // Read-only mode
 
-        sensorConfig.sht4x_enabled = prefs.getBool("sns_sht4x_en", true);
-        sensorConfig.sht4x_address = prefs.getUChar("sns_sht4x_addr", 0x44);
-        sensorConfig.bme680_enabled = prefs.getBool("sns_bme680_en", false);
-        sensorConfig.bme680_address = prefs.getUChar("sns_bme680_addr", 0x77);
+        String assign = prefs.getString("sns_assign", "");
+
+        strncpy(sensorConfig.assignments, assign.c_str(), sizeof(sensorConfig.assignments) - 1);
+        sensorConfig.assignments[sizeof(sensorConfig.assignments) - 1] = '\0';
 
         prefs.end();
 
-        Serial.printf("SensorConfig: Loaded - SHT4x=%d@0x%02X, BME680=%d@0x%02X\n",
-                      sensorConfig.sht4x_enabled, sensorConfig.sht4x_address,
-                      sensorConfig.bme680_enabled, sensorConfig.bme680_address);
+        Serial.printf("SensorConfig: Loaded assignments='%s'\r\n", sensorConfig.assignments);
 #endif
 
         return sensorConfig;
@@ -525,16 +307,11 @@ namespace Config {
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, false); // Read-write mode
 
-        prefs.putBool("sns_sht4x_en", config.sht4x_enabled);
-        prefs.putUChar("sns_sht4x_addr", config.sht4x_address);
-        prefs.putBool("sns_bme680_en", config.bme680_enabled);
-        prefs.putUChar("sns_bme680_addr", config.bme680_address);
+        prefs.putString("sns_assign", config.assignments);
 
         prefs.end();
 
-        Serial.printf("SensorConfig: Saved - SHT4x=%d@0x%02X, BME680=%d@0x%02X\n",
-                      config.sht4x_enabled, config.sht4x_address,
-                      config.bme680_enabled, config.bme680_address);
+        Serial.printf("SensorConfig: Saved assignments='%s'\r\n", config.assignments);
 #endif
     }
 

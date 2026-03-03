@@ -11,12 +11,12 @@ TimerScheduler::TimerScheduler(Config::ConfigManager &config, SensorController &
 void TimerScheduler::begin() {
     timersConfig = config.loadTimersConfig();
 #ifdef ARDUINO
-    Serial.printf("TimerScheduler: Loaded %d timers, timezone offset: %d hours\n",
+    Serial.printf("TimerScheduler: Loaded %d timers, timezone offset: %d hours\r\n",
                   Config::TimersConfig::MAX_TIMERS, timersConfig.timezone_offset_hours);
 
     for (uint8_t i = 0; i < Config::TimersConfig::MAX_TIMERS; i++) {
         if (timersConfig.timers[i].enabled) {
-            Serial.printf("  Timer %d: type=%d, action=%d, target=%u\n",
+            Serial.printf("  Timer %d: type=%d, action=%d, target=%u\r\n",
                           i, static_cast<int>(timersConfig.timers[i].type),
                           static_cast<int>(timersConfig.timers[i].action),
                           timersConfig.timers[i].target_time);
@@ -102,33 +102,23 @@ void TimerScheduler::executeTimer(uint8_t index) {
 #ifdef ARDUINO
     const Config::TimerEntry &timer = timersConfig.timers[index];
 
-    Serial.printf("TimerScheduler: Executing timer %d, action=%d\n",
+    Serial.printf("TimerScheduler: Executing timer %d, action=%d\r\n",
                   index, static_cast<int>(timer.action));
 
     switch (timer.action) {
-        case Config::TimerAction::TURN_OFF:
+        case Config::TimerAction::ENABLE_CONTROL:
+            // For temperature controller, "turn on" means enable temperature control
+            sensorController.setControlEnabled(true);
+            Serial.println("TimerScheduler: Temperature control enabled");
+            break;
+
+        case Config::TimerAction::DISABLE_CONTROL:
             // For temperature controller, "turn off" means disable temperature control
             sensorController.setControlEnabled(false);
             Serial.println("TimerScheduler: Temperature control disabled");
             break;
 
-        case Config::TimerAction::LOAD_PRESET:
-            // For temperature controller, presets could set specific target temperatures
-            // This is a placeholder - in a full implementation, we'd load temperature presets
-            {
-                Config::PresetsConfig presetsConfig = config.loadPresetsConfig();
-                if (timer.preset_index < Config::PresetsConfig::MAX_PRESETS &&
-                    presetsConfig.presets[timer.preset_index].valid) {
-                    // In a temperature controller, presets could contain target temperatures
-                    // For now, just enable control as a placeholder
-                    sensorController.setControlEnabled(true);
-                    Serial.printf("TimerScheduler: Activated temperature preset %d (%s)\n",
-                                  timer.preset_index, presetsConfig.presets[timer.preset_index].name);
-                } else {
-                    Serial.printf("TimerScheduler: Preset %d is invalid, cancelling timer\n",
-                                  timer.preset_index);
-                }
-            }
+        case Config::TimerAction::UPDATE_SETPOINT:
             break;
     }
 #endif
@@ -152,7 +142,7 @@ bool TimerScheduler::setCountdown(uint8_t index, uint32_t durationSeconds,
     config.saveTimersConfig(timersConfig);
 
 #ifdef ARDUINO
-    Serial.printf("TimerScheduler: Set countdown timer %d for %u seconds\n", index, durationSeconds);
+    Serial.printf("TimerScheduler: Set countdown timer %d for %u seconds\r\n", index, durationSeconds);
 #endif
 
     return true;
@@ -181,7 +171,7 @@ bool TimerScheduler::setDailyAlarm(uint8_t index, uint32_t secondsSinceMidnight,
 #ifdef ARDUINO
     uint8_t hours = secondsSinceMidnight / 3600;
     uint8_t minutes = (secondsSinceMidnight % 3600) / 60;
-    Serial.printf("TimerScheduler: Set daily alarm %d for %02d:%02d\n", index, hours, minutes);
+    Serial.printf("TimerScheduler: Set daily alarm %d for %02d:%02d\r\n", index, hours, minutes);
 #endif
 
     return true;
@@ -196,7 +186,7 @@ bool TimerScheduler::cancelTimer(uint8_t index) {
     config.saveTimersConfig(timersConfig);
 
 #ifdef ARDUINO
-    Serial.printf("TimerScheduler: Cancelled timer %d\n", index);
+    Serial.printf("TimerScheduler: Cancelled timer %d\r\n", index);
 #endif
 
     return true;
@@ -245,6 +235,6 @@ void TimerScheduler::setTimezoneOffset(int8_t offsetHours) {
     config.saveTimersConfig(timersConfig);
 
 #ifdef ARDUINO
-    Serial.printf("TimerScheduler: Set timezone offset to %d hours\n", offsetHours);
+    Serial.printf("TimerScheduler: Set timezone offset to %d hours\r\n", offsetHours);
 #endif
 }
