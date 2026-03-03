@@ -176,6 +176,7 @@ void WebServerManager::setupAPIRoutes() {
         // Temperature control info
         doc["target_temperature"] = sensorController.getTargetTemperature();
         doc["control_enabled"] = sensorController.isControlEnabled();
+        doc["show_measurement_overview"] = deviceConfig.show_measurement_overview;
 
         // Network info
         doc["wifi_connected"] = WiFiClass::status() == WL_CONNECTED;
@@ -327,6 +328,34 @@ void WebServerManager::setupAPIRoutes() {
         String sensorResponse;
         serializeJson(doc, sensorResponse);
         request->send(200, CONTENT_TYPE_JSON, sensorResponse);
+    });
+
+    // GET /api/measurements - Get detailed overview of most recent measurements as a table
+    server.on("/api/measurements", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        JsonDocument doc;
+
+        doc["valid"] = sensorController.isDataValid();
+        doc["timestamp"] = sensorController.getLastReadingTimestamp();
+
+        JsonArray rows = doc["measurements"].to<JsonArray>();
+        if (sensorController.isDataValid()) {
+            for (const auto &m : sensorController.getMeasurements()) {
+                auto row = rows.add<JsonObject>();
+                row["type"] = Sensor::measurementTypeLabel(m.type);
+                row["unit"] = Sensor::measurementTypeUnit(m.type);
+                row["sensor"] = m.sensor;
+                row["calculated"] = m.calculated;
+                if (const auto *i = std::get_if<int32_t>(&m.value)) {
+                    row["value"] = *i;
+                } else {
+                    row["value"] = std::get<float>(m.value);
+                }
+            }
+        }
+
+        String measurementResponse;
+        serializeJson(doc, measurementResponse);
+        request->send(200, CONTENT_TYPE_JSON, measurementResponse);
     });
 
     // POST /api/temperature/target - Set target temperature
@@ -546,6 +575,37 @@ void WebServerManager::setupAPIRoutes() {
                       request->send(200, CONTENT_TYPE_JSON,
                                     R"({"success":true,"message":"Device settings updated, restarting..."})");
                       config.requestRestart(1000);
+                  }
+              }
+    );
+
+    // POST /api/settings/measurement-overview - Toggle measurement overview table
+    server.on("/api/settings/measurement-overview", HTTP_POST,
+              []([[maybe_unused]] AsyncWebServerRequest *request) {
+              },
+              nullptr,
+              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+                     [[maybe_unused]] size_t total) {
+                  if (index == 0) {
+                      JsonDocument doc;
+                      DeserializationError error = deserializeJson(doc, data, len);
+
+                      if (error) {
+                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
+                          return;
+                      }
+
+                      if (!doc["enabled"].is<bool>()) {
+                          request->send(400, CONTENT_TYPE_JSON,
+                                        R"({"success":false,"error":"enabled (bool) required"})");
+                          return;
+                      }
+
+                      Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
+                      deviceConfig.show_measurement_overview = doc["enabled"].as<bool>();
+                      config.saveDeviceConfig(deviceConfig);
+
+                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
                   }
               }
     );

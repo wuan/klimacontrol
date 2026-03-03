@@ -45,6 +45,22 @@
                     <div class="status-value" id="timerStatus">-</div>
                 </div>
             </div>
+
+            <div id="measurementOverview" style="display: none; margin-top: 16px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #ccc;">
+                            <th style="text-align: left; padding: 6px 8px;">Measurement</th>
+                            <th style="text-align: right; padding: 6px 8px;">Value</th>
+                            <th style="text-align: left; padding: 6px 8px;">Unit</th>
+                            <th style="text-align: left; padding: 6px 8px;">Sensor</th>
+                        </tr>
+                    </thead>
+                    <tbody id="measurementTableBody">
+                        <tr><td colspan="4" style="padding: 8px; color: #888;">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <div class="nav-footer">
@@ -158,8 +174,46 @@
                     controlStatusElement.textContent = currentStatus.control_enabled ? 'Active' : 'Off';
                     controlStatusElement.style.color = currentStatus.control_enabled ? '#28a745' : '#dc3545';
                 }
+
+                // Show/hide measurement overview based on setting
+                const overviewDiv = document.getElementById('measurementOverview');
+                if (overviewDiv) {
+                    if (currentStatus.show_measurement_overview) {
+                        overviewDiv.style.display = 'block';
+                        updateMeasurementOverview();
+                    } else {
+                        overviewDiv.style.display = 'none';
+                    }
+                }
             } catch (error) {
                 console.error('Failed to update status:', error);
+            }
+        }
+
+        async function updateMeasurementOverview() {
+            try {
+                const response = await fetch('/api/measurements');
+                const data = await response.json();
+                const tbody = document.getElementById('measurementTableBody');
+                if (!tbody) return;
+                if (!data.valid || !data.measurements || data.measurements.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="padding: 8px; color: #888;">No data available</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.measurements.map(m => {
+                    const val = typeof m.value === 'number'
+                        ? (Number.isInteger(m.value) ? m.value : m.value.toFixed(2))
+                        : esc(String(m.value));
+                    const calcNote = m.calculated ? ' <small style="color:#888;">(calc)</small>' : '';
+                    return `<tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 6px 8px;">${esc(m.type)}${calcNote}</td>
+                        <td style="padding: 6px 8px; text-align: right;">${val}</td>
+                        <td style="padding: 6px 8px;">${esc(m.unit)}</td>
+                        <td style="padding: 6px 8px; color: #666;">${esc(m.sensor)}</td>
+                    </tr>`;
+                }).join('');
+            } catch (error) {
+                console.error('Failed to fetch measurements:', error);
             }
         }
 

@@ -39,11 +39,13 @@ namespace Config {
         float target_temperature; // Target temperature for control
         bool temperature_control_enabled; // Temperature control enabled
         float elevation; // Meters above sea level, for sea-level pressure calculation
+        bool show_measurement_overview; // Show detailed measurement overview table on main page
 
         DeviceConfig() : sensor_i2c_address(0x44), // Default SHT4x address
                          target_temperature(22.0f),
                          temperature_control_enabled(false),
                          elevation(0.0f),
+                         show_measurement_overview(false),
                          device_id(""),
                          device_name("") {
         }
