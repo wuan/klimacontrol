@@ -60,6 +60,10 @@
                     <span class="slider"></span>
                 </label>
             </div>
+
+            <div class="info-box" id="measurementOverviewStatus">
+                <strong>Status: </strong><span id="measurementOverviewStatusText">Loading...</span>
+            </div>
         </div>
 
         <div class="section">
@@ -453,9 +457,12 @@
         try {
             const response = await fetch('/api/status');
             const data = await response.json();
-            document.getElementById('measurementOverviewEnabled').checked = !!data.show_measurement_overview;
+            const enabled = !!data.show_measurement_overview;
+            document.getElementById('measurementOverviewEnabled').checked = enabled;
+            document.getElementById('measurementOverviewStatusText').textContent = enabled ? 'Enabled' : 'Disabled';
         } catch (error) {
             console.error('Failed to load measurement overview setting:', error);
+            document.getElementById('measurementOverviewStatusText').textContent = 'Error loading';
         }
     }
 
@@ -470,10 +477,12 @@
             if (!response.ok) {
                 throw new Error('Failed to update');
             }
+            document.getElementById('measurementOverviewStatusText').textContent = enabled ? 'Enabled' : 'Disabled';
         } catch (error) {
             console.error('Failed to update measurement overview setting:', error);
             alert('Failed to update measurement overview setting');
             document.getElementById('measurementOverviewEnabled').checked = !enabled;
+            document.getElementById('measurementOverviewStatusText').textContent = !enabled ? 'Enabled' : 'Disabled';
         }
     }
 
