@@ -4,6 +4,11 @@
 #ifdef ARDUINO
 #include <Preferences.h>
 #include <Arduino.h>
+#else
+#include <cstdint>
+#include <cstring>
+#include <string>
+using String = std::string;
 #endif
 
 #include "Constants.h"

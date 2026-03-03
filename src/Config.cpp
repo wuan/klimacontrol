@@ -9,18 +9,20 @@ namespace Config {
     }
 
     void ConfigManager::requestRestart(uint32_t delayMs) {
+#ifdef ARDUINO
         restartAt = millis() + delayMs;
         restartRequested = true;
         Serial.printf("Config: Restart requested in %u ms\r\n", delayMs);
+#endif
     }
 
     void ConfigManager::checkRestart() {
+#ifdef ARDUINO
         if (restartRequested && millis() >= restartAt) {
             Serial.println("Config: Performing scheduled restart...");
-#ifdef ARDUINO
             ESP.restart();
-#endif
         }
+#endif
     }
 
     void ConfigManager::begin() {
@@ -42,9 +44,11 @@ namespace Config {
     }
 
     void ConfigManager::markUnconfigured() {
+#ifdef ARDUINO
         prefs.begin(NAMESPACE, false); // Read-only mode
         prefs.putBool("configured", false);
         prefs.end();
+#endif
     }
 
     WiFiConfig ConfigManager::loadWiFiConfig() {
