@@ -329,6 +329,34 @@ void WebServerManager::setupAPIRoutes() {
         request->send(200, CONTENT_TYPE_JSON, sensorResponse);
     });
 
+    // GET /api/measurements - Get detailed overview of most recent measurements as a table
+    server.on("/api/measurements", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        JsonDocument doc;
+
+        doc["valid"] = sensorController.isDataValid();
+        doc["timestamp"] = sensorController.getLastReadingTimestamp();
+
+        JsonArray rows = doc["measurements"].to<JsonArray>();
+        if (sensorController.isDataValid()) {
+            for (const auto &m : sensorController.getMeasurements()) {
+                auto row = rows.add<JsonObject>();
+                row["type"] = Sensor::measurementTypeLabel(m.type);
+                row["unit"] = Sensor::measurementTypeUnit(m.type);
+                row["sensor"] = m.sensor;
+                row["calculated"] = m.calculated;
+                if (const auto *i = std::get_if<int32_t>(&m.value)) {
+                    row["value"] = *i;
+                } else {
+                    row["value"] = std::get<float>(m.value);
+                }
+            }
+        }
+
+        String measurementResponse;
+        serializeJson(doc, measurementResponse);
+        request->send(200, CONTENT_TYPE_JSON, measurementResponse);
+    });
+
     // POST /api/temperature/target - Set target temperature
     server.on("/api/temperature/target", HTTP_POST,
               []([[maybe_unused]] AsyncWebServerRequest *request) {

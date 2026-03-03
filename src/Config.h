@@ -139,6 +139,10 @@ namespace Config {
         Preferences prefs;
 #endif
         static constexpr const char *NAMESPACE = "klima";
+        static constexpr const char *TARGET_TEMPERATURE = "target_temperature";
+        static constexpr const char *TEMPERATURE_CONTROL_ENABLED = "temperature_control_enabled";
+        static constexpr const char *ELEVATION = "elevation";
+
 
         bool restartRequested = false;
         uint32_t restartAt = 0;

@@ -45,6 +45,23 @@
                     <div class="status-value" id="timerStatus">-</div>
                 </div>
             </div>
+
+            <div id="measurementOverview" style="margin-top: 16px;">
+                <button class="btn btn-primary" onclick="loadMeasurements()" style="width: auto; padding: 10px 16px; margin-bottom: 10px;">Load Measurements</button>
+                <button class="btn btn-danger" id="clearMeasurementsBtn" onclick="clearMeasurements()" style="display: none; width: auto; padding: 10px 16px; margin-bottom: 10px; margin-left: 8px;">Clear</button>
+                <table id="measurementTable" style="display: none; width: 100%; border-collapse: collapse; font-size: 0.95em;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #ccc;">
+                            <th style="text-align: left; padding: 6px 8px;">Measurement</th>
+                            <th style="text-align: right; padding: 6px 8px;">Value</th>
+                            <th style="text-align: left; padding: 6px 8px;">Unit</th>
+                            <th style="text-align: left; padding: 6px 8px;">Sensor</th>
+                        </tr>
+                    </thead>
+                    <tbody id="measurementTableBody">
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <div class="nav-footer">
@@ -161,6 +178,48 @@
             } catch (error) {
                 console.error('Failed to update status:', error);
             }
+        }
+
+        async function loadMeasurements() {
+            try {
+                const response = await fetch('/api/measurements');
+                const data = await response.json();
+                const tbody = document.getElementById('measurementTableBody');
+                const table = document.getElementById('measurementTable');
+                const clearBtn = document.getElementById('clearMeasurementsBtn');
+                if (!tbody || !table) return;
+                if (!data.valid || !data.measurements || data.measurements.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="padding: 8px; color: #888;">No data available</td></tr>';
+                    table.style.display = 'table';
+                    if (clearBtn) clearBtn.style.display = 'inline-block';
+                    return;
+                }
+                tbody.innerHTML = data.measurements.map(m => {
+                    const val = typeof m.value === 'number'
+                        ? (Number.isInteger(m.value) ? m.value : m.value.toFixed(2))
+                        : esc(String(m.value));
+                    const calcNote = m.calculated ? ' <small style="color:#888;">(calc)</small>' : '';
+                    return `<tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 6px 8px;">${esc(m.type)}${calcNote}</td>
+                        <td style="padding: 6px 8px; text-align: right;">${val}</td>
+                        <td style="padding: 6px 8px;">${esc(m.unit)}</td>
+                        <td style="padding: 6px 8px; color: #666;">${esc(m.sensor)}</td>
+                    </tr>`;
+                }).join('');
+                table.style.display = 'table';
+                if (clearBtn) clearBtn.style.display = 'inline-block';
+            } catch (error) {
+                console.error('Failed to fetch measurements:', error);
+            }
+        }
+
+        function clearMeasurements() {
+            const table = document.getElementById('measurementTable');
+            const tbody = document.getElementById('measurementTableBody');
+            const clearBtn = document.getElementById('clearMeasurementsBtn');
+            if (table) table.style.display = 'none';
+            if (tbody) tbody.innerHTML = '';
+            if (clearBtn) clearBtn.style.display = 'none';
         }
 
         // Timer status display
