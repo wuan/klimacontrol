@@ -40,9 +40,11 @@ pio run -e adafruit_qtpy_esp32s2
 # Upload to device
 pio run -e adafruit_qtpy_esp32s2 -t upload
 
-# Monitor serial output
+# Monitor serial output (with exception decoder)
 pio device monitor
 ```
+
+> **Exception Decoder**: The serial monitor runs with the `esp32_exception_decoder` filter enabled (configured via `monitor_filters` in `platformio.ini`). This automatically decodes ESP32 crash stack traces — addresses in exception/backtrace output are resolved to function names and source file line numbers using the debug ELF file. The firmware is built with `build_type = debug` to include debug symbols required for decoding.
 
 ### Initial Setup
 
