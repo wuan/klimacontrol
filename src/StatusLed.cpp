@@ -1,7 +1,15 @@
 #include "StatusLed.h"
 
-StatusLed::StatusLed()
+#ifndef ARDUINO
+unsigned long millis();
+#endif
+
+StatusLed::StatusLed() 
+#ifdef ARDUINO
     : pixel(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800), state(LedState::OFF),
+#else
+    : state(LedState::OFF),
+#endif
       lastChange(0), ledOn(false), brightness(0.0f), direction(1),
       currentColor(0x000000), progress(0.0f), mqttFlashStart(0) {
 }
@@ -67,7 +75,6 @@ void StatusLed::showColor(uint32_t color) {
 }
 
 void StatusLed::update() {
-#ifdef ARDUINO
     unsigned long now = millis();
 
     switch (state) {
@@ -144,7 +151,6 @@ void StatusLed::update() {
             }
             break;
     }
-#endif
 }
 
 void StatusLed::on() {
