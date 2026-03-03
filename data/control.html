@@ -48,6 +48,7 @@
 
             <div id="measurementOverview" style="margin-top: 16px;">
                 <button class="btn btn-primary" onclick="loadMeasurements()" style="width: auto; padding: 10px 16px; margin-bottom: 10px;">Load Measurements</button>
+                <button class="btn btn-danger" id="clearMeasurementsBtn" onclick="clearMeasurements()" style="display: none; width: auto; padding: 10px 16px; margin-bottom: 10px; margin-left: 8px;">Clear</button>
                 <table id="measurementTable" style="display: none; width: 100%; border-collapse: collapse; font-size: 0.95em;">
                     <thead>
                         <tr style="border-bottom: 2px solid #ccc;">
@@ -185,10 +186,12 @@
                 const data = await response.json();
                 const tbody = document.getElementById('measurementTableBody');
                 const table = document.getElementById('measurementTable');
+                const clearBtn = document.getElementById('clearMeasurementsBtn');
                 if (!tbody || !table) return;
                 if (!data.valid || !data.measurements || data.measurements.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" style="padding: 8px; color: #888;">No data available</td></tr>';
                     table.style.display = 'table';
+                    if (clearBtn) clearBtn.style.display = 'inline-block';
                     return;
                 }
                 tbody.innerHTML = data.measurements.map(m => {
@@ -204,9 +207,19 @@
                     </tr>`;
                 }).join('');
                 table.style.display = 'table';
+                if (clearBtn) clearBtn.style.display = 'inline-block';
             } catch (error) {
                 console.error('Failed to fetch measurements:', error);
             }
+        }
+
+        function clearMeasurements() {
+            const table = document.getElementById('measurementTable');
+            const tbody = document.getElementById('measurementTableBody');
+            const clearBtn = document.getElementById('clearMeasurementsBtn');
+            if (table) table.style.display = 'none';
+            if (tbody) tbody.innerHTML = '';
+            if (clearBtn) clearBtn.style.display = 'none';
         }
 
         // Timer status display
