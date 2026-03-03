@@ -151,7 +151,6 @@ void StatusLed::update() {
             }
             break;
     }
-#endif
 }
 
 void StatusLed::on() {

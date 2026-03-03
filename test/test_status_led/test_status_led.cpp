@@ -23,7 +23,7 @@ StatusLed* testLed;
 
 void setUp() {
     mockMillis = 0;
-    testLed = new StatusLed(13, 1); // Use pin 13, 1 pixel for testing
+    testLed = new StatusLed();
     testLed->begin();
 }
 
