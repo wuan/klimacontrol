@@ -177,6 +177,7 @@ void WebServerManager::setupAPIRoutes() {
         doc["target_temperature"] = sensorController.getTargetTemperature();
         doc["control_enabled"] = sensorController.isControlEnabled();
         doc["show_measurement_overview"] = deviceConfig.show_measurement_overview;
+        Serial.printf("Read measurement-overview %d\r\n", deviceConfig.show_measurement_overview);
 
         // Network info
         doc["wifi_connected"] = WiFiClass::status() == WL_CONNECTED;
@@ -603,6 +604,7 @@ void WebServerManager::setupAPIRoutes() {
 
                       Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
                       deviceConfig.show_measurement_overview = doc["enabled"].as<bool>();
+                      Serial.printf("Update measurement-overview %d\r\n", deviceConfig.show_measurement_overview);
                       config.saveDeviceConfig(deviceConfig);
 
                       request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
