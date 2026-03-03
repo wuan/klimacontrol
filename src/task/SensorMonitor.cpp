@@ -18,7 +18,7 @@ namespace Task {
         xTaskCreate(
             taskWrapper, // Task Function
             "SensorMonitor", // Task Name
-            8000, // Stack Size (8KB)
+            12000, // Stack Size (12KB)
             this, // Parameters
             1, // Priority (same as LED task)
             &taskHandle // Task Handle
@@ -41,7 +41,8 @@ namespace Task {
             if (controller.isControlEnabled()) {
                 controller.updateControl();
             }
-            auto duration = std::max(readingInterval - (millis() - startTime), 1ul);
+            unsigned long elapsed = millis() - startTime;
+            unsigned long duration = elapsed < readingInterval ? readingInterval - elapsed : 1ul;
 
             vTaskDelay(duration / portTICK_PERIOD_MS);
         }

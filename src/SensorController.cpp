@@ -146,7 +146,7 @@ void SensorController::readSensors() {
                     Serial.printf("SensorController: Sensor %s - invalid data\r\n", sensor->getType());
                 }
             } else {
-                Serial.printf("SensorController: Sensor %s - not connected\r\n", sensor->getType());
+                Serial.println("SensorController: Sensor - not connected (null)");
             }
         // }
     }
@@ -164,22 +164,30 @@ void SensorController::readSensors() {
 
 float SensorController::getTemperature() const {
     auto* m = Sensor::findMeasurement(currentMeasurements, Sensor::MeasurementType::Temperature);
-    return m ? std::get<float>(m->value) : NAN;
+    if (!m) return NAN;
+    const float* f = std::get_if<float>(&m->value);
+    return f ? *f : NAN;
 }
 
 float SensorController::getRelativeHumidity() const {
     auto* m = Sensor::findMeasurement(currentMeasurements, Sensor::MeasurementType::RelativeHumidity);
-    return m ? std::get<float>(m->value) : NAN;
+    if (!m) return NAN;
+    const float* f = std::get_if<float>(&m->value);
+    return f ? *f : NAN;
 }
 
 float SensorController::getDewPoint() const {
     auto* m = Sensor::findMeasurement(currentMeasurements, Sensor::MeasurementType::DewPoint);
-    return m ? std::get<float>(m->value) : NAN;
+    if (!m) return NAN;
+    const float* f = std::get_if<float>(&m->value);
+    return f ? *f : NAN;
 }
 
 int32_t SensorController::getVocIndex() const {
     auto* m = Sensor::findMeasurement(currentMeasurements, Sensor::MeasurementType::VocIndex);
-    return m ? std::get<int32_t>(m->value) : -1;
+    if (!m) return -1;
+    const int32_t* i = std::get_if<int32_t>(&m->value);
+    return i ? *i : -1;
 }
 
 Sensor::Sensor *SensorController::getSensor(size_t index) {
@@ -228,14 +236,17 @@ float SensorController::updateControl() {
     integral = std::max(MinOutput, std::min(MaxOutput, integral));
 
     // Derivative term
-    float derivative = Kd * (error - previousError) / dt;
+    float derivative = 0.0f;
+    if (dt > 0.0f) {
+        derivative = Kd * (error - previousError) / dt;
+    }
     previousError = error;
 
     // Calculate control output
     float output = proportional + integral + derivative;
     output = std::max(MinOutput, std::min(MaxOutput, output));
 
-    if (dt > 0) {
+    if (dt > 0.0f) {
         Serial.printf("Control: T=%.1f°C (target=%.1f°C), output=%.2f, P=%.2f, I=%.2f, D=%.2f\r\n",
                      currentTemp, targetTemperature, output, proportional, integral, derivative);
     }
