@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Klima-Control** is an ESP32-based temperature controller with web interface for monitoring and controlling temperature and humidity. It runs on the Adafruit QT Py ESP32-S2 (no PSRAM) and uses SHT4x sensors for precise environmental monitoring.
+**Klima-Control** is an ESP32-based temperature controller with web interface for monitoring and controlling temperature and humidity. It runs on the Adafruit QT Py ESP32-S2 and uses a variety of sensors connected via the Stemma I2c port for precise environmental monitoring.
 
 **Key characteristics:**
 - Single-core architecture optimized for ESP32-S2
