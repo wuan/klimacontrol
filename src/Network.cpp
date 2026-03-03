@@ -303,6 +303,13 @@ void Network::configureUsingAPMode() {
 
     unsigned long lastCheck = millis();
     unsigned long lastSecond = millis();
+    unsigned long lastDiagnostics = millis();
+    unsigned long lastNtpRetry = 0; // millis() of last NTP retry when unsynced
+    uint8_t wifiReconnectFailures = 0;
+    static constexpr uint8_t MAX_WIFI_RECONNECT_FAILURES = 10;
+    static constexpr uint32_t MIN_FREE_HEAP_BYTES = 16384; // 16 KB
+    static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 300000; // 5 minutes
+    static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
     while (true) {
         vTaskDelay(500 / portTICK_PERIOD_MS);
 
@@ -315,6 +322,14 @@ void Network::configureUsingAPMode() {
         // if (touchController) {
         //     touchController->update();
         // }
+
+        // Low heap check - restart cleanly before an OOM crash
+        uint32_t freeHeap = ESP.getFreeHeap();
+        if (freeHeap < MIN_FREE_HEAP_BYTES) {
+            Serial.printf("CRITICAL: Low heap %u bytes - restarting...\r\n", freeHeap);
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            ESP.restart();
+        }
 
         if (now - lastSecond >= 1000) {
             lastSecond = now;
@@ -338,16 +353,40 @@ void Network::configureUsingAPMode() {
 
                 if (WiFi.status() == WL_CONNECTED) {
                     Serial.printf("WiFi reconnected (%d attempts)\r\n", attempts);
+                    wifiReconnectFailures = 0;
+                } else {
+                    wifiReconnectFailures++;
+                    Serial.printf("WiFi reconnect failed (%u/%u)\r\n",
+                                  wifiReconnectFailures, MAX_WIFI_RECONNECT_FAILURES);
+                    if (wifiReconnectFailures >= MAX_WIFI_RECONNECT_FAILURES) {
+                        Serial.println("Too many WiFi reconnect failures - restarting...");
+                        vTaskDelay(500 / portTICK_PERIOD_MS);
+                        ESP.restart();
+                    }
                 }
+            } else {
+                wifiReconnectFailures = 0;
             }
 
-            if (ntpClient.getEpochTime() - lastNtpUpdate > 3600) {
+            // NTP update - guard against epoch 0 causing uint32_t underflow
+            uint32_t currentEpoch = ntpClient.getEpochTime();
+            if (currentEpoch > 0 && lastNtpUpdate > 0
+                    && currentEpoch - lastNtpUpdate > 3600) {
                 bool result = ntpClient.update();
                 Serial.print("NTP update: ");
                 Serial.print(ntpClient.getFormattedTime());
                 Serial.print(" - ");
                 Serial.println(result ? "success" : "failed");
-                lastNtpUpdate = ntpClient.getEpochTime();
+                if (result) {
+                    lastNtpUpdate = ntpClient.getEpochTime();
+                }
+            } else if (currentEpoch == 0 && lastNtpUpdate == 0
+                       && now - lastNtpRetry >= NTP_UNSYNCED_RETRY_MS) {
+                // NTP not yet synced - retry at most once per minute
+                lastNtpRetry = now;
+                if (ntpClient.update()) {
+                    lastNtpUpdate = ntpClient.getEpochTime();
+                }
             }
 
             // Check timers
@@ -379,6 +418,17 @@ void Network::configureUsingAPMode() {
                     }
                 } else if (statusLed) {
                     statusLed->setProgress(0.0f);
+                }
+            }
+
+            // Periodic diagnostics: heap and task stack high-water marks
+            if (now - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {
+                lastDiagnostics = now;
+                Serial.printf("Diagnostics: heap=%u bytes (min=%u), uptime=%lu s\r\n",
+                              ESP.getFreeHeap(), ESP.getMinFreeHeap(), now / 1000);
+                if (taskHandle) {
+                    Serial.printf("  Network task stack HWM: %u bytes\r\n",
+                                  uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
                 }
             }
         }

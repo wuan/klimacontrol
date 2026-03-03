@@ -126,6 +126,67 @@ void test_pid_derivative_negative_error_change() {
     TEST_ASSERT_FLOAT_WITHIN(0.001f, -1.0f, d);
 }
 
+// --- WiFi reconnect failure counter logic ---
+
+// Mirrors the reconnect failure counting in Network::task()
+static constexpr uint8_t MAX_WIFI_RECONNECT_FAILURES = 10;
+
+static bool shouldRestartOnReconnectFailure(uint8_t failures) {
+    return failures >= MAX_WIFI_RECONNECT_FAILURES;
+}
+
+void test_wifi_reconnect_failure_below_threshold() {
+    // 9 failures must NOT trigger restart
+    TEST_ASSERT_FALSE(shouldRestartOnReconnectFailure(9));
+}
+
+void test_wifi_reconnect_failure_at_threshold() {
+    // At exactly the threshold restart is triggered
+    TEST_ASSERT_TRUE(shouldRestartOnReconnectFailure(MAX_WIFI_RECONNECT_FAILURES));
+}
+
+void test_wifi_reconnect_failure_reset_on_success() {
+    // After a successful reconnect the counter resets to 0, no restart
+    uint8_t failures = MAX_WIFI_RECONNECT_FAILURES - 1;
+    failures = 0; // simulates reset on success
+    TEST_ASSERT_FALSE(shouldRestartOnReconnectFailure(failures));
+}
+
+// --- NTP epoch guard logic ---
+
+// Mirrors the guard condition in Network::task():
+//   if (currentEpoch > 0 && lastNtpUpdate > 0 && currentEpoch - lastNtpUpdate > 3600)
+static bool shouldUpdateNtp(uint32_t currentEpoch, uint32_t lastNtpUpdate) {
+    return currentEpoch > 0 && lastNtpUpdate > 0
+           && currentEpoch - lastNtpUpdate > 3600;
+}
+
+void test_ntp_epoch_guard_both_zero_no_update() {
+    // Both zero (NTP never synced) – must NOT trigger an update
+    TEST_ASSERT_FALSE(shouldUpdateNtp(0u, 0u));
+}
+
+void test_ntp_epoch_guard_time_elapsed_triggers_update() {
+    // More than one hour elapsed since last sync – must trigger
+    uint32_t last = 1700000000u;
+    uint32_t current = last + 3601u;
+    TEST_ASSERT_TRUE(shouldUpdateNtp(current, last));
+}
+
+void test_ntp_epoch_guard_current_zero_no_spurious_update() {
+    // currentEpoch == 0 while lastNtpUpdate is valid – uint32_t underflow
+    // would previously evaluate to a huge number; guard must prevent this
+    uint32_t last = 1700000000u;
+    TEST_ASSERT_FALSE(shouldUpdateNtp(0u, last));
+}
+
+void test_ntp_epoch_guard_last_zero_current_nonzero_no_update() {
+    // lastNtpUpdate == 0 means we haven't recorded a successful sync yet –
+    // must NOT trigger a spurious update based on a large difference
+    uint32_t current = 1700000000u;
+    TEST_ASSERT_FALSE(shouldUpdateNtp(current, 0u));
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_safe_get_float_returns_value_when_float);
@@ -142,6 +203,13 @@ int runUnityTests() {
     RUN_TEST(test_pid_derivative_normal);
     RUN_TEST(test_pid_derivative_zero_dt_returns_zero);
     RUN_TEST(test_pid_derivative_negative_error_change);
+    RUN_TEST(test_wifi_reconnect_failure_below_threshold);
+    RUN_TEST(test_wifi_reconnect_failure_at_threshold);
+    RUN_TEST(test_wifi_reconnect_failure_reset_on_success);
+    RUN_TEST(test_ntp_epoch_guard_both_zero_no_update);
+    RUN_TEST(test_ntp_epoch_guard_time_elapsed_triggers_update);
+    RUN_TEST(test_ntp_epoch_guard_current_zero_no_spurious_update);
+    RUN_TEST(test_ntp_epoch_guard_last_zero_current_nonzero_no_update);
     return UNITY_END();
 }
 
