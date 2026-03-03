@@ -34,6 +34,9 @@ namespace Task {
     }
     
     void SensorMonitor::task() {
+        unsigned long lastDiagnostics = millis();
+        static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 300000; // 5 minutes
+
         while (true) {
             auto startTime = millis();
             controller.readSensors();
@@ -41,6 +44,14 @@ namespace Task {
             if (controller.isControlEnabled()) {
                 controller.updateControl();
             }
+
+            // Periodic stack high-water mark logging for this task
+            if (startTime - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {
+                lastDiagnostics = startTime;
+                Serial.printf("SensorMonitor stack HWM: %u bytes\r\n",
+                              uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
+            }
+
             unsigned long elapsed = millis() - startTime;
             unsigned long duration = elapsed < readingInterval ? readingInterval - elapsed : 1ul;
 
