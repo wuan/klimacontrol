@@ -46,8 +46,9 @@
                 </div>
             </div>
 
-            <div id="measurementOverview" style="display: none; margin-top: 16px;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.95em;">
+            <div id="measurementOverview" style="margin-top: 16px;">
+                <button class="btn btn-primary" onclick="loadMeasurements()" style="width: auto; padding: 10px 16px; margin-bottom: 10px;">Load Measurements</button>
+                <table id="measurementTable" style="display: none; width: 100%; border-collapse: collapse; font-size: 0.95em;">
                     <thead>
                         <tr style="border-bottom: 2px solid #ccc;">
                             <th style="text-align: left; padding: 6px 8px;">Measurement</th>
@@ -57,7 +58,6 @@
                         </tr>
                     </thead>
                     <tbody id="measurementTableBody">
-                        <tr><td colspan="4" style="padding: 8px; color: #888;">Loading...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -174,30 +174,21 @@
                     controlStatusElement.textContent = currentStatus.control_enabled ? 'Active' : 'Off';
                     controlStatusElement.style.color = currentStatus.control_enabled ? '#28a745' : '#dc3545';
                 }
-
-                // Show/hide measurement overview based on setting
-                const overviewDiv = document.getElementById('measurementOverview');
-                if (overviewDiv) {
-                    if (currentStatus.show_measurement_overview) {
-                        overviewDiv.style.display = 'block';
-                        updateMeasurementOverview();
-                    } else {
-                        overviewDiv.style.display = 'none';
-                    }
-                }
             } catch (error) {
                 console.error('Failed to update status:', error);
             }
         }
 
-        async function updateMeasurementOverview() {
+        async function loadMeasurements() {
             try {
                 const response = await fetch('/api/measurements');
                 const data = await response.json();
                 const tbody = document.getElementById('measurementTableBody');
-                if (!tbody) return;
+                const table = document.getElementById('measurementTable');
+                if (!tbody || !table) return;
                 if (!data.valid || !data.measurements || data.measurements.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" style="padding: 8px; color: #888;">No data available</td></tr>';
+                    table.style.display = 'table';
                     return;
                 }
                 tbody.innerHTML = data.measurements.map(m => {
@@ -212,6 +203,7 @@
                         <td style="padding: 6px 8px; color: #666;">${esc(m.sensor)}</td>
                     </tr>`;
                 }).join('');
+                table.style.display = 'table';
             } catch (error) {
                 console.error('Failed to fetch measurements:', error);
             }

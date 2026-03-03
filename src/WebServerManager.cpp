@@ -176,8 +176,6 @@ void WebServerManager::setupAPIRoutes() {
         // Temperature control info
         doc["target_temperature"] = sensorController.getTargetTemperature();
         doc["control_enabled"] = sensorController.isControlEnabled();
-        doc["show_measurement_overview"] = deviceConfig.show_measurement_overview;
-        Serial.printf("Read measurement-overview %d\r\n", deviceConfig.show_measurement_overview);
 
         // Network info
         doc["wifi_connected"] = WiFiClass::status() == WL_CONNECTED;
@@ -576,38 +574,6 @@ void WebServerManager::setupAPIRoutes() {
                       request->send(200, CONTENT_TYPE_JSON,
                                     R"({"success":true,"message":"Device settings updated, restarting..."})");
                       config.requestRestart(1000);
-                  }
-              }
-    );
-
-    // POST /api/settings/measurement-overview - Toggle measurement overview table
-    server.on("/api/settings/measurement-overview", HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
-                     [[maybe_unused]] size_t total) {
-                  if (index == 0) {
-                      JsonDocument doc;
-                      DeserializationError error = deserializeJson(doc, data, len);
-
-                      if (error) {
-                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
-                          return;
-                      }
-
-                      if (!doc["enabled"].is<bool>()) {
-                          request->send(400, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"enabled (bool) required"})");
-                          return;
-                      }
-
-                      Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-                      deviceConfig.show_measurement_overview = doc["enabled"].as<bool>();
-                      Serial.printf("Update measurement-overview %d\r\n", deviceConfig.show_measurement_overview);
-                      config.saveDeviceConfig(deviceConfig);
-
-                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
                   }
               }
     );

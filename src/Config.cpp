@@ -94,7 +94,6 @@ namespace Config {
         config.target_temperature = prefs.getFloat(TARGET_TEMPERATURE, 22.0f);
         config.temperature_control_enabled = prefs.getBool(TEMPERATURE_CONTROL_ENABLED, false);
         config.elevation = prefs.getFloat(ELEVATION, 0.0f);
-        config.show_measurement_overview = prefs.getBool("show_meas_overview", false);
 
         prefs.end();
 
@@ -122,7 +121,6 @@ namespace Config {
         prefs.putFloat(TARGET_TEMPERATURE, config.target_temperature);
         prefs.putBool(TEMPERATURE_CONTROL_ENABLED, config.temperature_control_enabled);
         prefs.putFloat(ELEVATION, config.elevation);
-        prefs.putBool("show_meas_overview", config.show_measurement_overview);
 
         prefs.end();
 #endif

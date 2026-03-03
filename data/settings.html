@@ -50,23 +50,6 @@
         </div>
 
         <div class="section">
-            <h2>Measurement Overview</h2>
-            <p>Show a detailed table of the most recent sensor readings on the main control page.</p>
-
-            <div class="form-group toggle-row">
-                <span class="toggle-label">Enable measurement overview</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="measurementOverviewEnabled" onchange="updateMeasurementOverview()">
-                    <span class="slider"></span>
-                </label>
-            </div>
-
-            <div class="info-box" id="measurementOverviewStatus">
-                <strong>Status: </strong><span id="measurementOverviewStatusText">Loading...</span>
-            </div>
-        </div>
-
-        <div class="section">
             <h2>I2C Sensors</h2>
             <p>Configure which sensors are connected to the I2C bus (STEMMA QT connector). Changes require a restart.</p>
 
@@ -452,40 +435,6 @@
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
-    // Measurement Overview Functions
-    async function loadMeasurementOverview() {
-        try {
-            const response = await fetch('/api/status');
-            const data = await response.json();
-            const enabled = !!data.show_measurement_overview;
-            document.getElementById('measurementOverviewEnabled').checked = enabled;
-            document.getElementById('measurementOverviewStatusText').textContent = enabled ? 'Enabled' : 'Disabled';
-        } catch (error) {
-            console.error('Failed to load measurement overview setting:', error);
-            document.getElementById('measurementOverviewStatusText').textContent = 'Error loading';
-        }
-    }
-
-    async function updateMeasurementOverview() {
-        const enabled = document.getElementById('measurementOverviewEnabled').checked;
-        try {
-            const response = await fetch('/api/settings/measurement-overview', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({enabled})
-            });
-            if (!response.ok) {
-                throw new Error('Failed to update');
-            }
-            document.getElementById('measurementOverviewStatusText').textContent = enabled ? 'Enabled' : 'Disabled';
-        } catch (error) {
-            console.error('Failed to update measurement overview setting:', error);
-            alert('Failed to update measurement overview setting');
-            document.getElementById('measurementOverviewEnabled').checked = !enabled;
-            document.getElementById('measurementOverviewStatusText').textContent = !enabled ? 'Enabled' : 'Disabled';
-        }
-    }
-
     // Touch Control Functions
     async function loadTouchConfig() {
         try {
@@ -842,7 +791,6 @@
     loadDeviceName();
     loadElevation();
     loadOTAStatus();
-    loadMeasurementOverview();
     loadTouchConfig();
     loadSensorConfig();
     loadMqttConfig();
