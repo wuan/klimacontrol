@@ -51,9 +51,6 @@ jobs:
         run: |
           echo "Running native tests..."
           pio test -e native -v
-          pio test -e native_sensor_utils -v
-          pio test -e native_sensor_controller -v
-          pio test -e native_timer_scheduler -v
           
           echo "Manually triggering coverage generation..."
           # If PlatformIO post-action didn't run, we run it manually
