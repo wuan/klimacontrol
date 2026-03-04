@@ -34,6 +34,7 @@ namespace Sensor {
     SensorReading BMP3xx::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
         (void) prior;
         SensorReading reading;
+        reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
 
         if (!initialized || !isConnected()) {

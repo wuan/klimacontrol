@@ -24,6 +24,7 @@ namespace Sensor {
 
     SensorReading VEML7700::read() {
         SensorReading reading;
+        reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
 
         if (!initialized || !isConnected()) {

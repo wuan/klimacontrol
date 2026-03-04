@@ -20,6 +20,7 @@ namespace Sensor {
 
     SensorReading BH1750Sensor::read() {
         SensorReading reading;
+        reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
 
         if (!initialized || !isConnected()) {

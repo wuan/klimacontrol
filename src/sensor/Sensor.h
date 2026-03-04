@@ -163,6 +163,7 @@ namespace Sensor {
 
         [[nodiscard]] virtual TypeSpan provides() const { return {nullptr, 0}; }
         [[nodiscard]] virtual TypeSpan requires() const { return {nullptr, 0}; }
+        [[nodiscard]] virtual size_t measurementCount() const { return provides().count; }
     };
 
     /**

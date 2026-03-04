@@ -112,6 +112,16 @@ void SensorController::readSensors() {
     Sensor::ReadConfig readConfig;
     readConfig.elevation = config.loadDeviceConfig().elevation;
 
+    // Pre-reserve: each sensor contributes measurementCount() data measurements
+    // plus 1 Time measurement added per valid sensor by this function
+    size_t totalExpected = 0;
+    for (const auto &sensor : sensors) {
+        if (sensor) {
+            totalExpected += sensor->measurementCount() + 1;
+        }
+    }
+    allMeasurements.reserve(totalExpected);
+
     for (auto &sensor : sensors) {
         if (sensor) {
             // if (sensor->isConnected()) {

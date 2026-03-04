@@ -155,6 +155,107 @@ void test_find_measurement_int_value() {
     TEST_ASSERT_EQUAL(150, std::get<int32_t>(m->value));
 }
 
+// --- measurementCount() ---
+
+// Minimal concrete sensor for testing the default measurementCount() implementation
+namespace {
+    struct ThreeMeasurementSensor : public Sensor::Sensor {
+        bool begin() override { return true; }
+        ::Sensor::SensorReading read() override { return {}; }
+        const char* getType() const override { return "Test3"; }
+        bool isConnected() override { return true; }
+        [[nodiscard]] ::Sensor::TypeSpan provides() const override {
+            static constexpr ::Sensor::MeasurementType types[] = {
+                ::Sensor::MeasurementType::Temperature,
+                ::Sensor::MeasurementType::RelativeHumidity,
+                ::Sensor::MeasurementType::DewPoint
+            };
+            return {types, 3};
+        }
+    };
+
+    struct OneMeasurementSensor : public Sensor::Sensor {
+        bool begin() override { return true; }
+        ::Sensor::SensorReading read() override { return {}; }
+        const char* getType() const override { return "Test1"; }
+        bool isConnected() override { return true; }
+        [[nodiscard]] ::Sensor::TypeSpan provides() const override {
+            static constexpr ::Sensor::MeasurementType types[] = {
+                ::Sensor::MeasurementType::Illuminance
+            };
+            return {types, 1};
+        }
+    };
+
+    struct NineMeasurementSensor : public Sensor::Sensor {
+        bool begin() override { return true; }
+        ::Sensor::SensorReading read() override { return {}; }
+        const char* getType() const override { return "Test9"; }
+        bool isConnected() override { return true; }
+        [[nodiscard]] ::Sensor::TypeSpan provides() const override {
+            static constexpr ::Sensor::MeasurementType types[] = {
+                ::Sensor::MeasurementType::Particles03,
+                ::Sensor::MeasurementType::Particles05,
+                ::Sensor::MeasurementType::Particles10,
+                ::Sensor::MeasurementType::Particles25,
+                ::Sensor::MeasurementType::Particles50,
+                ::Sensor::MeasurementType::Particles100,
+                ::Sensor::MeasurementType::PM10Concentration,
+                ::Sensor::MeasurementType::PM25Concentration,
+                ::Sensor::MeasurementType::PM100Concentration
+            };
+            return {types, 9};
+        }
+    };
+} // namespace
+
+void test_measurement_count_matches_provides_count_three() {
+    ThreeMeasurementSensor sensor;
+    TEST_ASSERT_EQUAL(3u, sensor.measurementCount());
+    TEST_ASSERT_EQUAL(sensor.provides().count, sensor.measurementCount());
+}
+
+void test_measurement_count_matches_provides_count_one() {
+    OneMeasurementSensor sensor;
+    TEST_ASSERT_EQUAL(1u, sensor.measurementCount());
+    TEST_ASSERT_EQUAL(sensor.provides().count, sensor.measurementCount());
+}
+
+void test_measurement_count_matches_provides_count_nine() {
+    NineMeasurementSensor sensor;
+    TEST_ASSERT_EQUAL(9u, sensor.measurementCount());
+    TEST_ASSERT_EQUAL(sensor.provides().count, sensor.measurementCount());
+}
+
+// Mirrors the allMeasurements.reserve() logic in SensorController::readSensors():
+// total = sum of (sensor->measurementCount() + 1) over all sensors
+static size_t computeTotalExpected(const std::vector<size_t>& counts) {
+    size_t total = 0;
+    for (auto c : counts) {
+        total += c + 1; // +1 for the Time measurement added per valid sensor
+    }
+    return total;
+}
+
+void test_total_expected_single_sensor() {
+    // One sensor with 3 measurements → 3 + 1 = 4
+    TEST_ASSERT_EQUAL(4u, computeTotalExpected({3}));
+}
+
+void test_total_expected_multiple_sensors() {
+    // SHT4x(3) + SGP40(1) + DeviceSensor(5) → (3+1)+(1+1)+(5+1) = 12
+    TEST_ASSERT_EQUAL(12u, computeTotalExpected({3, 1, 5}));
+}
+
+void test_total_expected_no_sensors() {
+    TEST_ASSERT_EQUAL(0u, computeTotalExpected({}));
+}
+
+void test_total_expected_pm25_sensor() {
+    // PM25 provides 9 measurements → 9 + 1 = 10
+    TEST_ASSERT_EQUAL(10u, computeTotalExpected({9}));
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_dew_point_warm_humid);
@@ -179,6 +280,13 @@ int runUnityTests() {
     RUN_TEST(test_find_measurement_not_found);
     RUN_TEST(test_find_measurement_empty_vector);
     RUN_TEST(test_find_measurement_int_value);
+    RUN_TEST(test_measurement_count_matches_provides_count_three);
+    RUN_TEST(test_measurement_count_matches_provides_count_one);
+    RUN_TEST(test_measurement_count_matches_provides_count_nine);
+    RUN_TEST(test_total_expected_single_sensor);
+    RUN_TEST(test_total_expected_multiple_sensors);
+    RUN_TEST(test_total_expected_no_sensors);
+    RUN_TEST(test_total_expected_pm25_sensor);
     return UNITY_END();
 }
 

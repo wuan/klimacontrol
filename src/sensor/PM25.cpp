@@ -21,6 +21,7 @@ namespace Sensor {
 
     SensorReading PM25::read() {
         SensorReading reading;
+        reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
 
         if (!initialized || !isConnected()) {

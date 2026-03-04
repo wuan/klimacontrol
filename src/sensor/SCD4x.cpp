@@ -23,6 +23,7 @@ namespace Sensor {
 
     SensorReading SCD4x::read() {
         SensorReading reading;
+        reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
 
         if (!initialized || !isConnected()) {

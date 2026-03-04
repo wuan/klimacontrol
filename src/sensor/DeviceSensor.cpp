@@ -14,6 +14,7 @@ namespace Sensor {
 
     SensorReading DeviceSensor::read() {
         SensorReading reading;
+        reading.measurements.reserve(measurementCount());
         reading.valid = true;
 
 #ifdef ARDUINO
