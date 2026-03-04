@@ -122,35 +122,6 @@
         </div>
 
         <div class="section">
-            <h2>Touch Control</h2>
-            <p>Configure capacitive touch pins to load presets. Touch pins GPIO 5, 7, 9 can each trigger a preset.</p>
-
-            <div class="form-group toggle-row">
-                <span class="toggle-label">Enable touch control</span>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="touchEnabled" onchange="updateTouchEnabled()">
-                    <span class="slider"></span>
-                </label>
-            </div>
-
-            <div class="form-group">
-                <label for="touchThreshold">Touch Threshold</label>
-                <input type="number" id="touchThreshold" placeholder="45000" min="1000" max="100000"
-                       style="width: 120px;">
-                <button class="btn btn-primary" onclick="updateTouchThreshold()"
-                        style="width: auto; margin-top: 0; margin-left: 8px; padding: 12px 16px;">Update
-                </button>
-                <small class="form-hint">Lower value = more sensitive. Default:
-                    45000</small>
-            </div>
-
-            <div class="info-box" id="touchStatus">
-                <strong>Current Values: </strong><span id="touchValues">Loading...</span><br>
-                <small style="color: #666;">Values below threshold trigger touch. Refresh page to update.</small>
-            </div>
-        </div>
-
-        <div class="section">
             <h2>Firmware Updates (OTA)</h2>
             <p>Check for and install firmware updates from GitHub releases.</p>
 
@@ -433,71 +404,6 @@
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    }
-
-    // Touch Control Functions
-    async function loadTouchConfig() {
-        try {
-            const response = await fetch('/api/touch');
-            const data = await response.json();
-
-            document.getElementById('touchEnabled').checked = data.enabled;
-            document.getElementById('touchThreshold').value = data.threshold;
-
-            // Display current touch values
-            const valuesStr = data.pins.map((pin, i) =>
-                `GPIO ${pin.gpio}: ${data.values[i]}`
-            ).join(', ');
-            document.getElementById('touchValues').textContent = valuesStr;
-        } catch (error) {
-            console.error('Failed to load touch config:', error);
-            document.getElementById('touchValues').textContent = 'Error loading';
-        }
-    }
-
-    async function updateTouchEnabled() {
-        const enabled = document.getElementById('touchEnabled').checked;
-        try {
-            const response = await fetch('/api/touch', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({enabled})
-            });
-            if (!response.ok) {
-                throw new Error('Failed to update');
-            }
-        } catch (error) {
-            console.error('Failed to update touch enabled:', error);
-            alert('Failed to update touch setting');
-            // Revert checkbox
-            document.getElementById('touchEnabled').checked = !enabled;
-        }
-    }
-
-    async function updateTouchThreshold() {
-        const enabled = document.getElementById('touchEnabled').checked;
-        const threshold = parseInt(document.getElementById('touchThreshold').value);
-        if (isNaN(threshold) || threshold < 1000 || threshold > 100000) {
-            alert('Please enter a valid threshold between 1000 and 100000');
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/touch', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({enabled, threshold})
-            });
-            if (response.ok) {
-                const status = enabled ? 'enabled' : 'disabled';
-                alert(`Touch control ${status}, threshold set to ${threshold}`);
-            } else {
-                throw new Error('Failed to update');
-            }
-        } catch (error) {
-            console.error('Failed to update touch settings:', error);
-            alert('Failed to update touch settings');
-        }
     }
 
     // MQTT Functions
@@ -791,7 +697,6 @@
     loadDeviceName();
     loadElevation();
     loadOTAStatus();
-    loadTouchConfig();
     loadSensorConfig();
     loadMqttConfig();
 </script>

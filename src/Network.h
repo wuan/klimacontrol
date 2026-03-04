@@ -10,11 +10,10 @@
 #endif
 
 #include "CaptivePortal.h"
-#include "TimerScheduler.h"
-#include "TouchController.h"
 #include "StatusLed.h"
 #include "MqttClient.h"
 #include "sensor/Sensor.h"
+#include "SensorController.h"
 
 // Forward declarations
 namespace Config {
@@ -22,7 +21,7 @@ namespace Config {
 }
 
 class WebServerManager;
-class SensorController;
+// class SensorController;
 
 /**
  * Network operating modes
@@ -45,8 +44,6 @@ private:
     Config::ConfigManager &config;
     SensorController &sensorController;
     std::unique_ptr<WebServerManager> webServer;
-    std::unique_ptr<TimerScheduler> timerScheduler;
-    // std::unique_ptr<TouchController> touchController;
     std::unique_ptr<StatusLed> statusLed;
     std::unique_ptr<MqttClient> mqttClient;
     uint32_t lastMqttPublish;
@@ -117,19 +114,6 @@ public:
      * @return Current LED state, or OFF if LED is disabled
      */
     LedState getStatusLedState() const;
-
-    /**
-     * Get timer scheduler (for API access)
-     * @return Pointer to timer scheduler, or nullptr if not initialized
-     */
-    TimerScheduler* getTimerScheduler() { return timerScheduler.get(); }
-
-    /**
-     * Get touch controller (for API access)
-     * @return Pointer to touch controller, or nullptr if not initialized
-     */
-    // TouchController* getTouchController() { return touchController.get(); }
-    TouchController* getTouchController() { return nullptr; }
 
     /**
      * Get MQTT client (for API access)

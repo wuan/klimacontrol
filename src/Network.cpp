@@ -178,11 +178,6 @@ void Network::startSTA(const char *ssid, const char *password) {
         Serial.print("NTP time: ");
         Serial.println(ntpClient.getFormattedTime());
 
-        // Initialize timer scheduler
-        timerScheduler = std::make_unique<TimerScheduler>(config, sensorController);
-        timerScheduler->begin();
-        timerScheduler->setNtpAvailable(true);
-
         // Initialize MQTT client
         mqttClient = std::make_unique<MqttClient>();
         Config::MqttConfig mqttConfig = config.loadMqttConfig();
@@ -387,11 +382,6 @@ void Network::configureUsingAPMode() {
                 if (ntpClient.update()) {
                     lastNtpUpdate = ntpClient.getEpochTime();
                 }
-            }
-
-            // Check timers
-            if (timerScheduler) {
-                timerScheduler->checkTimers(ntpClient.getEpochTime());
             }
 
             // MQTT: reconnect/keepalive + publish measurements

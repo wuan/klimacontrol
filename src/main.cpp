@@ -20,6 +20,7 @@
 #include "sensor/DPS310.h"
 #include "sensor/BH1750.h"
 #include "sensor/DeviceSensor.h"
+#include "SensorController.h"
 #include "task/SensorMonitor.h"
 #include "StatusLed.h"
 
