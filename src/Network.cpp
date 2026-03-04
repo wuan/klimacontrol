@@ -251,15 +251,8 @@ void Network::configureUsingAPMode() {
     Serial.println(failures);
 
     if (failures >= 3) {
-        Serial.println("Too many connection failures - starting AP mode for reconfiguration");
-        
-        if (statusLed) {
-            statusLed->setState(LedState::BLINK_FAST); // Fast blink for AP mode
-        }
-        
-        config.markUnconfigured();
+        Serial.println("Too many connection failures - resetting counter and retrying STA");
         config.resetConnectionFailures();
-        configureUsingAPMode();
     }
 
     // Load WiFi configuration
