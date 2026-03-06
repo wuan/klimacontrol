@@ -4,6 +4,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "support/Stats.h"
+
 class SensorController;
 
 namespace Task {
@@ -16,6 +18,7 @@ namespace Task {
     private:
         SensorController &controller;
         TaskHandle_t taskHandle = nullptr;
+        Support::Stats stats;
         
         unsigned long readingInterval = 1000;
         

@@ -60,6 +60,8 @@ namespace Task {
             unsigned long elapsed = millis() - startTime;
             unsigned long duration = elapsed < readingInterval ? readingInterval - elapsed : 1ul;
 
+            stats.add(duration);
+
             vTaskDelay(duration / portTICK_PERIOD_MS);
         }
     }
