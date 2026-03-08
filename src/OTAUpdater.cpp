@@ -10,11 +10,28 @@
 #include <esp_task_wdt.h>
 #include <esp_http_client.h>
 #include <esp_log.h>
+#include <esp_heap_caps.h>
 #include <WiFi.h>
 
 // The IDF esp_crt_bundle_attach uses the CA bundle embedded in the firmware binary.
 // We declare it directly because the Arduino WiFiClientSecure wrapper shadows the IDF header.
 extern "C" esp_err_t esp_crt_bundle_attach(void *conf);
+
+// Override the pre-compiled SDK's mbedTLS allocator.
+// The SDK version uses MALLOC_CAP_INTERNAL only, which fails on ESP32-S2 with
+// fragmented internal SRAM. This version tries internal first, then falls back
+// to PSRAM for large allocations (like the 16KB TLS buffers).
+extern "C" void *esp_mbedtls_mem_calloc(size_t n, size_t size) {
+    void *ptr = heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (ptr == nullptr) {
+        ptr = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+    return ptr;
+}
+
+extern "C" void esp_mbedtls_mem_free(void *ptr) {
+    heap_caps_free(ptr);
+}
 
 static const char *TAG = "OTA";
 
@@ -47,29 +64,15 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
 
     String apiUrl = String("https://api.github.com/repos/") + owner + "/" + repo + "/releases/latest";
     Serial.printf("[OTA] Checking for updates: %s\r\n", apiUrl.c_str());
-    Serial.printf("[OTA] Free heap: %u bytes\r\n", ESP.getFreeHeap());
-
-    // DNS check
-    IPAddress resolved;
-    if (WiFi.hostByName("api.github.com", resolved)) {
-        Serial.printf("[OTA] DNS resolved api.github.com -> %s\r\n", resolved.toString().c_str());
-    } else {
-        Serial.println("[OTA] DNS resolution failed for api.github.com");
-        info.errorMessage = "DNS resolution failed for api.github.com";
-        return false;
-    }
-
-    // Enable verbose logging for TLS diagnostics
-    esp_log_level_set("esp-tls", ESP_LOG_DEBUG);
-    esp_log_level_set("esp-tls-mbedtls", ESP_LOG_DEBUG);
-    esp_log_level_set("HTTP_CLIENT", ESP_LOG_DEBUG);
+    Serial.printf("[OTA] Free heap: %u, internal: %u, largest internal block: %u\r\n",
+                  ESP.getFreeHeap(),
+                  heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
     esp_http_client_config_t config{};
     config.url = apiUrl.c_str();
     config.timeout_ms = TIMEOUT_MS;
     config.crt_bundle_attach = esp_crt_bundle_attach;
-    config.buffer_size = 512;
-    config.buffer_size_tx = 512;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == nullptr) {
