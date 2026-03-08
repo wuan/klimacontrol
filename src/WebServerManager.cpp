@@ -6,6 +6,7 @@
 #include "Config.h"
 #include "Network.h"
 #include "SensorController.h"
+#include "task/SensorMonitor.h"
 #include "DeviceId.h"
 #include "OTAUpdater.h"
 #include "Constants.h"
@@ -611,6 +612,13 @@ void WebServerManager::setupAPIRoutes() {
         statsJson["has_connected_sensors"] = sensorController.hasConnectedSensors();
         statsJson["time_since_last_reading"] = sensorController.getTimeSinceLastReading();
 
+        // Cycle delay statistics
+        const auto& cycleStats = sensorMonitor.getStats();
+        statsJson["cycle_count"] = cycleStats.get_count();
+        statsJson["avg_cycle_delay"] = cycleStats.get_average();
+        statsJson["min_cycle_delay"] = cycleStats.get_min();
+        statsJson["max_cycle_delay"] = cycleStats.get_max();
+
         // Chip info
         doc["chip_model"] = ESP.getChipModel();
         doc["chip_revision"] = ESP.getChipRevision();
@@ -845,8 +853,8 @@ void WebServerManager::setupAPIRoutes() {
 #endif
 }
 
-WebServerManager::WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensor_controller)
-    : config(config), network(network), sensorController(sensor_controller)
+WebServerManager::WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensor_controller, Task::SensorMonitor &sensor_monitor)
+    : config(config), network(network), sensorController(sensor_controller), sensorMonitor(sensor_monitor)
 #ifdef ARDUINO
       , server(80)
 #endif
@@ -941,8 +949,8 @@ void WebServerManager::end() {
 
 // ConfigWebServerManager implementation
 ConfigWebServerManager::ConfigWebServerManager(Config::ConfigManager &config, Network &network,
-                                               SensorController &sensorController)
-    : WebServerManager(config, network, sensorController) {
+                                               SensorController &sensorController, Task::SensorMonitor &sensorMonitor)
+    : WebServerManager(config, network, sensorController, sensorMonitor) {
 }
 
 void ConfigWebServerManager::setupRoutes() {
@@ -961,8 +969,8 @@ void ConfigWebServerManager::setupRoutes() {
 
 // OperationalWebServerManager implementation
 OperationalWebServerManager::OperationalWebServerManager(Config::ConfigManager &config, Network &network,
-                                                         SensorController &sensorController)
-    : WebServerManager(config, network, sensorController) {
+                                                         SensorController &sensorController, Task::SensorMonitor &sensorMonitor)
+    : WebServerManager(config, network, sensorController, sensorMonitor) {
 }
 
 void OperationalWebServerManager::setupRoutes() {

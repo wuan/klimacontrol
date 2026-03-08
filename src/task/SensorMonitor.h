@@ -53,6 +53,11 @@ namespace Task {
          * @return Task handle
          */
         TaskHandle_t getTaskHandle() const { return taskHandle; }
+
+        /**
+         * Get cycle delay stats
+         */
+        const Support::Stats& getStats() const { return stats; }
         
     private:
         /**

@@ -21,8 +21,8 @@
 #include <set>
 #endif
 
-Network::Network(Config::ConfigManager &config, SensorController &sensorController)
-    : config(config), sensorController(sensorController), mode(NetworkMode::NONE), webServer(nullptr), statusLed(nullptr), lastMqttPublish(0)
+Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor)
+    : config(config), sensorController(sensorController), sensorMonitor(sensorMonitor), mode(NetworkMode::NONE), webServer(nullptr), statusLed(nullptr), lastMqttPublish(0)
 #ifdef ARDUINO
       , ntpClient(wifiUdp)
 #endif
@@ -194,7 +194,7 @@ void Network::configureUsingAPMode() {
     startAP();
 
     // Create and start config webserver for AP mode
-    webServer = std::make_unique<ConfigWebServerManager>(config, *this, sensorController);
+    webServer = std::make_unique<ConfigWebServerManager>(config, *this, sensorController, sensorMonitor);
     webServer->begin();
 
     // Wait for configuration
@@ -283,7 +283,7 @@ void Network::configureUsingAPMode() {
     }
 
     // Create and start operational webserver for STA mode
-    webServer = std::make_unique<OperationalWebServerManager>(config, *this, sensorController);
+    webServer = std::make_unique<OperationalWebServerManager>(config, *this, sensorController, sensorMonitor);
     webServer->begin();
 
     Serial.println("Webserver started - system ready");

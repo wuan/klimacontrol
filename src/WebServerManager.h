@@ -14,6 +14,10 @@ namespace Config {
     class ConfigManager;
 }
 
+namespace Task {
+    class SensorMonitor;
+}
+
 class Network;
 class SensorController;
 
@@ -36,6 +40,7 @@ protected:
     Config::ConfigManager &config;
     Network &network;
     SensorController &sensorController;
+    Task::SensorMonitor &sensorMonitor;
 
     /**
      * Setup shared routes for assets (CSS, favicon, etc.)
@@ -71,7 +76,7 @@ public:
      * @param network Network manager reference
      * @param sensorController SensorController reference
      */
-    WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController);
+    WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController, Task::SensorMonitor &sensorMonitor);
 
     /**
      * Virtual destructor
@@ -99,7 +104,7 @@ protected:
     void setupRoutes() override;
 
 public:
-    ConfigWebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController);
+    ConfigWebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController, Task::SensorMonitor &sensorMonitor);
 };
 
 /**
@@ -111,7 +116,7 @@ protected:
     void setupRoutes() override;
 
 public:
-    OperationalWebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController);
+    OperationalWebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController, Task::SensorMonitor &sensorMonitor);
 };
 
 #endif //KLIMACONTROL_WEBSERVERMANAGER_H

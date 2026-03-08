@@ -14,6 +14,7 @@
 #include "MqttClient.h"
 #include "sensor/Sensor.h"
 #include "SensorController.h"
+#include "task/SensorMonitor.h"
 
 // Forward declarations
 namespace Config {
@@ -21,7 +22,6 @@ namespace Config {
 }
 
 class WebServerManager;
-// class SensorController;
 
 /**
  * Network operating modes
@@ -43,6 +43,7 @@ private:
 
     Config::ConfigManager &config;
     SensorController &sensorController;
+    Task::SensorMonitor &sensorMonitor;
     std::unique_ptr<WebServerManager> webServer;
     std::unique_ptr<StatusLed> statusLed;
     std::unique_ptr<MqttClient> mqttClient;
@@ -81,7 +82,7 @@ public:
      * @param config Configuration manager reference
      * @param sensorController Sensor controller reference
      */
-    Network(Config::ConfigManager &config, SensorController &sensorController);
+    Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor);
 
     // disable copy constructor
     Network(const Network &) = delete;

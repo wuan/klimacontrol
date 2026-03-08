@@ -33,7 +33,7 @@ TaskHandle_t networkTaskHandle = nullptr;
 Config::ConfigManager config;
 SensorController sensorController(config);
 Task::SensorMonitor sensorMonitor(sensorController);
-Network network(config, sensorController);
+Network network(config, sensorController, sensorMonitor);
 
 void setup() {
     delay(1000);
