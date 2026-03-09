@@ -43,7 +43,7 @@
             </div>
 
             <div id="measurementOverview" style="margin-top: 16px;">
-                <button class="btn btn-primary" onclick="loadMeasurements()" style="width: auto; padding: 10px 16px; margin-bottom: 10px;">Load Measurements</button>
+                <button class="btn btn-primary" onclick="showMeasurements()" style="width: auto; padding: 10px 16px; margin-bottom: 10px;">Show Measurements</button>
                 <button class="btn btn-danger" id="clearMeasurementsBtn" onclick="clearMeasurements()" style="display: none; width: auto; padding: 10px 16px; margin-bottom: 10px; margin-left: 8px;">Clear</button>
                 <table id="measurementTable" style="display: none; width: 100%; border-collapse: collapse; font-size: 0.95em;">
                     <thead>
@@ -175,7 +175,7 @@
             }
         }
 
-        async function loadMeasurements() {
+        async function showMeasurements() {
             try {
                 const response = await fetch('/api/measurements');
                 const data = await response.json();
