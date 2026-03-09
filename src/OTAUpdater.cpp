@@ -171,10 +171,14 @@ bool OTAUpdater::performUpdate(
 
     esp_task_wdt_reset();
 
+    Serial.printf("[OTA] WDT reset done\r\n");
+
     if (!hasEnoughMemory()) {
         Serial.println("[OTA] Insufficient memory for OTA");
         return false;
     }
+
+    Serial.printf("[OTA] has enough memory done\r\n");
 
     const esp_partition_t *nextPartition = esp_ota_get_next_update_partition(nullptr);
     if (nextPartition == nullptr) {
