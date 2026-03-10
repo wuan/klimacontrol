@@ -1,10 +1,10 @@
 # Klima-Control
 
-ESP32-based temperature and humidity controller with web interface for monitoring and controlling environmental conditions. Runs on the Adafruit QT Py ESP32-S2 with SHT4x sensors for precise environmental monitoring.
+ESP32-based temperature and humidity controller with web interface for monitoring and controlling environmental conditions. Runs on the Adafruit QT Py ESP32-S2 and supports a wide range of I2C sensors for temperature, humidity, pressure, CO2, air quality, light, and VOC monitoring.
 
 ## Features
 
-- **Real-time monitoring** - Temperature and humidity readings with precise SHT4x sensors
+- **Real-time monitoring** - Temperature and humidity readings from a wide range of I2C sensors
 - **Temperature control** - PID-based temperature control with configurable target
 - **Web interface** - Full control and monitoring from any device on your network
 - **MQTT integration** - Publish sensor data and control commands via MQTT
@@ -24,10 +24,27 @@ ESP32-based temperature and humidity controller with web interface for monitorin
 | MCU | ESP32-S2 (single-core @ 240MHz) |
 | RAM | 320KB |
 | Flash | 4MB |
-| Sensor | SHT4x (I2C) |
-| Sensor range | Temperature: -40°C to +125°C, Humidity: 0-100% RH |
-| Sensor precision | ±0.1°C, ±1.5% RH |
+| Sensors | Multiple I2C sensors (auto-detected) |
 | I2C pins | SDA: GPIO 8, SCL: GPIO 9 |
+
+## Supported Sensors
+
+All sensors connect via the Stemma QT / I2C port and are automatically detected at startup. Multiple sensors can be connected simultaneously.
+
+| Sensor | Category | Measurements | I2C Address(es) |
+|--------|----------|--------------|-----------------|
+| **SHT4x** | Temperature & Humidity | Temperature, Relative Humidity, Dew Point | 0x44, 0x45 |
+| **BME680** | Environmental | Temperature, Relative Humidity, Dew Point, Pressure, Sea Level Pressure | 0x76, 0x77 |
+| **BMP3xx** | Pressure | Pressure, Sea Level Pressure | 0x76, 0x77 |
+| **DPS310** | Pressure | Pressure, Sea Level Pressure | 0x76, 0x77 |
+| **SCD4x** | CO2 | CO2 (ppm), Temperature, Relative Humidity, Dew Point | 0x62 |
+| **SGP40** | Air Quality | VOC Index | 0x59 |
+| **BH1750** | Light | Illuminance (lux) | 0x23, 0x5C |
+| **TSL2591** | Light | Illuminance (lux) | 0x29 |
+| **VEML7700** | Light | Illuminance (lux) | 0x10 |
+| **PM25 AQI** | Air Quality | PM1.0 / PM2.5 / PM10 concentration (µg/m³), particle counts | 0x12 |
+
+> **Note**: The SGP40 VOC sensor requires temperature and relative humidity readings from another sensor (e.g. SHT4x) to compute a calibrated VOC index.
 
 ## Getting Started
 
@@ -106,8 +123,17 @@ src/
   OTAUpdater.h/cpp         # Over-the-air firmware updates
   CaptivePortal.h/cpp      # WiFi setup captive portal
   sensor/
-    Sensor.h               # Sensor base class
-    SHT4x.h/cpp           # SHT4x temperature/humidity sensor
+    Sensor.h               # Sensor base class and measurement types
+    SHT4x.h/cpp           # Temperature & humidity sensor
+    BME680.h/cpp          # Environmental sensor (temp, humidity, pressure)
+    BMP3xx.h/cpp          # Pressure sensor
+    DPS310.h/cpp          # Pressure sensor
+    SCD4x.h/cpp           # CO2, temperature & humidity sensor
+    SGP40.h/cpp           # VOC index sensor
+    BH1750.h/cpp          # Ambient light sensor
+    TSL2591.h/cpp         # High-dynamic-range light sensor
+    VEML7700.h/cpp        # Ambient light sensor
+    PM25.h/cpp            # Particulate matter / air quality sensor
     DeviceSensor.h/cpp    # Device sensor abstraction
   task/
     SensorMonitor.h/cpp   # Sensor reading FreeRTOS task
