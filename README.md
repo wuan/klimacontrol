@@ -31,18 +31,18 @@ ESP32-based temperature and humidity controller with web interface for monitorin
 
 All sensors connect via the Stemma QT / I2C port and are automatically detected at startup. Multiple sensors can be connected simultaneously.
 
-| Sensor | Category | Measurements | I2C Address(es) |
-|--------|----------|--------------|-----------------|
-| **SHT4x** | Temperature & Humidity | Temperature, Relative Humidity, Dew Point | 0x44, 0x45 |
-| **BME680** | Environmental | Temperature, Relative Humidity, Dew Point, Pressure, Sea Level Pressure | 0x76, 0x77 |
-| **BMP3xx** | Pressure | Pressure, Sea Level Pressure | 0x76, 0x77 |
-| **DPS310** | Pressure | Pressure, Sea Level Pressure | 0x76, 0x77 |
-| **SCD4x** | CO2 | CO2 (ppm), Temperature, Relative Humidity, Dew Point | 0x62 |
-| **SGP40** | Air Quality | VOC Index | 0x59 |
-| **BH1750** | Light | Illuminance (lux) | 0x23, 0x5C |
-| **TSL2591** | Light | Illuminance (lux) | 0x29 |
-| **VEML7700** | Light | Illuminance (lux) | 0x10 |
-| **PM25 AQI** | Air Quality | PM1.0 / PM2.5 / PM10 concentration (µg/m³), particle counts | 0x12 |
+| Sensor | Category | Measurements | Calculated Values | I2C Address(es) |
+|--------|----------|--------------|-------------------|-----------------|
+| **SHT4x** | Temperature & Humidity | Temperature, Relative Humidity | Dew Point | 0x44, 0x45 |
+| **BME680** | Environmental | Temperature, Relative Humidity, Pressure | Dew Point, Sea Level Pressure | 0x76, 0x77 |
+| **BMP3xx** | Pressure | Pressure | Sea Level Pressure | 0x76, 0x77 |
+| **DPS310** | Pressure | Pressure | Sea Level Pressure | 0x76, 0x77 |
+| **SCD4x** | CO2 | CO2 (ppm), Temperature, Relative Humidity | Dew Point | 0x62 |
+| **SGP40** | Air Quality | VOC Index | — | 0x59 |
+| **BH1750** | Light | Illuminance (lux) | — | 0x23, 0x5C |
+| **TSL2591** | Light | Illuminance (lux) | — | 0x29 |
+| **VEML7700** | Light | Illuminance (lux) | — | 0x10 |
+| **PM25 AQI** | Air Quality | PM1.0 / PM2.5 / PM10 concentration (µg/m³), particle counts | — | 0x12 |
 
 > **Note**: The SGP40 VOC sensor requires temperature and relative humidity readings from another sensor (e.g. SHT4x) to compute a calibrated VOC index.
 
