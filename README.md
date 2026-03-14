@@ -19,6 +19,8 @@ ESP32-based temperature and humidity controller with web interface for monitorin
 
 **Primary board**: Adafruit QT Py ESP32-S2 (no PSRAM)
 
+**Matching Housing**: [3D-printable housing on MakerWorld](https://makerworld.com/de/models/2521186)
+
 | Specification | Value |
 |---------------|-------|
 | MCU | ESP32-S2 (single-core @ 240MHz) |
