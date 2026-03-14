@@ -28,10 +28,9 @@ namespace Sensor {
         const char* getType() const override { return type(); }
         TypeSpan provides() const override {
             static constexpr MeasurementType types[] = {
-                MeasurementType::CO2, MeasurementType::Temperature,
-                MeasurementType::RelativeHumidity, MeasurementType::DewPoint
+                MeasurementType::CO2
             };
-            return {types, 4};
+            return {types, 1};
         }
     };
 

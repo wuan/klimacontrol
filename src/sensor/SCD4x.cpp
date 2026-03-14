@@ -52,9 +52,6 @@ namespace Sensor {
         float t = 22.0f;
         float rh = 45.0f;
         reading.measurements.push_back({MeasurementType::CO2, static_cast<int32_t>(420), getType(), false});
-        reading.measurements.push_back({MeasurementType::Temperature, t, getType(), false});
-        reading.measurements.push_back({MeasurementType::RelativeHumidity, rh, getType(), false});
-        reading.measurements.push_back({MeasurementType::DewPoint, calcDewPoint(t, rh), getType(), true});
 
         reading.valid = true;
 #endif
