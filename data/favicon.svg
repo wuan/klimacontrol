@@ -1,20 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <!-- Temperature controller favicon - thermometer design -->
-  <rect width="100" height="100" rx="15" fill="#2c3e50"/>
-  
-  <!-- Thermometer bulb (blue for cool) -->
-  <circle cx="50" cy="70" r="15" fill="#3498db"/>
-  
-  <!-- Thermometer stem -->
-  <rect x="47" y="15" width="6" height="45" rx="3" fill="#ecf0f1"/>
-  
-  <!-- Temperature indicator (red mercury line) -->
-  <rect x="48" y="45" width="4" height="25" rx="2" fill="#e74c3c"/>
-  
-  <!-- Temperature scale marks -->
-  <line x1="45" y1="25" x2="55" y2="25" stroke="#7f8c8d" stroke-width="1"/>
-  <line x1="45" y1="30" x2="50" y2="30" stroke="#7f8c8d" stroke-width="1"/>
-  <line x1="45" y1="35" x2="55" y2="35" stroke="#7f8c8d" stroke-width="1"/>
-  <line x1="45" y1="40" x2="50" y2="40" stroke="#7f8c8d" stroke-width="1"/>
-  <line x1="45" y1="45" x2="55" y2="45" stroke="#7f8c8d" stroke-width="1"/>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#667eea"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+    <linearGradient id="mercury" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#ff6b6b"/>
+      <stop offset="100%" stop-color="#ffd93d"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded background matching app gradient -->
+  <rect width="100" height="100" rx="16" fill="url(#bg)"/>
+  <!-- Thermometer stem (white) -->
+  <rect x="44" y="10" width="12" height="52" rx="6" fill="rgba(255,255,255,0.9)"/>
+  <!-- Thermometer inner bore -->
+  <rect x="47" y="13" width="6" height="46" rx="3" fill="rgba(103,126,234,0.35)"/>
+  <!-- Mercury column -->
+  <rect x="47" y="37" width="6" height="22" rx="3" fill="url(#mercury)"/>
+  <!-- Thermometer bulb (outer) -->
+  <circle cx="50" cy="72" r="14" fill="rgba(255,255,255,0.9)"/>
+  <!-- Thermometer bulb (mercury fill) -->
+  <circle cx="50" cy="72" r="10" fill="#ff6b6b"/>
+  <!-- Temperature scale marks (right side) -->
+  <line x1="56" y1="20" x2="63" y2="20" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="56" y1="28" x2="60" y2="28" stroke="rgba(255,255,255,0.65)" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="56" y1="36" x2="63" y2="36" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round"/>
+  <line x1="56" y1="44" x2="60" y2="44" stroke="rgba(255,255,255,0.65)" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="56" y1="52" x2="63" y2="52" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round"/>
 </svg>
