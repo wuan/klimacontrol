@@ -32,12 +32,12 @@ ESP32-based temperature and humidity controller with web interface for monitorin
 All sensors connect via the Stemma QT / I2C port and are automatically detected at startup. Multiple sensors can be connected simultaneously.
 
 | Sensor | Category | Measurements | Calculated Values | I2C Address(es) |
-|--------|----------|--------------|-------------------|-----------------|
+|--------|----------|-----------|---------|-----------------|
 | **SHT4x** | Temperature & Humidity | Temperature, Relative Humidity | Dew Point | 0x44, 0x45 |
 | **BME680** | Environmental | Temperature, Relative Humidity, Pressure | Dew Point, Sea Level Pressure | 0x76, 0x77 |
 | **BMP3xx** | Pressure | Pressure | Sea Level Pressure | 0x76, 0x77 |
 | **DPS310** | Pressure | Pressure | Sea Level Pressure | 0x76, 0x77 |
-| **SCD4x** | CO2 | CO2 (ppm), Temperature, Relative Humidity | Dew Point | 0x62 |
+| **SCD4x** | CO2 | CO2 (ppm) | | 0x62 |
 | **SGP40** | Air Quality | VOC Index | — | 0x59 |
 | **BH1750** | Light | Illuminance (lux) | — | 0x23, 0x5C |
 | **TSL2591** | Light | Illuminance (lux) | — | 0x29 |
