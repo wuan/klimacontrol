@@ -127,7 +127,7 @@ void Network::startSTA(const char *ssid, const char *password) {
 
     // Reduce TX power to configured level (default 17 dBm) to lower radio current draw.
     Config::WiFiConfig wifiCfg = config.loadWiFiConfig();
-    WiFi.setTxPower((wifi_power_t)wifiCfg.wifi_tx_power);
+    WiFi.setTxPower(static_cast<wifi_power_t>(wifiCfg.wifi_tx_power));
 
     Serial.println("WiFi Configuration:");
     Serial.printf("  Power save: MIN_MODEM\r\n");
@@ -469,7 +469,7 @@ void Network::updateMqttConfig(const Config::MqttConfig& mqttConfig) {
 void Network::setWifiTxPower(int8_t power) {
 #ifdef ARDUINO
     if (mode == NetworkMode::STA) {
-        WiFi.setTxPower((wifi_power_t)power);
+        WiFi.setTxPower(static_cast<wifi_power_t>(power));
         Serial.printf("WiFi TX power set to %d (raw)\r\n", power);
     }
 #endif

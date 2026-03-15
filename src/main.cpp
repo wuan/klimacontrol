@@ -119,7 +119,19 @@ void setup() {
     // tasks are idle (blocked in vTaskDelay).  The CPU frequency scales between
     // min_freq_mhz and max_freq_mhz; when all tasks sleep the modem and CPU
     // enter light sleep, dramatically reducing idle current.
+    // esp_pm_config_t is available from ESP-IDF v5; older v4 SDK (used by the
+    // Arduino ESP32 framework) exposes only chip-specific structs.
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
     esp_pm_config_t pm_config = {
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+    esp_pm_config_esp32s2_t pm_config = {
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+    esp_pm_config_esp32s3_t pm_config = {
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+    esp_pm_config_esp32c3_t pm_config = {
+#else
+    esp_pm_config_esp32_t pm_config = {
+#endif
         .max_freq_mhz = 80,
         .min_freq_mhz = 40,
         .light_sleep_enable = true
