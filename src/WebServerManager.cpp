@@ -13,7 +13,6 @@
 #include "OTAConfig.h"
 #include "MqttClient.h"
 #include "I2CScanner.h"
-#include "CpuMonitor.h"
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
@@ -703,7 +702,6 @@ void WebServerManager::setupAPIRoutes() {
         doc["cpu_freq_mhz"] = ESP.getCpuFreqMHz();
 #ifdef ARDUINO
         doc["cpu_temp"] = temperatureRead();
-        doc["cpu_load"] = CpuMonitor::instance().getLoad();
 #endif
 
         // Memory info

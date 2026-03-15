@@ -23,7 +23,6 @@
 #include "SensorController.h"
 #include "task/SensorMonitor.h"
 #include "StatusLed.h"
-#include "CpuMonitor.h"
 
 #ifdef ARDUINO
 #include <esp_task_wdt.h>
@@ -142,10 +141,6 @@ void setup() {
     } else {
         Serial.println("Warning: Power management configuration failed");
     }
-
-    // Start CPU load monitor before tasks begin so idle time is tracked
-    // from the very beginning.
-    CpuMonitor::instance().begin();
 #endif
 
     // Apply sensor configuration from the already loaded deviceConfig
