@@ -26,6 +26,7 @@
 
 #ifdef ARDUINO
 #include <esp_task_wdt.h>
+#include <esp_pm.h>
 #endif
 
 TaskHandle_t networkTaskHandle = nullptr;
@@ -108,7 +109,28 @@ void setup() {
 
     // Initialize sensor controller
     sensorController.begin();
-    
+
+#ifdef ARDUINO
+    // Apply sensor reading interval from config (persisted in NVS)
+    sensorMonitor.setReadingInterval(sensorConfig.sensor_interval_ms);
+    Serial.printf("Sensor reading interval: %lu ms\r\n", (unsigned long)sensorConfig.sensor_interval_ms);
+
+    // Configure ESP32 power management: enable automatic light sleep when all
+    // tasks are idle (blocked in vTaskDelay).  The CPU frequency scales between
+    // min_freq_mhz and max_freq_mhz; when all tasks sleep the modem and CPU
+    // enter light sleep, dramatically reducing idle current.
+    esp_pm_config_t pm_config = {
+        .max_freq_mhz = 80,
+        .min_freq_mhz = 40,
+        .light_sleep_enable = true
+    };
+    if (esp_pm_configure(&pm_config) == ESP_OK) {
+        Serial.println("Power management: light sleep enabled (40-80 MHz)");
+    } else {
+        Serial.println("Warning: Power management configuration failed");
+    }
+#endif
+
     // Apply sensor configuration from the already loaded deviceConfig
     sensorController.setTargetTemperature(deviceConfig.target_temperature);
     sensorController.setControlEnabled(deviceConfig.temperature_control_enabled);

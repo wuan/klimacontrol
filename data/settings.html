@@ -50,6 +50,30 @@
         </div>
 
         <div class="section">
+            <h2>Power Management</h2>
+            <p>Reduce power consumption by adjusting how often sensors are read. Longer intervals mean less CPU and radio activity. Changes take effect immediately without a restart.</p>
+
+            <div class="form-group">
+                <label for="sensorInterval">Sensor Reading Interval (seconds)</label>
+                <input type="number" id="sensorInterval" placeholder="5" step="1" min="1" max="300" style="width: 120px;">
+            </div>
+
+            <button class="btn btn-primary" onclick="updatePowerSettings()">Save</button>
+
+            <div class="info-box">
+                <strong>Current interval: </strong><span id="currentSensorInterval">Loading...</span> s
+            </div>
+
+            <div class="info-box" style="margin-top: 10px;">
+                <strong>Tips:</strong>
+                <ul style="margin-top: 8px; margin-left: 20px;">
+                    <li>5&ndash;30 s is a good balance for climate monitoring</li>
+                    <li>WiFi modem sleep and CPU light sleep are always active</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
             <h2>I2C Sensors</h2>
             <p>Configure which sensors are connected to the I2C bus (STEMMA QT connector). Changes require a restart.</p>
 
@@ -692,6 +716,47 @@
         }
     }
 
+    // Power Management Functions
+    async function loadPowerSettings() {
+        try {
+            const response = await fetch('/api/settings/power');
+            const data = await response.json();
+            const intervalSec = Math.round((data.sensor_interval_ms || 5000) / 1000);
+            document.getElementById('currentSensorInterval').textContent = intervalSec;
+            document.getElementById('sensorInterval').value = intervalSec;
+        } catch (error) {
+            console.error('Failed to load power settings:', error);
+            document.getElementById('currentSensorInterval').textContent = 'Error';
+        }
+    }
+
+    async function updatePowerSettings() {
+        const intervalSec = parseInt(document.getElementById('sensorInterval').value);
+        if (isNaN(intervalSec) || intervalSec < 1 || intervalSec > 300) {
+            alert('Please enter a valid interval between 1 and 300 seconds');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/settings/power', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({sensor_interval_ms: intervalSec * 1000})
+            });
+
+            if (response.ok) {
+                alert('Power settings updated successfully!');
+                loadPowerSettings();
+            } else {
+                const data = await response.json();
+                alert('Failed to update power settings: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to update power settings:', error);
+            alert('Error updating power settings. Please try again.');
+        }
+    }
+
     // Reboot
     async function rebootDevice() {
         if (!confirm('Reboot the device?')) return;
@@ -712,6 +777,7 @@
     // Load device info on page load
     loadDeviceName();
     loadElevation();
+    loadPowerSettings();
     loadOTAStatus();
     loadSensorConfig();
     loadMqttConfig();

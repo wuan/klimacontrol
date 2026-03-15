@@ -295,9 +295,12 @@ namespace Config {
         strncpy(sensorConfig.assignments, assign.c_str(), sizeof(sensorConfig.assignments) - 1);
         sensorConfig.assignments[sizeof(sensorConfig.assignments) - 1] = '\0';
 
+        sensorConfig.sensor_interval_ms = prefs.getULong("sns_interval", 5000);
+
         prefs.end();
 
-        Serial.printf("SensorConfig: Loaded assignments='%s'\r\n", sensorConfig.assignments);
+        Serial.printf("SensorConfig: Loaded assignments='%s', interval=%lu ms\r\n",
+                      sensorConfig.assignments, (unsigned long)sensorConfig.sensor_interval_ms);
 #endif
 
         return sensorConfig;
@@ -308,10 +311,12 @@ namespace Config {
         prefs.begin(NAMESPACE, false); // Read-write mode
 
         prefs.putString("sns_assign", config.assignments);
+        prefs.putULong("sns_interval", config.sensor_interval_ms);
 
         prefs.end();
 
-        Serial.printf("SensorConfig: Saved assignments='%s'\r\n", config.assignments);
+        Serial.printf("SensorConfig: Saved assignments='%s', interval=%lu ms\r\n",
+                      config.assignments, (unsigned long)config.sensor_interval_ms);
 #endif
     }
 

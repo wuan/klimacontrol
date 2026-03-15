@@ -121,11 +121,12 @@ void Network::startSTA(const char *ssid, const char *password) {
     // Set WiFi mode explicitly
     WiFi.mode(WIFI_STA);
 
-    // Disable WiFi power save for best reception (matches CircuitPython default)
-    WiFi.setSleep(WIFI_PS_NONE);
+    // Enable WiFi modem sleep: modem sleeps between DTIM beacons, reducing power
+    // while maintaining connectivity (lower power than WIFI_PS_NONE).
+    WiFi.setSleep(WIFI_PS_MIN_MODEM);
 
     Serial.println("WiFi Configuration:");
-    Serial.printf("  Power save: NONE\r\n");
+    Serial.printf("  Power save: MIN_MODEM\r\n");
 
     WiFi.begin(ssid, password);
 
@@ -157,7 +158,7 @@ void Network::startSTA(const char *ssid, const char *password) {
         Serial.printf("  Gateway: %s\r\n", WiFi.gatewayIP().toString().c_str());
         Serial.printf("  DNS: %s\r\n", WiFi.dnsIP().toString().c_str());
         Serial.printf("  TX Power: %d\r\n", WiFi.getTxPower());
-        Serial.printf("  Sleep Mode: %d (0=NONE)\r\n", WiFi.getSleep());
+        Serial.printf("  Sleep Mode: %d (1=MIN_MODEM)\r\n", WiFi.getSleep());
         Serial.printf("  Auto Reconnect: %d\r\n", WiFi.getAutoReconnect());
         Serial.println();
 

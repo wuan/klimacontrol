@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "sensor/Sensor.h"
+#include "Config.h"
 #include <cmath>
 #include <variant>
 
@@ -187,6 +188,44 @@ void test_ntp_epoch_guard_last_zero_current_nonzero_no_update() {
     TEST_ASSERT_FALSE(shouldUpdateNtp(current, 0u));
 }
 
+// --- Sensor reading interval clamping logic ---
+
+// Tests exercise Config::SensorConfig::clampInterval(), which is also used by
+// POST /api/settings/power in WebServerManager — single source of truth.
+
+void test_sensor_interval_clamp_below_min() {
+    // Values below 1 second must be raised to the minimum
+    TEST_ASSERT_EQUAL(Config::SensorConfig::MIN_INTERVAL_MS,
+                      Config::SensorConfig::clampInterval(0));
+    TEST_ASSERT_EQUAL(Config::SensorConfig::MIN_INTERVAL_MS,
+                      Config::SensorConfig::clampInterval(500));
+    TEST_ASSERT_EQUAL(Config::SensorConfig::MIN_INTERVAL_MS,
+                      Config::SensorConfig::clampInterval(999));
+}
+
+void test_sensor_interval_clamp_above_max() {
+    // Values above 300 seconds must be lowered to the maximum
+    TEST_ASSERT_EQUAL(Config::SensorConfig::MAX_INTERVAL_MS,
+                      Config::SensorConfig::clampInterval(300001));
+    TEST_ASSERT_EQUAL(Config::SensorConfig::MAX_INTERVAL_MS,
+                      Config::SensorConfig::clampInterval(1000000));
+}
+
+void test_sensor_interval_clamp_within_range() {
+    // Values already in range must pass through unchanged
+    TEST_ASSERT_EQUAL(1000u,   Config::SensorConfig::clampInterval(1000));
+    TEST_ASSERT_EQUAL(5000u,   Config::SensorConfig::clampInterval(5000));
+    TEST_ASSERT_EQUAL(30000u,  Config::SensorConfig::clampInterval(30000));
+    TEST_ASSERT_EQUAL(300000u, Config::SensorConfig::clampInterval(300000));
+}
+
+void test_sensor_interval_default_is_in_range() {
+    // Default value (5 000 ms) must survive clamping unchanged
+    Config::SensorConfig defaultConfig;
+    TEST_ASSERT_EQUAL(defaultConfig.sensor_interval_ms,
+                      Config::SensorConfig::clampInterval(defaultConfig.sensor_interval_ms));
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_safe_get_float_returns_value_when_float);
@@ -210,6 +249,10 @@ int runUnityTests() {
     RUN_TEST(test_ntp_epoch_guard_time_elapsed_triggers_update);
     RUN_TEST(test_ntp_epoch_guard_current_zero_no_spurious_update);
     RUN_TEST(test_ntp_epoch_guard_last_zero_current_nonzero_no_update);
+    RUN_TEST(test_sensor_interval_clamp_below_min);
+    RUN_TEST(test_sensor_interval_clamp_above_max);
+    RUN_TEST(test_sensor_interval_clamp_within_range);
+    RUN_TEST(test_sensor_interval_default_is_in_range);
     return UNITY_END();
 }
 

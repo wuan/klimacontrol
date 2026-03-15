@@ -112,8 +112,20 @@ namespace Config {
      * Stores sensor assignments as a compact string like "44=SHT4x,77=BME680,59=SGP40"
      */
     struct SensorConfig {
+        static constexpr uint32_t MIN_INTERVAL_MS = 1000;   ///< Minimum sensor reading interval
+        static constexpr uint32_t MAX_INTERVAL_MS = 300000; ///< Maximum sensor reading interval
+
         char assignments[128]; // e.g. "44=SHT4x,77=BME680,59=SGP40"
-        SensorConfig() { assignments[0] = '\0'; }
+        uint32_t sensor_interval_ms; // Sensor reading interval in milliseconds (min 1000, max 300000)
+
+        SensorConfig() : sensor_interval_ms(5000) { assignments[0] = '\0'; }
+
+        /** Clamp ms to [MIN_INTERVAL_MS, MAX_INTERVAL_MS]. */
+        static uint32_t clampInterval(uint32_t ms) {
+            if (ms < MIN_INTERVAL_MS) return MIN_INTERVAL_MS;
+            if (ms > MAX_INTERVAL_MS) return MAX_INTERVAL_MS;
+            return ms;
+        }
     };
 
     /**

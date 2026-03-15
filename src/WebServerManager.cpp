@@ -599,6 +599,57 @@ void WebServerManager::setupAPIRoutes() {
         config.requestRestart(1000);
     });
 
+    // GET /api/settings/power - Get power management configuration
+    server.on("/api/settings/power", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        Config::SensorConfig sensorConfig = config.loadSensorConfig();
+
+        JsonDocument doc;
+        doc["sensor_interval_ms"] = sensorConfig.sensor_interval_ms;
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, CONTENT_TYPE_JSON, response);
+    });
+
+    // POST /api/settings/power - Update power management configuration
+    server.on("/api/settings/power", HTTP_POST,
+              []([[maybe_unused]] AsyncWebServerRequest *request) {
+              },
+              nullptr,
+              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+                     [[maybe_unused]] size_t total) {
+                  if (index == 0) {
+                      JsonDocument doc;
+                      DeserializationError error = deserializeJson(doc, data, len);
+
+                      if (error) {
+                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
+                          return;
+                      }
+
+                      if (!doc["sensor_interval_ms"].is<uint32_t>()) {
+                          request->send(400, CONTENT_TYPE_JSON,
+                                        R"({"success":false,"error":"sensor_interval_ms required"})");
+                          return;
+                      }
+
+                      uint32_t interval = Config::SensorConfig::clampInterval(
+                          doc["sensor_interval_ms"].as<uint32_t>());
+
+                      Config::SensorConfig sensorConfig = config.loadSensorConfig();
+                      sensorConfig.sensor_interval_ms = interval;
+                      config.saveSensorConfig(sensorConfig);
+
+                      // Apply immediately without restart
+                      sensorMonitor.setReadingInterval(interval);
+
+                      Serial.printf("Sensor interval updated: %lu ms\r\n", (unsigned long)interval);
+
+                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+                  }
+              }
+    );
+
     // GET /api/about - Device information
     server.on("/api/about", HTTP_GET, [this](AsyncWebServerRequest *request) {
         JsonDocument doc;
