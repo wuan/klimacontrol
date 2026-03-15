@@ -59,6 +59,7 @@ namespace Config {
 
         config.configured = prefs.getBool("configured", false);
         config.connection_failures = prefs.getUChar("wifi_failures", 0);
+        config.wifi_tx_power = (int8_t)prefs.getChar("wifi_tx_power", WiFiConfig::TX_POWER_DEFAULT);
 
         if (config.configured) {
             prefs.getString("wifi_ssid", config.ssid, sizeof(config.ssid));
@@ -78,6 +79,7 @@ namespace Config {
         prefs.putString("wifi_ssid", config.ssid);
         prefs.putString("wifi_pass", config.password);
         prefs.putBool("configured", config.configured);
+        prefs.putChar("wifi_tx_power", config.wifi_tx_power);
 
         prefs.end();
 #endif

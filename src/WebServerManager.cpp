@@ -602,9 +602,11 @@ void WebServerManager::setupAPIRoutes() {
     // GET /api/settings/power - Get power management configuration
     server.on("/api/settings/power", HTTP_GET, [this](AsyncWebServerRequest *request) {
         Config::SensorConfig sensorConfig = config.loadSensorConfig();
+        Config::WiFiConfig wifiConfig = config.loadWiFiConfig();
 
         JsonDocument doc;
         doc["sensor_interval_ms"] = sensorConfig.sensor_interval_ms;
+        doc["wifi_tx_power"] = wifiConfig.wifi_tx_power;
 
         String response;
         serializeJson(doc, response);
@@ -627,23 +629,45 @@ void WebServerManager::setupAPIRoutes() {
                           return;
                       }
 
-                      if (!doc["sensor_interval_ms"].is<uint32_t>()) {
-                          request->send(400, CONTENT_TYPE_JSON,
-                                        R"({"success":false,"error":"sensor_interval_ms required"})");
-                          return;
+                      bool updated = false;
+
+                      // Update sensor reading interval if provided
+                      if (doc["sensor_interval_ms"].is<uint32_t>()) {
+                          uint32_t interval = Config::SensorConfig::clampInterval(
+                              doc["sensor_interval_ms"].as<uint32_t>());
+
+                          Config::SensorConfig sensorConfig = config.loadSensorConfig();
+                          sensorConfig.sensor_interval_ms = interval;
+                          config.saveSensorConfig(sensorConfig);
+
+                          // Apply immediately without restart
+                          sensorMonitor.setReadingInterval(interval);
+
+                          Serial.printf("Sensor interval updated: %lu ms\r\n", (unsigned long)interval);
+                          updated = true;
                       }
 
-                      uint32_t interval = Config::SensorConfig::clampInterval(
-                          doc["sensor_interval_ms"].as<uint32_t>());
+                      // Update WiFi TX power if provided
+                      if (doc["wifi_tx_power"].is<int>()) {
+                          int8_t txPower = Config::WiFiConfig::clampTxPower(
+                              (int8_t)doc["wifi_tx_power"].as<int>());
 
-                      Config::SensorConfig sensorConfig = config.loadSensorConfig();
-                      sensorConfig.sensor_interval_ms = interval;
-                      config.saveSensorConfig(sensorConfig);
+                          Config::WiFiConfig wifiConfig = config.loadWiFiConfig();
+                          wifiConfig.wifi_tx_power = txPower;
+                          config.saveWiFiConfig(wifiConfig);
 
-                      // Apply immediately without restart
-                      sensorMonitor.setReadingInterval(interval);
+                          // Apply immediately without restart
+                          network.setWifiTxPower(txPower);
 
-                      Serial.printf("Sensor interval updated: %lu ms\r\n", (unsigned long)interval);
+                          Serial.printf("WiFi TX power updated: %d\r\n", txPower);
+                          updated = true;
+                      }
+
+                      if (!updated) {
+                          request->send(400, CONTENT_TYPE_JSON,
+                                        R"({"success":false,"error":"No valid parameters provided"})");
+                          return;
+                      }
 
                       request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
                   }

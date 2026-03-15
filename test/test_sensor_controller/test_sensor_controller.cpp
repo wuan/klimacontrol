@@ -191,7 +191,7 @@ void test_ntp_epoch_guard_last_zero_current_nonzero_no_update() {
 // --- Sensor reading interval clamping logic ---
 
 // Tests exercise Config::SensorConfig::clampInterval(), which is also used by
-// POST /api/settings/power in WebServerManager — single source of truth.
+// POST /api/settings/power in WebServerManager -- single source of truth.
 
 void test_sensor_interval_clamp_below_min() {
     // Values below 1 second must be raised to the minimum
@@ -226,6 +226,45 @@ void test_sensor_interval_default_is_in_range() {
                       Config::SensorConfig::clampInterval(defaultConfig.sensor_interval_ms));
 }
 
+// --- WiFi TX power clamping logic ---
+
+// Tests exercise Config::WiFiConfig::clampTxPower(), which is also used by
+// POST /api/settings/power in WebServerManager -- single source of truth.
+
+void test_wifi_tx_power_clamp_below_min() {
+    // Values below the hardware minimum (-4) must be raised to the minimum
+    TEST_ASSERT_EQUAL(Config::WiFiConfig::TX_POWER_MIN,
+                      Config::WiFiConfig::clampTxPower(-100));
+    TEST_ASSERT_EQUAL(Config::WiFiConfig::TX_POWER_MIN,
+                      Config::WiFiConfig::clampTxPower(-5));
+}
+
+void test_wifi_tx_power_clamp_above_max() {
+    // Values above the hardware maximum (78) must be lowered to the maximum
+    TEST_ASSERT_EQUAL(Config::WiFiConfig::TX_POWER_MAX,
+                      Config::WiFiConfig::clampTxPower(79));
+    TEST_ASSERT_EQUAL(Config::WiFiConfig::TX_POWER_MAX,
+                      Config::WiFiConfig::clampTxPower(127));
+}
+
+void test_wifi_tx_power_clamp_within_range() {
+    // Known valid enum values must pass through unchanged
+    TEST_ASSERT_EQUAL((int8_t)-4,  Config::WiFiConfig::clampTxPower(-4));  // WIFI_POWER_MINUS_1dBm
+    TEST_ASSERT_EQUAL((int8_t)8,   Config::WiFiConfig::clampTxPower(8));   // WIFI_POWER_2dBm
+    TEST_ASSERT_EQUAL((int8_t)20,  Config::WiFiConfig::clampTxPower(20));  // WIFI_POWER_5dBm
+    TEST_ASSERT_EQUAL((int8_t)34,  Config::WiFiConfig::clampTxPower(34));  // WIFI_POWER_8_5dBm
+    TEST_ASSERT_EQUAL((int8_t)52,  Config::WiFiConfig::clampTxPower(52));  // WIFI_POWER_13dBm
+    TEST_ASSERT_EQUAL((int8_t)68,  Config::WiFiConfig::clampTxPower(68));  // WIFI_POWER_17dBm
+    TEST_ASSERT_EQUAL((int8_t)78,  Config::WiFiConfig::clampTxPower(78));  // WIFI_POWER_19_5dBm
+}
+
+void test_wifi_tx_power_default_is_in_range() {
+    // Default value must survive clamping unchanged
+    Config::WiFiConfig defaultConfig;
+    TEST_ASSERT_EQUAL(defaultConfig.wifi_tx_power,
+                      Config::WiFiConfig::clampTxPower(defaultConfig.wifi_tx_power));
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_safe_get_float_returns_value_when_float);
@@ -253,6 +292,10 @@ int runUnityTests() {
     RUN_TEST(test_sensor_interval_clamp_above_max);
     RUN_TEST(test_sensor_interval_clamp_within_range);
     RUN_TEST(test_sensor_interval_default_is_in_range);
+    RUN_TEST(test_wifi_tx_power_clamp_below_min);
+    RUN_TEST(test_wifi_tx_power_clamp_above_max);
+    RUN_TEST(test_wifi_tx_power_clamp_within_range);
+    RUN_TEST(test_wifi_tx_power_default_is_in_range);
     return UNITY_END();
 }
 

@@ -18,12 +18,28 @@ namespace Config {
      * WiFi configuration structure
      */
     struct WiFiConfig {
+        /// Valid TX power range accepted by the ESP32 WiFi driver (raw wifi_power_t unit).
+        /// Values correspond to the wifi_power_t enum: e.g. 78 = 19.5 dBm (max), 68 = 17 dBm,
+        /// 52 = 13 dBm, 34 = 8.5 dBm, 20 = 5 dBm, 8 = 2 dBm, -4 = -1 dBm (min).
+        static constexpr int8_t TX_POWER_MAX = 78;  ///< 19.5 dBm - hardware maximum
+        static constexpr int8_t TX_POWER_MIN = -4;  ///< -1 dBm  - hardware minimum
+        static constexpr int8_t TX_POWER_DEFAULT = 68; ///< 17 dBm - good indoor balance
+
         char ssid[64];
         char password[64];
         bool configured;
         uint8_t connection_failures; // Track consecutive connection failures
+        int8_t wifi_tx_power; // WiFi TX power (raw wifi_power_t value, see constants above)
 
-        WiFiConfig() : configured(false), connection_failures(0), ssid(""), password("") {
+        WiFiConfig() : configured(false), connection_failures(0), ssid(""), password(""),
+                       wifi_tx_power(TX_POWER_DEFAULT) {
+        }
+
+        /** Clamp a raw TX power value to the hardware-supported range. */
+        static int8_t clampTxPower(int8_t power) {
+            if (power < TX_POWER_MIN) return TX_POWER_MIN;
+            if (power > TX_POWER_MAX) return TX_POWER_MAX;
+            return power;
         }
     };
 

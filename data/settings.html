@@ -51,23 +51,38 @@
 
         <div class="section">
             <h2>Power Management</h2>
-            <p>Reduce power consumption by adjusting how often sensors are read. Longer intervals mean less CPU and radio activity. Changes take effect immediately without a restart.</p>
+            <p>Reduce power consumption by adjusting how often sensors are read and by lowering the WiFi transmit power. Changes take effect immediately without a restart.</p>
 
             <div class="form-group">
                 <label for="sensorInterval">Sensor Reading Interval (seconds)</label>
                 <input type="number" id="sensorInterval" placeholder="5" step="1" min="1" max="300" style="width: 120px;">
             </div>
 
+            <div class="form-group">
+                <label for="wifiTxPower">WiFi Transmit Power</label>
+                <select id="wifiTxPower" style="width: 220px;">
+                    <option value="78">19.5 dBm (maximum)</option>
+                    <option value="68">17 dBm (default)</option>
+                    <option value="52">13 dBm</option>
+                    <option value="34">8.5 dBm</option>
+                    <option value="20">5 dBm</option>
+                    <option value="8">2 dBm (minimum practical)</option>
+                </select>
+            </div>
+
             <button class="btn btn-primary" onclick="updatePowerSettings()">Save</button>
 
             <div class="info-box">
                 <strong>Current interval: </strong><span id="currentSensorInterval">Loading...</span> s
+                &nbsp;&nbsp;
+                <strong>TX power: </strong><span id="currentWifiTxPower">Loading...</span>
             </div>
 
             <div class="info-box" style="margin-top: 10px;">
                 <strong>Tips:</strong>
                 <ul style="margin-top: 8px; margin-left: 20px;">
                     <li>5&ndash;30 s is a good balance for climate monitoring</li>
+                    <li>Lower TX power reduces radio current draw; 13--17 dBm is fine for most indoor deployments</li>
                     <li>WiFi modem sleep and CPU light sleep are always active</li>
                 </ul>
             </div>
@@ -717,6 +732,11 @@
     }
 
     // Power Management Functions
+    function txPowerLabel(raw) {
+        const labels = {78: '19.5 dBm (max)', 68: '17 dBm', 52: '13 dBm', 34: '8.5 dBm', 20: '5 dBm', 8: '2 dBm'};
+        return labels[raw] || raw + ' (raw)';
+    }
+
     async function loadPowerSettings() {
         try {
             const response = await fetch('/api/settings/power');
@@ -724,9 +744,14 @@
             const intervalSec = Math.round((data.sensor_interval_ms || 5000) / 1000);
             document.getElementById('currentSensorInterval').textContent = intervalSec;
             document.getElementById('sensorInterval').value = intervalSec;
+
+            const txPower = data.wifi_tx_power ?? 68;
+            document.getElementById('currentWifiTxPower').textContent = txPowerLabel(txPower);
+            document.getElementById('wifiTxPower').value = txPower;
         } catch (error) {
             console.error('Failed to load power settings:', error);
             document.getElementById('currentSensorInterval').textContent = 'Error';
+            document.getElementById('currentWifiTxPower').textContent = 'Error';
         }
     }
 
@@ -737,11 +762,13 @@
             return;
         }
 
+        const wifiTxPower = parseInt(document.getElementById('wifiTxPower').value);
+
         try {
             const response = await fetch('/api/settings/power', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({sensor_interval_ms: intervalSec * 1000})
+                body: JSON.stringify({sensor_interval_ms: intervalSec * 1000, wifi_tx_power: wifiTxPower})
             });
 
             if (response.ok) {

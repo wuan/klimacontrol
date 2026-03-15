@@ -125,8 +125,13 @@ void Network::startSTA(const char *ssid, const char *password) {
     // while maintaining connectivity (lower power than WIFI_PS_NONE).
     WiFi.setSleep(WIFI_PS_MIN_MODEM);
 
+    // Reduce TX power to configured level (default 17 dBm) to lower radio current draw.
+    Config::WiFiConfig wifiCfg = config.loadWiFiConfig();
+    WiFi.setTxPower((wifi_power_t)wifiCfg.wifi_tx_power);
+
     Serial.println("WiFi Configuration:");
     Serial.printf("  Power save: MIN_MODEM\r\n");
+    Serial.printf("  TX power: %d (raw)\r\n", wifiCfg.wifi_tx_power);
 
     WiFi.begin(ssid, password);
 
@@ -157,7 +162,7 @@ void Network::startSTA(const char *ssid, const char *password) {
         Serial.printf("  MAC: %s\r\n", WiFi.macAddress().c_str());
         Serial.printf("  Gateway: %s\r\n", WiFi.gatewayIP().toString().c_str());
         Serial.printf("  DNS: %s\r\n", WiFi.dnsIP().toString().c_str());
-        Serial.printf("  TX Power: %d\r\n", WiFi.getTxPower());
+        Serial.printf("  TX Power: %d (raw wifi_power_t)\r\n", WiFi.getTxPower());
         Serial.printf("  Sleep Mode: %d (1=MIN_MODEM)\r\n", WiFi.getSleep());
         Serial.printf("  Auto Reconnect: %d\r\n", WiFi.getAutoReconnect());
         Serial.println();
@@ -459,6 +464,15 @@ void Network::updateMqttConfig(const Config::MqttConfig& mqttConfig) {
     if (mqttClient) {
         mqttClient->setConfig(mqttConfig);
     }
+}
+
+void Network::setWifiTxPower(int8_t power) {
+#ifdef ARDUINO
+    if (mode == NetworkMode::STA) {
+        WiFi.setTxPower((wifi_power_t)power);
+        Serial.printf("WiFi TX power set to %d (raw)\r\n", power);
+    }
+#endif
 }
 
 void Network::startTask() {

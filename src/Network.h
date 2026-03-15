@@ -133,6 +133,12 @@ public:
     void updateMqttConfig(const Config::MqttConfig& mqttConfig);
 
     /**
+     * Set WiFi TX power at runtime (takes effect immediately if in STA mode)
+     * @param power Raw wifi_power_t value (see WiFiConfig TX_POWER_* constants)
+     */
+    void setWifiTxPower(int8_t power);
+
+    /**
      * Get current NTP epoch time
      * @return Current epoch time, or 0 if NTP not available
      */
