@@ -47,28 +47,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y lcov
 
-      - name: Run Native Tests
+      - name: Run Native Tests with Coverage
         run: |
-          echo "Running native tests..."
+          echo "Running native tests with coverage instrumentation..."
           pio test -e native -v
-          
-          echo "Manually triggering coverage generation..."
-          # If PlatformIO post-action didn't run, we run it manually
-          python3 scripts/generate_coverage_manual.py
-          
-          echo "Checking for coverage files after tests..."
-          find . -name "*.gcno" -o -name "*.gcda"
-          if [ ! -d "coverage_report" ]; then
-            echo "Warning: coverage_report directory not found!"
-            ls -R .pio/build/native/ || true
-          fi
+
+      - name: Generate Coverage Report
+        run: |
+          echo "Collecting coverage data..."
+          python3 scripts/generate_coverage.py
+
+          echo "Coverage file contents summary:"
+          lcov --summary coverage/coverage.info || true
 
       - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-report
-          path: coverage_report/
+          path: coverage/coverage.info
           retention-days: 7
 
       - name: Build for ESP32
@@ -114,4 +111,4 @@ jobs:
         with:
           args: >
             -Dsonar.cfamily.build-wrapper-output=${{ env.BUILD_WRAPPER_OUT_DIR }}
-            -Dsonar.gcov.reportsPath=.
+            -Dsonar.cfamily.coverage.reportPaths=coverage/coverage.info
