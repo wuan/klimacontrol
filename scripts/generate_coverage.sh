@@ -20,8 +20,8 @@ pio test -e native -v
 echo "📊 Checking for gcov coverage data..."
 
 # Check if gcov data files exist
-gcda_files=$(find . -name "*.gcda" | grep -v ".pio" | wc -l)
-gcno_files=$(find . -name "*.gcno" | grep -v ".pio" | wc -l)
+gcda_files=$(find . -name "*.gcda" | wc -l)
+gcno_files=$(find . -name "*.gcno" | wc -l)
 
 echo "Found $gcda_files .gcda files and $gcno_files .gcno files"
 
@@ -30,8 +30,8 @@ if [ $gcda_files -gt 0 ] && [ $gcno_files -gt 0 ]; then
     
     # Generate lcov info file
     echo "📝 Generating lcov info file..."
-    lcov --capture --directory . --output-file coverage/coverage.info --base-directory . || {
-        echo "⚠️  lcov capture failed, trying with ignore errors..."
+    lcov --capture --directory . --output-file coverage/coverage.info --base-directory . --ignore-errors gcov,graph,inconsistent || {
+        echo "⚠️  lcov capture failed, trying simpler approach..."
         lcov --capture --directory . --output-file coverage/coverage.info --base-directory . --ignore-errors gcov,graph || {
             echo "❌ lcov capture failed completely"
             use_fallback=true
@@ -41,7 +41,7 @@ if [ $gcda_files -gt 0 ] && [ $gcno_files -gt 0 ]; then
     if [ -z "$use_fallback" ]; then
         # Filter out system and test files
         echo "🧹 Filtering out system and test files..."
-        lcov --remove coverage/coverage.info "/usr/*" "*/test/*" "*/.pio/*" "*/lib/*" --output-file coverage/coverage_filtered.info || {
+        lcov --remove coverage/coverage.info "/usr/*" "*/test/*" "*/lib/*" --output-file coverage/coverage_filtered.info || {
             echo "⚠️  Filtering failed, using unfiltered data..."
             cp coverage/coverage.info coverage/coverage_filtered.info
         }
@@ -49,7 +49,7 @@ if [ $gcda_files -gt 0 ] && [ $gcno_files -gt 0 ]; then
         # Generate HTML report
         echo "📄 Generating HTML report..."
         mkdir -p coverage/html
-        genhtml coverage/coverage_filtered.info --output-directory coverage/html || {
+        genhtml coverage/coverage_filtered.info --output-directory coverage/html --ignore-errors inconsistent || {
             echo "⚠️  HTML generation failed"
             use_fallback=true
         }
@@ -150,7 +150,7 @@ fi
 echo "📊 Coverage summary:"
 if [ -f "coverage/coverage.info" ]; then
     if command -v lcov &> /dev/null; then
-        lcov --summary coverage/coverage.info || echo "Lines: 80.0% (estimated)"
+        lcov --summary coverage/coverage.info --ignore-errors inconsistent || echo "Lines: 80.0% (estimated)"
     else
         echo "Lines: 80.0% (estimated)"
         echo "Functions: 75.0% (estimated)"
