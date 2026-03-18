@@ -14,3 +14,7 @@ coverage/
 *.gcda
 *.gcno
 *.gcov
+
+# Python cache
+__pycache__/
+*.pyc
