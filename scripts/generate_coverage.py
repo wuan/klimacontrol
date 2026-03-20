@@ -4,12 +4,15 @@
 This script must be run AFTER 'pio test -e native' completes.
 It collects coverage data from the .gcda/.gcno files produced by the instrumented build,
 filters out system and test files, and outputs coverage/coverage.info for SonarCloud.
+It also converts the LCOV report to Sonar Generic Coverage XML format
+(coverage/coverage-generic.xml) for use with sonar.coverageReportPaths.
 """
 
 import glob
 import os
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 
 
 def run_cmd(args, check=True):
@@ -124,6 +127,70 @@ def main():
 
     run_cmd(["lcov", "--summary", "coverage/coverage.info"], check=False)
     print("Coverage report generated: coverage/coverage.info")
+
+    lcov_to_sonar_xml("coverage/coverage.info", "coverage/coverage-generic.xml", project_root)
+    print("Sonar Generic Coverage XML generated: coverage/coverage-generic.xml")
+
+
+def lcov_to_sonar_xml(lcov_file, xml_file, project_root):
+    """Convert an LCOV .info file to Sonar Generic Coverage XML format.
+
+    The Sonar Generic Coverage XML format is documented at:
+    https://docs.sonarsource.com/sonarcloud/advanced-setup/test-coverage/generic-test-data/
+
+    Source file paths in the XML are relative to the project root so that
+    SonarCloud can match them to indexed files regardless of the runner's
+    absolute path.
+    """
+    root = ET.Element("coverage", version="1")
+
+    current_file = None
+    file_elem = None
+
+    with open(lcov_file, encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.rstrip()
+            if line.startswith("SF:"):
+                abs_path = line[3:]
+                # Compute path relative to the project root
+                try:
+                    rel_path = os.path.relpath(abs_path, project_root)
+                except ValueError:
+                    print(
+                        f"Warning: could not compute relative path for '{abs_path}' "
+                        f"(project root: '{project_root}'); using absolute path",
+                        file=sys.stderr,
+                    )
+                    rel_path = abs_path
+                current_file = rel_path
+                file_elem = ET.SubElement(root, "file", path=current_file)
+            elif line.startswith("DA:") and file_elem is not None:
+                # DA:<line number>,<hit count>
+                parts = line[3:].split(",")
+                if len(parts) >= 2:
+                    line_number = parts[0]
+                    try:
+                        hit_count = int(parts[1])
+                    except ValueError:
+                        print(
+                            f"Warning: could not parse hit count in DA entry: '{line}'",
+                            file=sys.stderr,
+                        )
+                        continue
+                    covered = "true" if hit_count > 0 else "false"
+                    ET.SubElement(
+                        file_elem,
+                        "lineToCover",
+                        lineNumber=line_number,
+                        covered=covered,
+                    )
+            elif line == "end_of_record":
+                current_file = None
+                file_elem = None
+
+    tree = ET.ElementTree(root)
+    ET.indent(tree, space="  ")
+    tree.write(xml_file, encoding="unicode", xml_declaration=True)
 
 
 if __name__ == "__main__":
