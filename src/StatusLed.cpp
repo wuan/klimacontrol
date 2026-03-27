@@ -1,9 +1,5 @@
 #include "StatusLed.h"
 
-#ifndef ARDUINO
-unsigned long millis();
-#endif
-
 StatusLed::StatusLed() 
 #ifdef ARDUINO
     : pixel(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800), state(LedState::OFF),
@@ -38,8 +34,6 @@ void StatusLed::showColor(uint32_t color) {
 }
 
 void StatusLed::update() {
-    unsigned long now = millis();
-
     switch (state) {
         case LedState::OFF:
             showColor(0x000000);

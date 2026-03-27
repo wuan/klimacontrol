@@ -1,28 +1,9 @@
 #include "unity.h"
 #include "StatusLed.h"
 
-// Mock Arduino functions for testing
-static unsigned long mockMillis = 0;
-unsigned long millis() {
-    return mockMillis;
-}
-
-void pinMode(uint8_t, uint8_t) {
-    // Mock implementation
-}
-
-void digitalWrite(uint8_t, uint8_t) {
-    // Mock implementation
-}
-
-void analogWrite(uint8_t, int) {
-    // Mock implementation
-}
-
 StatusLed* testLed;
 
 void setUp() {
-    mockMillis = 0;
     testLed = new StatusLed();
     testLed->begin();
 }
@@ -46,19 +27,14 @@ void test_set_state_off() {
     TEST_ASSERT_EQUAL(LedState::OFF, testLed->getState());
 }
 
-void test_set_state_blink_slow() {
-    testLed->setState(LedState::BLINK_SLOW);
-    TEST_ASSERT_EQUAL(LedState::BLINK_SLOW, testLed->getState());
+void test_set_state_startup() {
+    testLed->setState(LedState::STARTUP);
+    TEST_ASSERT_EQUAL(LedState::STARTUP, testLed->getState());
 }
 
-void test_set_state_blink_fast() {
-    testLed->setState(LedState::BLINK_FAST);
-    TEST_ASSERT_EQUAL(LedState::BLINK_FAST, testLed->getState());
-}
-
-void test_set_state_pulse() {
-    testLed->setState(LedState::PULSE);
-    TEST_ASSERT_EQUAL(LedState::PULSE, testLed->getState());
+void test_set_state_transmit_data() {
+    testLed->setState(LedState::TRANSMIT_DATA);
+    TEST_ASSERT_EQUAL(LedState::TRANSMIT_DATA, testLed->getState());
 }
 
 void test_on_method() {
@@ -83,18 +59,17 @@ void test_toggle_method() {
 
 void test_update_method_no_crash() {
     // Test that update doesn't crash
-    testLed->setState(LedState::BLINK_SLOW);
+    testLed->setState(LedState::STARTUP);
     for (int i = 0; i < 10; i++) {
-        mockMillis += 50;
         testLed->update();
     }
     TEST_ASSERT_TRUE(true); // If we get here, no crash occurred
 }
 
-void test_set_state_mqtt_active() {
-    mockMillis = 1000;
-    testLed->setState(LedState::MQTT_ACTIVE);
-    TEST_ASSERT_EQUAL(LedState::MQTT_ACTIVE, testLed->getState());
+void test_set_state_transmit_data_from_on() {
+    testLed->setState(LedState::ON);
+    testLed->setState(LedState::TRANSMIT_DATA);
+    TEST_ASSERT_EQUAL(LedState::TRANSMIT_DATA, testLed->getState());
 }
 
 void test_progress_method() {
@@ -109,34 +84,19 @@ void test_progress_method() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 1.0f, testLed->getProgress());
 }
 
-void test_mqtt_flash_returns_to_on() {
-    mockMillis = 1000;
-    testLed->setState(LedState::ON);
-    testLed->setState(LedState::MQTT_ACTIVE);
-    TEST_ASSERT_EQUAL(LedState::MQTT_ACTIVE, testLed->getState());
-
-    // After flash duration, should auto-transition back to ON
-    mockMillis = 1000 + 200; // > 150ms flash duration
-    testLed->update();
-    TEST_ASSERT_EQUAL(LedState::ON, testLed->getState());
-    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, testLed->getProgress());
-}
-
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_initial_state);
     RUN_TEST(test_set_state_on);
     RUN_TEST(test_set_state_off);
-    RUN_TEST(test_set_state_blink_slow);
-    RUN_TEST(test_set_state_blink_fast);
-    RUN_TEST(test_set_state_pulse);
+    RUN_TEST(test_set_state_startup);
+    RUN_TEST(test_set_state_transmit_data);
     RUN_TEST(test_on_method);
     RUN_TEST(test_off_method);
     RUN_TEST(test_toggle_method);
     RUN_TEST(test_update_method_no_crash);
-    RUN_TEST(test_set_state_mqtt_active);
+    RUN_TEST(test_set_state_transmit_data_from_on);
     RUN_TEST(test_progress_method);
-    RUN_TEST(test_mqtt_flash_returns_to_on);
     return UNITY_END();
 }
 
