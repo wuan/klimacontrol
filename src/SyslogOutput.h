@@ -9,29 +9,22 @@
 
 class SyslogOutput {
 public:
-    // Install the syslog vprintf handler. Chains to the previous handler
-    // so UART output is preserved. Thread-safe via mutex.
-    static void begin(const Config::SyslogConfig& config);
-
-    // Uninstall the syslog handler and restore the previous one.
+    static void begin(const Config::SyslogConfig& config, const char* deviceName);
     static void end();
-
-    // Update target without reinstalling the handler.
     static void setConfig(const Config::SyslogConfig& config);
-
     static bool isActive() { return active; }
 
-private:
-    static int syslogVprintf(const char* fmt, va_list args);
+    // Send a log line to the syslog server. Called from the _KLIMA_LOG macro.
+    // level: single character (E/W/I/D/V)
+    static void send(char level, const char* tag, const char* msg);
 
-    // Map ESP log level character to syslog severity (RFC 3164).
-    // E=3(error), W=4(warning), I=6(info), D=7(debug), V=7(debug)
+private:
     static int levelToSeverity(char level);
 
     static WiFiUDP udp;
     static SemaphoreHandle_t mutex;
-    static vprintf_like_t previousHandler;
     static Config::SyslogConfig currentConfig;
+    static char hostname[32];
     static bool active;
 };
 

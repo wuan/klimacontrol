@@ -289,7 +289,8 @@ void Network::configureUsingAPMode() {
 
     // Start syslog forwarding if configured
     Config::SyslogConfig syslogConfig = config.loadSyslogConfig();
-    SyslogOutput::begin(syslogConfig);
+    String syslogHostname = generateHostname();
+    SyslogOutput::begin(syslogConfig, syslogHostname.c_str());
 
     // Main loop - NTP updates and touch control
     auto lastNtpUpdate = ntpClient.getEpochTime();
