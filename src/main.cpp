@@ -58,8 +58,7 @@ void setup() {
     // Format: "44=SHT4x,77=BME680,59=SGP40"
     {
         char buf[128];
-        strcpy_s(buf, sensorConfig.assignments, sizeof(buf));
-        buf[sizeof(buf) - 1] = '\0';
+        strlcpy(buf, sensorConfig.assignments, sizeof(buf));
 
         char *token = strtok(buf, ",");
         while (token) {
