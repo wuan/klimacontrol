@@ -20,16 +20,7 @@ void MqttClient::applyServer() {
 #ifdef ARDUINO
     if (config.host[0] == '\0') return;
 
-    // Check if host is an IP address (all digits and dots)
-    bool isIp = true;
-    for (const char* p = config.host; *p; p++) {
-        if (*p != '.' && (*p < '0' || *p > '9')) {
-            isIp = false;
-            break;
-        }
-    }
-
-    if (isIp) {
+    if (isIpAddress(config.host)) {
         // Use IPAddress overload — stores IP by value, avoids DNS lookup
         IPAddress ip;
         if (ip.fromString(config.host)) {

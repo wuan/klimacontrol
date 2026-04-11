@@ -44,6 +44,15 @@ namespace DeviceId {
     }
 } // namespace DeviceId
 
+#else
+#include <string>
+using String = std::string;
+
+namespace DeviceId {
+    inline String getDeviceId() { return "000000"; }
+    inline String getMacAddress() { return "00:00:00:00:00:00"; }
+} // namespace DeviceId
+
 #endif // ARDUINO
 
 #endif //KLIMACONTROL_DEVICEID_H

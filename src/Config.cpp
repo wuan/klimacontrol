@@ -87,6 +87,15 @@ namespace Config {
 #endif
     }
 
+    void validateDeviceConfig(DeviceConfig &config) {
+        if (std::isnan(config.target_temperature) || config.target_temperature < 10.0f || config.target_temperature > 30.0f) {
+            config.target_temperature = 22.0f;
+        }
+        if (std::isnan(config.elevation) || config.elevation < -500.0f || config.elevation > 9000.0f) {
+            config.elevation = 0.0f;
+        }
+    }
+
     DeviceConfig ConfigManager::loadDeviceConfig() {
         DeviceConfig config;
 
@@ -94,20 +103,12 @@ namespace Config {
         prefs.begin(NAMESPACE, true); // Read-only mode
 
         prefs.getString("device_name", config.device_name, sizeof(config.device_name));
-        
+
         config.target_temperature = prefs.getFloat(TARGET_TEMPERATURE, 22.0f);
         config.temperature_control_enabled = prefs.getBool(TEMPERATURE_CONTROL_ENABLED, false);
         config.elevation = prefs.getFloat(ELEVATION, 0.0f);
 
         prefs.end();
-
-        // Validate ranges — NVS may hold garbage after flash corruption
-        if (std::isnan(config.target_temperature) || config.target_temperature < 10.0f || config.target_temperature > 30.0f) {
-            config.target_temperature = 22.0f;
-        }
-        if (std::isnan(config.elevation) || config.elevation < -500.0f || config.elevation > 9000.0f) {
-            config.elevation = 0.0f;
-        }
 
         // Always generate device ID from MAC
         String deviceId = getDeviceId();
@@ -120,6 +121,9 @@ namespace Config {
             config.device_name[sizeof(config.device_name) - 1] = '\0';
         }
 #endif
+
+        // Validate ranges — NVS may hold garbage after flash corruption
+        validateDeviceConfig(config);
 
         return config;
     }
@@ -224,6 +228,19 @@ namespace Config {
 #endif
     }
 
+    void validateMqttConfig(MqttConfig &config) {
+        if (config.prefix[0] == '\0') {
+            strncpy(config.prefix, "sensors", sizeof(config.prefix) - 1);
+            config.prefix[sizeof(config.prefix) - 1] = '\0';
+        }
+        if (config.port == 0) {
+            config.port = 1883;
+        }
+        if (config.interval < 1 || config.interval > 3600) {
+            config.interval = 15;
+        }
+    }
+
     MqttConfig ConfigManager::loadMqttConfig() {
         MqttConfig mqttConfig;
 
@@ -238,20 +255,11 @@ namespace Config {
         prefs.getString("mqtt_prefix", mqttConfig.prefix, sizeof(mqttConfig.prefix));
         mqttConfig.interval = prefs.getUShort("mqtt_interval", 15);
 
-        if (mqttConfig.prefix[0] == '\0') {
-            strcpy(mqttConfig.prefix, "sensors");
-        }
-
-        // Validate ranges — NVS may hold garbage after flash corruption
-        if (mqttConfig.port == 0) {
-            mqttConfig.port = 1883;
-        }
-        if (mqttConfig.interval < 1 || mqttConfig.interval > 3600) {
-            mqttConfig.interval = 15;
-        }
-
         prefs.end();
 #endif
+
+        // Validate ranges — NVS may hold garbage after flash corruption
+        validateMqttConfig(mqttConfig);
 
         return mqttConfig;
     }
@@ -273,6 +281,13 @@ namespace Config {
         ESP_LOGD(TAG, "Saved MQTT configuration");
 #endif
     }
+    void validateEnergyConfig(EnergyConfig &config) {
+        uint8_t wp = config.wifi_power;
+        if (wp != 8 && wp != 34 && wp != 52 && wp != 68 && wp != 80) {
+            config.wifi_power = Constants::DEFAULT_WIFI_POWER;
+        }
+    }
+
     EnergyConfig ConfigManager::loadEnergyConfig() {
         EnergyConfig energyConfig;
 
@@ -282,13 +297,10 @@ namespace Config {
         energyConfig.wifi_power = prefs.getUChar(ENERGY_WIFI_PW, Constants::DEFAULT_WIFI_POWER);
 
         prefs.end();
+#endif
 
         // Validate wifi_power is one of the known values
-        uint8_t wp = energyConfig.wifi_power;
-        if (wp != 8 && wp != 34 && wp != 52 && wp != 68 && wp != 80) {
-            energyConfig.wifi_power = Constants::DEFAULT_WIFI_POWER;
-        }
-#endif
+        validateEnergyConfig(energyConfig);
 
         return energyConfig;
     }

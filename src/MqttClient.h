@@ -8,6 +8,19 @@
 #include <PubSubClient.h>
 #endif
 
+/**
+ * Check if a string looks like an IPv4 address (digits and dots only)
+ */
+inline bool isIpAddress(const char* host) {
+    if (!host || host[0] == '\0') return false;
+    for (const char* p = host; *p; p++) {
+        if (*p != '.' && (*p < '0' || *p > '9')) {
+            return false;
+        }
+    }
+    return true;
+}
+
 class MqttClient {
 private:
 #ifdef ARDUINO
