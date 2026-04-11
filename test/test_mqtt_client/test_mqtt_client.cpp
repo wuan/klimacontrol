@@ -98,7 +98,7 @@ void test_is_enabled_after_begin() {
     MqttClient client;
     Config::MqttConfig config;
     config.enabled = true;
-    strncpy(config.host, "192.168.1.1", sizeof(config.host));
+    strlcpy(config.host, "192.168.1.1", sizeof(config.host));
     client.begin(config);
     TEST_ASSERT_TRUE(client.isEnabled());
 }
@@ -141,7 +141,7 @@ void test_prefix_default() {
 void test_prefix_custom() {
     MqttClient client;
     Config::MqttConfig config;
-    strncpy(config.prefix, "home/living", sizeof(config.prefix));
+    strlcpy(config.prefix, "home/living", sizeof(config.prefix));
     client.begin(config);
     TEST_ASSERT_EQUAL_STRING("home/living", client.getPrefix());
 }

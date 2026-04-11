@@ -146,7 +146,7 @@ void test_validate_mqtt_config_valid_values_unchanged() {
     Config::MqttConfig config;
     config.port = 8883;
     config.interval = 60;
-    strncpy(config.prefix, "home/bedroom", sizeof(config.prefix) - 1);
+    strlcpy(config.prefix, "home/bedroom", sizeof(config.prefix));
     Config::validateMqttConfig(config);
     TEST_ASSERT_EQUAL(8883, config.port);
     TEST_ASSERT_EQUAL(60, config.interval);

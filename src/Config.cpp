@@ -112,13 +112,11 @@ namespace Config {
 
         // Always generate device ID from MAC
         String deviceId = getDeviceId();
-        strncpy(config.device_id, deviceId.c_str(), sizeof(config.device_id) - 1);
-        config.device_id[sizeof(config.device_id) - 1] = '\0';
+        strlcpy(config.device_id, deviceId.c_str(), sizeof(config.device_id));
 
         // If no custom name is set, use device ID as name
         if (config.device_name[0] == '\0') {
-            strncpy(config.device_name, config.device_id, sizeof(config.device_name) - 1);
-            config.device_name[sizeof(config.device_name) - 1] = '\0';
+            strlcpy(config.device_name, config.device_id, sizeof(config.device_name));
         }
 #endif
 
@@ -205,8 +203,7 @@ namespace Config {
 
         String assign = prefs.getString("sns_assign", "");
 
-        strncpy(sensorConfig.assignments, assign.c_str(), sizeof(sensorConfig.assignments) - 1);
-        sensorConfig.assignments[sizeof(sensorConfig.assignments) - 1] = '\0';
+        strlcpy(sensorConfig.assignments, assign.c_str(), sizeof(sensorConfig.assignments));
 
         prefs.end();
 
@@ -230,8 +227,7 @@ namespace Config {
 
     void validateMqttConfig(MqttConfig &config) {
         if (config.prefix[0] == '\0') {
-            strncpy(config.prefix, "sensors", sizeof(config.prefix) - 1);
-            config.prefix[sizeof(config.prefix) - 1] = '\0';
+            strlcpy(config.prefix, "sensors", sizeof(config.prefix));
         }
         if (config.port == 0) {
             config.port = 1883;

@@ -65,8 +65,7 @@ namespace Config {
             host[0] = '\0';
             username[0] = '\0';
             password[0] = '\0';
-            strncpy(prefix, "sensors", sizeof(prefix) - 1);
-            prefix[sizeof(prefix) - 1] = '\0';
+            strlcpy(prefix, "sensors", sizeof(prefix));
         }
     };
 

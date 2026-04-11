@@ -127,12 +127,10 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
 
         // Create WiFi config
         Config::WiFiConfig wifiConfig;
-        strncpy(wifiConfig.ssid, ssid, sizeof(wifiConfig.ssid) - 1);
-        wifiConfig.ssid[sizeof(wifiConfig.ssid) - 1] = '\0';
+        strlcpy(wifiConfig.ssid, ssid, sizeof(wifiConfig.ssid));
 
         if (password != nullptr) {
-            strncpy(wifiConfig.password, password, sizeof(wifiConfig.password) - 1);
-            wifiConfig.password[sizeof(wifiConfig.password) - 1] = '\0';
+            strlcpy(wifiConfig.password, password, sizeof(wifiConfig.password));
         } else {
             wifiConfig.password[0] = '\0';
         }

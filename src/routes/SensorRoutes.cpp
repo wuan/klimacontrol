@@ -24,8 +24,7 @@ void WebServerManager::setupSensorRoutes() {
 
         // Parse assignment string "44=SHT4x,77=BME680" into JSON array
         char buf[128];
-        strncpy(buf, sensorConfig.assignments, sizeof(buf));
-        buf[sizeof(buf) - 1] = '\0';
+        strlcpy(buf, sensorConfig.assignments, sizeof(buf));
 
         char* token = strtok(buf, ",");
         while (token) {

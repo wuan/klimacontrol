@@ -39,12 +39,10 @@ void WebServerManager::setupSettingsRoutes() {
 
                       // Create and save WiFi config
                       Config::WiFiConfig wifiConfig;
-                      strncpy(wifiConfig.ssid, ssid, sizeof(wifiConfig.ssid) - 1);
-                      wifiConfig.ssid[sizeof(wifiConfig.ssid) - 1] = '\0';
+                      strlcpy(wifiConfig.ssid, ssid, sizeof(wifiConfig.ssid));
 
                       if (password != nullptr) {
-                          strncpy(wifiConfig.password, password, sizeof(wifiConfig.password) - 1);
-                          wifiConfig.password[sizeof(wifiConfig.password) - 1] = '\0';
+                          strlcpy(wifiConfig.password, password, sizeof(wifiConfig.password));
                       } else {
                           wifiConfig.password[0] = '\0';
                       }
@@ -88,8 +86,7 @@ void WebServerManager::setupSettingsRoutes() {
 
                       // Load current config, update name, and save
                       Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-                      strncpy(deviceConfig.device_name, name, sizeof(deviceConfig.device_name) - 1);
-                      deviceConfig.device_name[sizeof(deviceConfig.device_name) - 1] = '\0';
+                      strlcpy(deviceConfig.device_name, name, sizeof(deviceConfig.device_name));
                       config.saveDeviceConfig(deviceConfig);
 
                       ESP_LOGI(TAG, "Device name updated: %s", deviceConfig.device_name);
