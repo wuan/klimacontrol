@@ -12,15 +12,19 @@
 #include "DeviceId.h"
 #include "OTAUpdater.h"
 #include "WebServerManager.h"
+#include "SyslogOutput.h"
 
 #ifdef ARDUINO
 #include <esp_pm.h>
 #include <esp_task_wdt.h>
+#include <esp_log.h>
 #endif
 
 #ifdef ARDUINO
 #include <set>
 #endif
+
+static const char* TAG = "net";
 
 Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor)
     : config(config), sensorController(sensorController), sensorMonitor(sensorMonitor), mode(NetworkMode::NONE), webServer(nullptr), statusLed(nullptr), lastMqttPublish(0)
@@ -46,9 +50,7 @@ void Network::configureMDNS() {
     String hostname = generateHostname();
 
     if (MDNS.begin(hostname.c_str())) {
-        Serial.print("mDNS responder started: ");
-        Serial.print(hostname);
-        Serial.println(".local");
+        ESP_LOGI(TAG, "mDNS responder started: %s.local", hostname.c_str());
 
         Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
         bool deviceNameNotEmpty = deviceConfig.device_name[0] != '\0';
@@ -61,12 +63,12 @@ void Network::configureMDNS() {
             mdnsInstanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_id);
         }
 
-        Serial.printf("mDNS instance name: '%s'\r\n", mdnsInstanceName.c_str());
+        ESP_LOGI(TAG, "mDNS instance name: '%s'", mdnsInstanceName.c_str());
         MDNS.setInstanceName(mdnsInstanceName.c_str());
 
         MDNS.addService("http", "tcp", 80);
     } else {
-        Serial.println("Error starting mDNS responder!");
+        ESP_LOGE(TAG, "Error starting mDNS responder");
     }
 #endif
 }
@@ -91,15 +93,13 @@ void Network::startAP() {
     // Get device ID for AP SSID
     String ap_ssid = Constants::AP_SSID_PREFIX + DeviceId::getDeviceId();
 
-    Serial.print("Starting Access Point: ");
-    Serial.println(ap_ssid.c_str());
+    ESP_LOGI(TAG, "Starting Access Point: %s", ap_ssid.c_str());
 
     // Start open AP (no password)
     WiFi.softAP(ap_ssid.c_str());
 
     IPAddress ip_address = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(ip_address);
+    ESP_LOGI(TAG, "AP IP address: %s", ip_address.toString().c_str());
 
     configureMDNS();
 
@@ -125,14 +125,11 @@ void Network::startSTA(const char *ssid, const char *password) {
     Config::EnergyConfig energyConfig = config.loadEnergyConfig();
     WiFi.setTxPower(static_cast<wifi_power_t>(energyConfig.wifi_power));
 
-    Serial.println("WiFi Configuration:");
-    Serial.printf("  TX Power: %d (raw wifi_power_t)\r\n", WiFi.getTxPower());
-    Serial.printf("  Sleep Mode: %d (0=NONE)\r\n", WiFi.getSleep());
+    ESP_LOGI(TAG, "WiFi config: TX Power=%d, Sleep Mode=%d (0=NONE)", WiFi.getTxPower(), WiFi.getSleep());
 
     WiFi.begin(ssid, password);
 
-    Serial.print("Connecting to WiFi ...");
-    Serial.println(ssid);
+    ESP_LOGI(TAG, "Connecting to WiFi %s ...", ssid);
 
     // Wait for connection with timeout
     int attempts = 0;
@@ -144,50 +141,32 @@ void Network::startSTA(const char *ssid, const char *password) {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("WiFi connected");
-
-        Serial.print("IP address: ");
-        Serial.println(WiFi.localIP());
-
-        // Print detailed WiFi diagnostics
-        Serial.println("\r\nWiFi Diagnostics:");
-        Serial.printf("  SSID: %s\r\n", WiFi.SSID().c_str());
-        Serial.printf("  BSSID: %s\r\n", WiFi.BSSIDstr().c_str());
-        Serial.printf("  Channel: %d\r\n", WiFi.channel());
-        Serial.printf("  RSSI: %d dBm\r\n", WiFi.RSSI());
-        Serial.printf("  MAC: %s\r\n", WiFi.macAddress().c_str());
-        Serial.printf("  Gateway: %s\r\n", WiFi.gatewayIP().toString().c_str());
-        Serial.printf("  DNS: %s\r\n", WiFi.dnsIP().toString().c_str());
-        Serial.printf("  TX Power: %d\r\n", WiFi.getTxPower());
-        Serial.printf("  Sleep Mode: %d (0=NONE)\r\n", WiFi.getSleep());
-        Serial.printf("  Auto Reconnect: %d\r\n", WiFi.getAutoReconnect());
-        Serial.println();
+        ESP_LOGI(TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
+        ESP_LOGD(TAG, "WiFi diagnostics: SSID=%s BSSID=%s Ch=%d RSSI=%d dBm MAC=%s",
+                 WiFi.SSID().c_str(), WiFi.BSSIDstr().c_str(), WiFi.channel(),
+                 WiFi.RSSI(), WiFi.macAddress().c_str());
+        ESP_LOGD(TAG, "WiFi network: GW=%s DNS=%s TxPwr=%d Sleep=%d AutoReconn=%d",
+                 WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str(),
+                 WiFi.getTxPower(), WiFi.getSleep(), WiFi.getAutoReconnect());
 
         configureMDNS();
 
         String hostname = generateHostname();
-        Serial.print("You can now access ");
-        Serial.print(Constants::PROJECT_NAME);
-        Serial.println(" at:");
-        Serial.print("  http://");
-        Serial.print(hostname);
-        Serial.println(".local/");
-        Serial.print("  or http://");
-        Serial.println(WiFi.localIP());
+        ESP_LOGI(TAG, "%s available at http://%s.local/ or http://%s",
+                 Constants::PROJECT_NAME, hostname.c_str(), WiFi.localIP().toString().c_str());
 
         // Start NTP client
         ntpClient.begin();
         ntpClient.update();
 
-        Serial.print("NTP time: ");
-        Serial.println(ntpClient.getFormattedTime());
+        ESP_LOGI(TAG, "NTP time: %s", ntpClient.getFormattedTime().c_str());
 
         // Initialize MQTT client
         mqttClient = std::make_unique<MqttClient>();
         Config::MqttConfig mqttConfig = config.loadMqttConfig();
         mqttClient->begin(mqttConfig);
     } else {
-        Serial.println("\r\nConnection failed");
+        ESP_LOGE(TAG, "WiFi connection failed");
     }
 #endif
 }
@@ -205,14 +184,14 @@ void Network::configureUsingAPMode() {
         captivePortal.handleClient(); // Handle DNS requests
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
-    Serial.println("Configuration received");
+    ESP_LOGI(TAG, "Configuration received");
 
     vTaskDelay(5000 / portTICK_PERIOD_MS);
 
-    Serial.println("Stopping captive portal");
+    ESP_LOGI(TAG, "Stopping captive portal");
     captivePortal.end();
 
-    Serial.println("Scheduling restart");
+    ESP_LOGI(TAG, "Scheduling restart");
     config.requestRestart(1000);
 
     // Stay in loop until main loop restarts us
@@ -225,7 +204,7 @@ void Network::configureUsingAPMode() {
 #ifdef ARDUINO
     esp_task_wdt_add(NULL);
 
-    Serial.println("Network task started");
+    ESP_LOGI(TAG, "Network task started");
 
     // Initialize status LED early (works without WiFi) - uses built-in NeoPixel
     statusLed = std::make_unique<StatusLed>(); // Built-in NeoPixel, 1 pixel
@@ -233,16 +212,16 @@ void Network::configureUsingAPMode() {
     statusLed->setState(LedState::STARTUP); // Indicate booting
     
     if (!config.isConfigured()) {
-        Serial.println("No WiFi configuration found - starting AP mode");
+        ESP_LOGI(TAG, "No WiFi configuration found - starting AP mode");
         
         configureUsingAPMode();
     }
-    Serial.println("Network task configured");
+    ESP_LOGI(TAG, "Network task configured");
 
     // Check connection failure count — fall back to AP mode after repeated failures
     static constexpr uint8_t AP_FALLBACK_THRESHOLD = 3;
     uint8_t failures = config.getConnectionFailures();
-    Serial.printf("Previous connection failures: %u\r\n", failures);
+    ESP_LOGI(TAG, "Previous connection failures: %u", failures);
 
     if (failures >= AP_FALLBACK_THRESHOLD) {
         // Temporarily open AP so the user can reconfigure WiFi credentials.
@@ -251,8 +230,8 @@ void Network::configureUsingAPMode() {
         config.resetConnectionFailures();
 
         static constexpr unsigned long AP_FALLBACK_TIMEOUT_MS = 5UL * 60 * 1000; // 5 minutes
-        Serial.printf("Too many connection failures - opening AP for %lu s\r\n",
-                      AP_FALLBACK_TIMEOUT_MS / 1000);
+        ESP_LOGW(TAG, "Too many connection failures - opening AP for %lu s",
+                 AP_FALLBACK_TIMEOUT_MS / 1000);
 
         startAP();
         webServer = std::make_unique<ConfigWebServerManager>(config, *this, sensorController, sensorMonitor);
@@ -269,9 +248,9 @@ void Network::configureUsingAPMode() {
         webServer.reset();
 
         if (config.isConfigured()) {
-            Serial.println("New configuration received - restarting...");
+            ESP_LOGI(TAG, "New configuration received - restarting...");
         } else {
-            Serial.println("AP fallback timed out - restarting to retry STA...");
+            ESP_LOGI(TAG, "AP fallback timed out - restarting to retry STA...");
         }
 
         vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -281,7 +260,7 @@ void Network::configureUsingAPMode() {
     // Load WiFi configuration
     Config::WiFiConfig wifiConfig = config.loadWiFiConfig();
 
-    Serial.println("WiFi configured - starting STA mode");
+    ESP_LOGI(TAG, "WiFi configured - starting STA mode");
 
     // Start Station mode
     startSTA(wifiConfig.ssid, wifiConfig.password);
@@ -289,8 +268,8 @@ void Network::configureUsingAPMode() {
     // Check if connection succeeded
     if (WiFi.status() != WL_CONNECTED) {
         uint8_t newFailures = config.incrementConnectionFailures();
-        Serial.printf("Failed to connect (failure %u/%u) - restarting...\r\n",
-                      newFailures, AP_FALLBACK_THRESHOLD);
+        ESP_LOGW(TAG, "Failed to connect (failure %u/%u) - restarting...",
+                 newFailures, AP_FALLBACK_THRESHOLD);
         vTaskDelay(2000 / portTICK_PERIOD_MS);
         ESP.restart();
     }
@@ -306,8 +285,11 @@ void Network::configureUsingAPMode() {
     webServer = std::make_unique<OperationalWebServerManager>(config, *this, sensorController, sensorMonitor);
     webServer->begin();
 
-    Serial.println("Webserver started - system ready");
-    Serial.printf("Free heap: %u bytes\r\n", ESP.getFreeHeap());
+    ESP_LOGI(TAG, "Webserver started - system ready, free heap: %u bytes", ESP.getFreeHeap());
+
+    // Start syslog forwarding if configured
+    Config::SyslogConfig syslogConfig = config.loadSyslogConfig();
+    SyslogOutput::begin(syslogConfig);
 
     // Main loop - NTP updates and touch control
     auto lastNtpUpdate = ntpClient.getEpochTime();
@@ -339,7 +321,7 @@ void Network::configureUsingAPMode() {
         // Skip during OTA: TLS buffers temporarily consume most internal SRAM
         uint32_t freeHeap = ESP.getFreeHeap();
         if (freeHeap < MIN_FREE_HEAP_BYTES && !OTAUpdater::isUpdateInProgress()) {
-            Serial.printf("CRITICAL: Low heap %u bytes - restarting...\r\n", freeHeap);
+            ESP_LOGE(TAG, "CRITICAL: Low heap %u bytes - restarting...", freeHeap);
             vTaskDelay(500 / portTICK_PERIOD_MS);
             ESP.restart();
         }
@@ -350,15 +332,15 @@ void Network::configureUsingAPMode() {
             // WiFi state tracking — auto-reconnect is handled by WiFi.setAutoReconnect(true)
             bool isConnected = WiFi.status() == WL_CONNECTED;
             if (now - lastCheck > 1100) {
-                Serial.printf("WiFi status: %d delayed %lu\r\n", WiFi.status(), now - lastCheck);
+                ESP_LOGW(TAG, "WiFi status: %d delayed %lu", WiFi.status(), now - lastCheck);
             }
             lastCheck = now;
 
             if (!wasConnected && isConnected) {
-                Serial.printf("WiFi reconnected (IP: %s)\r\n", WiFi.localIP().toString().c_str());
+                ESP_LOGI(TAG, "WiFi reconnected (IP: %s)", WiFi.localIP().toString().c_str());
                 configureMDNS();
             } else if (wasConnected && !isConnected) {
-                Serial.println("WiFi disconnected - waiting for auto-reconnect");
+                ESP_LOGW(TAG, "WiFi disconnected - waiting for auto-reconnect");
             }
             wasConnected = isConnected;
 
@@ -372,10 +354,9 @@ void Network::configureUsingAPMode() {
                     bool result = ntpClient.update();
                     if (result) {
                         lastNtpUpdate = ntpClient.getEpochTime();
-                        Serial.print("NTP update: ");
-                        Serial.println(ntpClient.getFormattedTime());
+                        ESP_LOGI(TAG, "NTP update: %s", ntpClient.getFormattedTime().c_str());
                     } else {
-                        Serial.println("NTP update failed");
+                        ESP_LOGW(TAG, "NTP update failed");
                     }
                 }
             } else if (now - lastNtpRetry >= NTP_UNSYNCED_RETRY_MS) {
@@ -383,8 +364,7 @@ void Network::configureUsingAPMode() {
                 lastNtpRetry = now;
                 if (ntpClient.update()) {
                     lastNtpUpdate = ntpClient.getEpochTime();
-                    Serial.print("NTP initial sync: ");
-                    Serial.println(ntpClient.getFormattedTime());
+                    ESP_LOGI(TAG, "NTP initial sync: %s", ntpClient.getFormattedTime().c_str());
                 }
             }
 
@@ -420,11 +400,11 @@ void Network::configureUsingAPMode() {
             // Periodic diagnostics: heap and task stack high-water marks
             if (now - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {
                 lastDiagnostics = now;
-                Serial.printf("Diagnostics: heap=%u bytes (min=%u), uptime=%lu s\r\n",
-                              ESP.getFreeHeap(), ESP.getMinFreeHeap(), now / 1000);
+                ESP_LOGD(TAG, "Diagnostics: heap=%u bytes (min=%u), uptime=%lu s",
+                         ESP.getFreeHeap(), ESP.getMinFreeHeap(), now / 1000);
                 if (taskHandle) {
-                    Serial.printf("  Network task stack HWM: %u bytes\r\n",
-                                  uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
+                    ESP_LOGD(TAG, "Network task stack HWM: %u bytes",
+                             uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
                 }
             }
         }
@@ -467,8 +447,8 @@ void Network::publishMeasurements(const std::vector<Sensor::Measurement>& measur
     mqttClient->recordPublishResult(succeeded, failed);
 
     if (failed > 0) {
-        Serial.printf("MQTT: Published %u/%u measurements (%u failed)\r\n",
-                      succeeded, succeeded + failed, failed);
+        ESP_LOGW(TAG, "MQTT: Published %u/%u measurements (%u failed)",
+                 succeeded, succeeded + failed, failed);
     }
 #endif
 }
@@ -491,7 +471,7 @@ void Network::startTask() {
 }
 
 void Network::taskWrapper(void *pvParameters) {
-    Serial.println("Network: taskWrapper()");
+    ESP_LOGI(TAG, "taskWrapper()");
     auto *instance = static_cast<Network *>(pvParameters);
     instance->task();
 }

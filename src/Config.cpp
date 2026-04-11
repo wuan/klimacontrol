@@ -3,7 +3,10 @@
 
 #ifdef ARDUINO
 #include <esp_system.h>
+#include <esp_log.h>
 #endif
+
+static const char* TAG = "config";
 
 namespace Config {
     ConfigManager::ConfigManager() {
@@ -13,14 +16,14 @@ namespace Config {
 #ifdef ARDUINO
         restartAt = millis() + delayMs;
         restartRequested = true;
-        Serial.printf("Config: Restart requested in %u ms\r\n", delayMs);
+        ESP_LOGI(TAG, "Restart requested in %u ms", delayMs);
 #endif
     }
 
     void ConfigManager::checkRestart() {
 #ifdef ARDUINO
         if (restartRequested && millis() >= restartAt) {
-            Serial.println("Config: Performing scheduled restart...");
+            ESP_LOGI(TAG, "Performing scheduled restart...");
             ESP.restart();
         }
 #endif
@@ -203,7 +206,7 @@ namespace Config {
 
         prefs.end();
 
-        Serial.printf("SensorConfig: Loaded assignments='%s'\r\n", sensorConfig.assignments);
+        ESP_LOGD(TAG, "SensorConfig: Loaded assignments='%s'", sensorConfig.assignments);
 #endif
 
         return sensorConfig;
@@ -217,7 +220,7 @@ namespace Config {
 
         prefs.end();
 
-        Serial.printf("SensorConfig: Saved assignments='%s'\r\n", config.assignments);
+        ESP_LOGD(TAG, "SensorConfig: Saved assignments='%s'", config.assignments);
 #endif
     }
 
@@ -267,7 +270,7 @@ namespace Config {
 
         prefs.end();
 
-        Serial.println("Config: Saved MQTT configuration");
+        ESP_LOGD(TAG, "Saved MQTT configuration");
 #endif
     }
     EnergyConfig ConfigManager::loadEnergyConfig() {
@@ -298,7 +301,34 @@ namespace Config {
 
         prefs.end();
 
-        Serial.println("Config: Saved energy configuration");
+        ESP_LOGD(TAG, "Saved energy configuration");
+#endif
+    }
+    SyslogConfig ConfigManager::loadSyslogConfig() {
+        SyslogConfig config;
+#ifdef ARDUINO
+        prefs.begin(NAMESPACE, true);
+
+        config.enabled = prefs.getBool("syslog_on", false);
+        config.port = prefs.getUShort("syslog_port", 514);
+        prefs.getString("syslog_host", config.host, sizeof(config.host));
+
+        prefs.end();
+#endif
+        return config;
+    }
+
+    void ConfigManager::saveSyslogConfig(const SyslogConfig &config) {
+#ifdef ARDUINO
+        prefs.begin(NAMESPACE, false);
+
+        prefs.putBool("syslog_on", config.enabled);
+        prefs.putUShort("syslog_port", config.port);
+        prefs.putString("syslog_host", config.host);
+
+        prefs.end();
+
+        ESP_LOGD(TAG, "Saved syslog configuration");
 #endif
     }
 } // namespace Config

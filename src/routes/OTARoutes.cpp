@@ -8,7 +8,10 @@
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
+#include <esp_log.h>
 #endif
+
+static const char* TAG = "ota";
 
 void WebServerManager::setupOTARoutes() {
 #ifdef ARDUINO
@@ -49,7 +52,7 @@ void WebServerManager::setupOTARoutes() {
               nullptr,
               [this]([[maybe_unused]] AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
                   if (index == 0) {
-                      Serial.println("[WebServer] OTA update requested");
+                      ESP_LOGI(TAG, "OTA update requested");
                   }
 
                   if (index + len == total) {
@@ -63,18 +66,18 @@ void WebServerManager::setupOTARoutes() {
                           return;
                       }
 
-                      Serial.printf("[WebServer] Starting OTA: %s (%zu bytes)\r\n", downloadUrl.c_str(), size);
+                      ESP_LOGI(TAG, "Starting OTA: %s (%zu bytes)", downloadUrl.c_str(), size);
 
                       // Perform OTA update (this will block)
                       bool success = OTAUpdater::performUpdate(downloadUrl, size, [](int percent, size_t bytes) {
-                          Serial.printf("[OTA] Progress: %d%% (%zu bytes)\r\n", percent, bytes);
+                          ESP_LOGI(TAG, "Progress: %d%% (%zu bytes)", percent, bytes);
                       });
 
                       if (success) {
-                          Serial.println("[WebServer] OTA update successful, scheduling restart...");
+                          ESP_LOGI(TAG, "OTA update successful, scheduling restart...");
                           this->config.requestRestart(1000);
                       } else {
-                          Serial.println("[WebServer] OTA update failed!");
+                          ESP_LOGE(TAG, "OTA update failed");
                       }
                   }
               }

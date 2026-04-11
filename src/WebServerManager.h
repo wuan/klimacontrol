@@ -65,6 +65,7 @@ protected:
     void setupSettingsRoutes();
     void setupOTARoutes();
     void setupMqttRoutes();
+    void setupSyslogRoutes();
     void setupI2CRoutes();
 
     /**

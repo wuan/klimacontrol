@@ -112,8 +112,11 @@
 // Derived Configuration
 // ============================================================================
 
-#ifdef OTA_DEBUG_LOGGING
-#define OTA_LOG(fmt, ...) Serial.printf("[OTA] " fmt "\r\n", ##__VA_ARGS__)
+// OTA_LOG is deprecated — use ESP_LOGI("ota", ...) directly.
+// Kept for backward compatibility with example code below.
+#ifdef ARDUINO
+#include <esp_log.h>
+#define OTA_LOG(fmt, ...) ESP_LOGI("ota", fmt, ##__VA_ARGS__)
 #else
 #define OTA_LOG(fmt, ...)
 #endif

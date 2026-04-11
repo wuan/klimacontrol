@@ -4,6 +4,7 @@
 
 #ifdef ARDUINO
 #include "esp_pm.h"
+#include <esp_log.h>
 #include <Wire.h>
 #endif
 
@@ -27,6 +28,8 @@
 #include <esp_task_wdt.h>
 #endif
 
+static const char* TAG = "main";
+
 TaskHandle_t networkTaskHandle = nullptr;
 
 Config::ConfigManager config;
@@ -36,14 +39,14 @@ Network network(config, sensorController, sensorMonitor);
 
 void setup() {
     delay(1000);
-    Serial.println("Started");
+    ESP_LOGI(TAG, "Started");
     // config.reset();
     config.begin();
 
 #ifdef ARDUINO
     Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
 
-    Serial.printf("Initializing I2C");
+    ESP_LOGI(TAG, "Initializing I2C");
 
     // Initialize secondary I2C bus (STEMMA QT connector)
     Wire1.begin(SDA1, SCL1);
@@ -87,13 +90,13 @@ void setup() {
                     } else if (strcmp(name, Sensor::BH1750Sensor::type()) == 0) {
                         sensorController.addSensor(std::make_unique<Sensor::BH1750Sensor>(addr));
                     } else {
-                        Serial.printf("Unknown sensor type: %s\r\n", name);
+                        ESP_LOGW(TAG, "Unknown sensor type: %s", name);
                         token = strtok(nullptr, ",");
                         continue;
                     }
-                    Serial.printf("Sensor %s added at 0x%02X\r\n", name, addr);
+                    ESP_LOGI(TAG, "Sensor %s added at 0x%02X", name, addr);
                 } catch (...) {
-                    Serial.printf("Error initializing %s sensor at 0x%02X\r\n", name, addr);
+                    ESP_LOGE(TAG, "Error initializing %s sensor at 0x%02X", name, addr);
                 }
             }
             token = strtok(nullptr, ",");
@@ -118,27 +121,27 @@ void setup() {
     // esp_pm_configure(&pm_config);
 #endif
 
-    Serial.println("Starting network task");
+    ESP_LOGI(TAG, "Starting network task");
     try {
         network.startTask();
     } catch (const std::exception &e) {
-        Serial.printf("Error starting network task: %s\r\n", e.what());
+        ESP_LOGE(TAG, "Error starting network task: %s", e.what());
     } catch (...) {
-        Serial.println("Unknown error starting network task");
+        ESP_LOGE(TAG, "Unknown error starting network task");
     }
 
-    Serial.println("Starting sensor task");
+    ESP_LOGI(TAG, "Starting sensor task");
     try {
         sensorMonitor.startTask();
     } catch (const std::exception &e) {
-        Serial.printf("Error starting sensor monitor task: %s\r\n", e.what());
+        ESP_LOGE(TAG, "Error starting sensor monitor task: %s", e.what());
     } catch (...) {
-        Serial.println("Unknown error starting sensor monitor task");
+        ESP_LOGE(TAG, "Unknown error starting sensor monitor task");
     }
 
     // Configure task watchdog timer (30s timeout, panic on trigger)
     esp_task_wdt_init(30, true);
-    Serial.println("Task watchdog configured (30s timeout)");
+    ESP_LOGI(TAG, "Task watchdog configured (30s timeout)");
 }
 
 void loop() {

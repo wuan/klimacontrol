@@ -13,7 +13,10 @@
 #ifdef ARDUINO
 #include <Wire.h>
 #include <Arduino.h>
+#include <esp_log.h>
 #endif
+
+static const char* TAG = "i2c";
 
 namespace I2CScanner {
 
@@ -58,7 +61,7 @@ namespace I2CScanner {
         std::vector<I2CDevice> devices;
 
 #ifdef ARDUINO
-        Serial.println("I2CScanner: Scanning Wire bus...");
+        ESP_LOGI(TAG, "Scanning Wire bus...");
 
         for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
             Wire1.beginTransmission(addr);
@@ -67,12 +70,11 @@ namespace I2CScanner {
             if (error == 0) {
                 const char* type = identifyAddress(addr);
                 devices.push_back({addr, type});
-                Serial.printf("I2CScanner: Found device at 0x%02X (%s)\r\n",
-                              addr, type ? type : "unknown");
+                ESP_LOGI(TAG, "Found device at 0x%02X (%s)", addr, type ? type : "unknown");
             }
         }
 
-        Serial.printf("I2CScanner: Scan complete, found %u devices\r\n", devices.size());
+        ESP_LOGI(TAG, "Scan complete, found %u devices", devices.size());
 #endif
 
         return devices;

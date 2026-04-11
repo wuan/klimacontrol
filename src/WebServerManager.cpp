@@ -10,34 +10,33 @@
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
+#include <esp_log.h>
 #include "generated/config_gz.h"
 #include "generated/common_gz.h"
 #include "generated/favicon_gz.h"
 #endif
 
+static const char* TAG = "http";
+
 // Web source files are in data/ directory
 // Run: python3 scripts/compress_web.py to regenerate compressed headers
 
 void AccessLogger::run(AsyncWebServerRequest *request, ArMiddlewareNext next) {
-    Print *_out = &Serial;
-    char logBuf[128];
-    const char* ip = request->client()->remoteIP().toString().c_str();
-    const char* url = request->url().c_str();
-    const char* method = request->methodToString();
-
     uint32_t elapsed = millis();
     next();
     elapsed = millis() - elapsed;
 
     AsyncWebServerResponse *response = request->getResponse();
     if (response) {
-        snprintf(logBuf, sizeof(logBuf), "[HTTP] %s %s %s (%u ms) %u",
-                 ip, url, method, elapsed, response->code());
+        ESP_LOGI(TAG, "%s %s %s (%u ms) %u",
+                 request->client()->remoteIP().toString().c_str(),
+                 request->url().c_str(), request->methodToString(),
+                 elapsed, response->code());
     } else {
-        snprintf(logBuf, sizeof(logBuf), "[HTTP] %s %s %s (%u ms) (no response)",
-                 ip, url, method, elapsed);
+        ESP_LOGI(TAG, "%s %s %s (%u ms) (no response)",
+                 request->client()->remoteIP().toString().c_str(),
+                 request->url().c_str(), request->methodToString(), elapsed);
     }
-    _out->println(logBuf);
 }
 
 void WebServerManager::setupCommonRoutes() {
@@ -56,7 +55,7 @@ void WebServerManager::setupCommonRoutes() {
 
 void WebServerManager::setupConfigRoutes() {
 #ifdef ARDUINO
-    Serial.println("Setting up config routes...");
+    ESP_LOGI(TAG, "Setting up config routes...");
 
     setupCommonRoutes();
 
@@ -80,7 +79,7 @@ void WebServerManager::setupConfigRoutes() {
 
 void WebServerManager::setupAPIRoutes() {
 #ifdef ARDUINO
-    Serial.println("Setting up API routes...");
+    ESP_LOGI(TAG, "Setting up API routes...");
 
     setupCommonRoutes();
     setupPageRoutes();
@@ -90,6 +89,7 @@ void WebServerManager::setupAPIRoutes() {
     setupSettingsRoutes();
     setupOTARoutes();
     setupMqttRoutes();
+    setupSyslogRoutes();
     setupI2CRoutes();
 #endif
 }
@@ -142,8 +142,7 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
         // Save configuration
         config.saveWiFiConfig(wifiConfig);
 
-        Serial.print("WiFi configured: SSID=");
-        Serial.println(wifiConfig.ssid);
+        ESP_LOGI(TAG, "WiFi configured: SSID=%s", wifiConfig.ssid);
 
         // Generate mDNS hostname for response
         String deviceId = DeviceId::getDeviceId();
@@ -166,7 +165,7 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
 
 void WebServerManager::begin() {
 #ifdef ARDUINO
-    Serial.println("Starting webserver...");
+    ESP_LOGI(TAG, "Starting webserver...");
 
     // Add access logging middleware for all requests
     // server.addMiddleware(&logging);
@@ -177,14 +176,14 @@ void WebServerManager::begin() {
     // Start server
     server.begin();
 
-    Serial.println("Webserver started on port 80");
+    ESP_LOGI(TAG, "Webserver started on port 80");
 #endif
 }
 
 void WebServerManager::end() {
 #ifdef ARDUINO
     server.end();
-    Serial.println("Webserver stopped");
+    ESP_LOGI(TAG, "Webserver stopped");
 #endif
 }
 
@@ -221,7 +220,7 @@ void OperationalWebServerManager::setupRoutes() {
 
     // Add 404 handler
     server.onNotFound([](AsyncWebServerRequest *request) {
-        Serial.printf("[HTTP] 404 Not Found: %s\r\n", request->url().c_str());
+        ESP_LOGD(TAG, "404 Not Found: %s", request->url().c_str());
         request->send(404, "text/plain", "Not found");
     });
 #endif

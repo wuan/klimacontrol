@@ -87,6 +87,19 @@ namespace Config {
     };
 
     /**
+     * Syslog configuration structure
+     */
+    struct SyslogConfig {
+        char host[64];
+        uint16_t port;
+        bool enabled;
+
+        SyslogConfig() : port(514), enabled(false) {
+            host[0] = '\0';
+        }
+    };
+
+    /**
      * Configuration Manager
      * Handles persistent storage using ESP32 Preferences (NVS)
      */
@@ -221,6 +234,9 @@ namespace Config {
 
         EnergyConfig loadEnergyConfig();
         void saveEnergyConfig(const EnergyConfig &config);
+
+        SyslogConfig loadSyslogConfig();
+        void saveSyslogConfig(const SyslogConfig &config);
     };
 } // namespace Config
 

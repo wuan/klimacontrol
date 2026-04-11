@@ -3,7 +3,10 @@
 
 #ifdef ARDUINO
 #include <Arduino.h>
+#include <esp_log.h>
 #endif
+
+static const char* TAG = "mqtt";
 
 MqttClient::MqttClient()
     : clientId("klima-" + DeviceId::getDeviceId()), configured(false), lastConnectAttempt(0)
@@ -31,12 +34,12 @@ void MqttClient::applyServer() {
         IPAddress ip;
         if (ip.fromString(config.host)) {
             mqttClient.setServer(ip, config.port);
-            Serial.printf("MQTT: Server set to IP %s:%u\r\n", config.host, config.port);
+            ESP_LOGI(TAG, "Server set to IP %s:%u", config.host, config.port);
         }
     } else {
         // Use const char* overload — must point to long-lived member (dangling pointer fix)
         mqttClient.setServer(this->config.host, config.port);
-        Serial.printf("MQTT: Server set to hostname %s:%u\r\n", config.host, config.port);
+        ESP_LOGI(TAG, "Server set to hostname %s:%u", config.host, config.port);
     }
 #endif
 }
@@ -53,8 +56,8 @@ void MqttClient::begin(const Config::MqttConfig& mqttConfig) {
 #endif
 
 #ifdef ARDUINO
-    Serial.printf("MQTT: Initialized (enabled=%d, host=%s, prefix=%s)\r\n",
-                  config.enabled, config.host, config.prefix);
+    ESP_LOGI(TAG, "Initialized (enabled=%d, host=%s, prefix=%s)",
+             config.enabled, config.host, config.prefix);
 #endif
 }
 
@@ -73,8 +76,8 @@ void MqttClient::setConfig(const Config::MqttConfig& mqttConfig) {
     applyServer();
 
 #ifdef ARDUINO
-    Serial.printf("MQTT: Config updated (enabled=%d, host=%s, prefix=%s)\r\n",
-                  config.enabled, config.host, config.prefix);
+    ESP_LOGI(TAG, "Config updated (enabled=%d, host=%s, prefix=%s)",
+             config.enabled, config.host, config.prefix);
 #endif
 }
 
@@ -92,7 +95,7 @@ void MqttClient::loop() {
     if (now - lastConnectAttempt < RECONNECT_INTERVAL_MS) return;
     lastConnectAttempt = now;
 
-    Serial.println("MQTT: Connecting...");
+    ESP_LOGI(TAG, "Connecting...");
 
     // Stale socket fix: stop WiFiClient before every connect attempt
     wifiClient.stop();
@@ -105,9 +108,9 @@ void MqttClient::loop() {
     }
 
     if (connected) {
-        Serial.println("MQTT: Connected");
+        ESP_LOGI(TAG, "Connected");
     } else {
-        Serial.printf("MQTT: Connect failed, rc=%d\r\n", mqttClient.state());
+        ESP_LOGW(TAG, "Connect failed, rc=%d", mqttClient.state());
     }
 #endif
 }

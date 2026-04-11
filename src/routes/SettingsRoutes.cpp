@@ -7,7 +7,10 @@
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
+#include <esp_log.h>
 #endif
+
+static const char* TAG = "route";
 
 void WebServerManager::setupSettingsRoutes() {
 #ifdef ARDUINO
@@ -48,7 +51,7 @@ void WebServerManager::setupSettingsRoutes() {
                       wifiConfig.configured = true;
                       config.saveWiFiConfig(wifiConfig);
 
-                      Serial.printf("WiFi credentials updated: SSID=%s\r\n", wifiConfig.ssid);
+                      ESP_LOGI(TAG, "WiFi credentials updated: SSID=%s", wifiConfig.ssid);
 
                       // Send success response and restart
                       request->send(200, CONTENT_TYPE_JSON,
@@ -88,7 +91,7 @@ void WebServerManager::setupSettingsRoutes() {
                       deviceConfig.device_name[sizeof(deviceConfig.device_name) - 1] = '\0';
                       config.saveDeviceConfig(deviceConfig);
 
-                      Serial.printf("Device name updated: %s\r\n", deviceConfig.device_name);
+                      ESP_LOGI(TAG, "Device name updated: %s", deviceConfig.device_name);
 
                       // Send success response (no restart needed)
                       request->send(200, CONTENT_TYPE_JSON, "{\"success\":true}");
@@ -123,7 +126,7 @@ void WebServerManager::setupSettingsRoutes() {
                       deviceConfig.elevation = elevation;
                       config.saveDeviceConfig(deviceConfig);
 
-                      Serial.printf("Elevation updated: %.0f m\r\n", elevation);
+                      ESP_LOGI(TAG, "Elevation updated: %.0f m", elevation);
 
                       request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
                   }
@@ -132,14 +135,14 @@ void WebServerManager::setupSettingsRoutes() {
 
     // POST /api/settings/reboot - Reboot device
     server.on("/api/settings/reboot", HTTP_POST, [this](AsyncWebServerRequest *request) {
-        Serial.println("Reboot requested");
+        ESP_LOGI(TAG, "Reboot requested");
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
         config.requestRestart(1000);
     });
 
     // POST /api/settings/factory-reset - Factory reset device
     server.on("/api/settings/factory-reset", HTTP_POST, [this](AsyncWebServerRequest *request) {
-        Serial.println("Factory reset requested");
+        ESP_LOGW(TAG, "Factory reset requested");
 
         // Send success response first
         request->send(200, CONTENT_TYPE_JSON,
@@ -148,7 +151,7 @@ void WebServerManager::setupSettingsRoutes() {
         // Clear all configuration
         config.reset();
 
-        Serial.println("All settings cleared");
+        ESP_LOGW(TAG, "All settings cleared");
 
         // Request deferred restart
         config.requestRestart(1000);

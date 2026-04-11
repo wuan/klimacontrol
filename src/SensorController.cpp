@@ -6,7 +6,10 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <freertos/semphr.h>
+#include <esp_log.h>
 #endif
+
+static const char* TAG = "sensor";
 
 namespace {
     // Simple PID controller parameters (will be configurable later)
@@ -26,7 +29,7 @@ SensorController::SensorController(Config::ConfigManager &config)
 }
 
 void SensorController::begin() {
-    Serial.println("SensorController: Beginning sensor initialization...");
+    ESP_LOGI(TAG, "Beginning sensor initialization...");
     
     sortSensors();
 
@@ -36,16 +39,16 @@ void SensorController::begin() {
     // Initialize all sensors
     for (auto &sensor : sensors) {
         if (sensor) {
-            Serial.printf("SensorController: Initializing sensor %s...\r\n", sensor->getType());
+            ESP_LOGI(TAG, "Initializing sensor %s...", sensor->getType());
             if (sensor->tryBegin()) {
-                Serial.printf("SensorController: Successfully initialized sensor %s\r\n", sensor->getType());
+                ESP_LOGI(TAG, "Successfully initialized sensor %s", sensor->getType());
             } else {
-                Serial.printf("SensorController: Failed to initialize sensor %s\r\n", sensor->getType());
+                ESP_LOGW(TAG, "Failed to initialize sensor %s", sensor->getType());
             }
         }
     }
 
-    Serial.printf("SensorController: Found %u sensors total\r\n", sensors.size());
+    ESP_LOGI(TAG, "Found %u sensors total", sensors.size());
 
     // Load configuration
     targetTemperature = 22.0f;
@@ -87,8 +90,8 @@ void SensorController::sortSensors() {
             }
 
             if (satisfied) {
-                Serial.printf("SensorController: Read order [%u] %s\r\n",
-                    sorted.size(), sensors[i]->getType());
+                ESP_LOGD(TAG, "Read order [%u] %s",
+                         sorted.size(), sensors[i]->getType());
                 sorted.push_back(std::move(sensors[i]));
                 placed[i] = true;
                 progress = true;
@@ -100,8 +103,8 @@ void SensorController::sortSensors() {
     // Append any sensors with unmet dependencies (with warning)
     for (size_t i = 0; i < sensors.size(); ++i) {
         if (!placed[i]) {
-            Serial.printf("SensorController: WARNING: %s has unmet dependencies, appending last\r\n",
-                sensors[i]->getType());
+            ESP_LOGW(TAG, "%s has unmet dependencies, appending last",
+                     sensors[i]->getType());
             sorted.push_back(std::move(sensors[i]));
         }
     }
@@ -120,9 +123,9 @@ void SensorController::readSensors() {
         if (status == Sensor::SensorStatus::InitFailed ||
             status == Sensor::SensorStatus::ReadFailing) {
             if (timestamp - sensor->getLastInitAttempt() >= RETRY_INTERVAL_MS) {
-                Serial.printf("SensorController: Retrying init for %s...\r\n", sensor->getType());
+                ESP_LOGI(TAG, "Retrying init for %s...", sensor->getType());
                 if (sensor->tryBegin()) {
-                    Serial.printf("SensorController: %s now online\r\n", sensor->getType());
+                    ESP_LOGI(TAG, "%s now online", sensor->getType());
                 }
             }
         }
@@ -159,30 +162,23 @@ void SensorController::readSensors() {
         sensor->recordReadResult(reading.valid);
 
         if (reading.valid) {
-#if DEBUG
-            Serial.printf("SensorController: Sensor %s #%d (%u ms): ", sensor->getType(), reading.measurements.size(), readTime);
-            bool first = true;
-#endif
             for (const auto &m : reading.measurements) {
-#if DEBUG
-                if (!first) Serial.print(", ");
                 if (auto* i = std::get_if<int32_t>(&m.value)) {
-                    Serial.printf("%s: %d %s", Sensor::measurementTypeLabel(m.type), *i, Sensor::measurementTypeUnit(m.type));
+                    ESP_LOGD(TAG, "%s: %s=%d %s (%u ms)",
+                             sensor->getType(), Sensor::measurementTypeLabel(m.type),
+                             *i, Sensor::measurementTypeUnit(m.type), readTime);
                 } else {
-                    Serial.printf("%s: %.1f %s", Sensor::measurementTypeLabel(m.type), std::get<float>(m.value), Sensor::measurementTypeUnit(m.type));
+                    ESP_LOGD(TAG, "%s: %s=%.1f %s (%u ms)",
+                             sensor->getType(), Sensor::measurementTypeLabel(m.type),
+                             std::get<float>(m.value), Sensor::measurementTypeUnit(m.type), readTime);
                 }
-                first = false;
-#endif
                 allMeasurements.push_back(m);
             }
-#ifdef DEBUG
-            Serial.print("\r\n");
-#endif
 
             allMeasurements.push_back({Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
             anyValid = true;
         } else {
-            Serial.printf("SensorController: Sensor %s - invalid data\r\n", sensor->getType());
+            ESP_LOGW(TAG, "Sensor %s - invalid data", sensor->getType());
         }
     }
 
@@ -311,14 +307,13 @@ Sensor::Sensor *SensorController::getSensor(size_t index) {
 void SensorController::setTargetTemperature(float temperature) {
     // Clamp to reasonable range for room temperature control
     targetTemperature = std::max(10.0f, std::min(30.0f, temperature));
-    Serial.printf("SensorController: Target temperature set to %.1f°C\r\n", targetTemperature);
+    ESP_LOGI(TAG, "Target temperature set to %.1f C", targetTemperature);
 }
 
 void SensorController::setControlEnabled(bool enabled) {
     if (controlEnabled != enabled) {
         controlEnabled = enabled;
-        Serial.printf("SensorController: Temperature control %s\r\n",
-                     enabled ? "enabled" : "disabled");
+        ESP_LOGI(TAG, "Temperature control %s", enabled ? "enabled" : "disabled");
     }
 }
 
@@ -358,8 +353,8 @@ float SensorController::updateControl() {
     output = std::max(MinOutput, std::min(MaxOutput, output));
 
     if (dt > 0.0f) {
-        Serial.printf("Control: T=%.1f°C (target=%.1f°C), output=%.2f, P=%.2f, I=%.2f, D=%.2f\r\n",
-                     currentTemp, targetTemperature, output, proportional, integral, derivative);
+        ESP_LOGD(TAG, "PID: T=%.1f C (target=%.1f C), output=%.2f, P=%.2f, I=%.2f, D=%.2f",
+                 currentTemp, targetTemperature, output, proportional, integral, derivative);
     }
 
     return output;

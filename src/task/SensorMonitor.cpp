@@ -6,7 +6,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_task_wdt.h>
+#include <esp_log.h>
 #endif
+
+static const char* TAG = "sensor";
 
 namespace Task {
     
@@ -29,7 +32,7 @@ namespace Task {
     
 #ifdef ARDUINO
     void SensorMonitor::taskWrapper(void *pvParameters) {
-        Serial.println("SensorMonitor: taskWrapper()");
+        ESP_LOGI(TAG, "SensorMonitor: taskWrapper()");
         auto *instance = static_cast<SensorMonitor *>(pvParameters);
         instance->task();
     }
@@ -53,8 +56,8 @@ namespace Task {
             // Periodic stack high-water mark logging for this task
             if (startTime - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {
                 lastDiagnostics = startTime;
-                Serial.printf("SensorMonitor stack HWM: %u bytes\r\n",
-                              uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
+                ESP_LOGD(TAG, "SensorMonitor stack HWM: %u bytes",
+                         uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
             }
 
             unsigned long elapsed = millis() - startTime;

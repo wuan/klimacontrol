@@ -10,7 +10,10 @@
 #include <esp_task_wdt.h>
 #include <esp_http_client.h>
 #include <esp_heap_caps.h>
+#include <esp_log.h>
 #include <WiFi.h>
+
+static const char* TAG = "ota";
 
 // The IDF esp_crt_bundle_attach uses the CA bundle embedded in the firmware binary.
 // We declare it directly because the Arduino WiFiClientSecure wrapper shadows the IDF header.
@@ -74,7 +77,7 @@ struct HttpClient {
         for (int i = 0; i < maxRedirects; i++) {
             esp_err_t err = esp_http_client_open(handle, 0);
             if (err != ESP_OK) {
-                Serial.printf("[OTA] HTTP open failed: %s\r\n", esp_err_to_name(err));
+                ESP_LOGE(TAG, "HTTP open failed: %s", esp_err_to_name(err));
                 return -1;
             }
 
@@ -84,15 +87,15 @@ struct HttpClient {
             if (status == 301 || status == 302 || status == 307 || status == 308) {
                 esp_http_client_close(handle);
                 if (esp_http_client_set_redirection(handle) != ESP_OK) {
-                    Serial.println("[OTA] Redirect failed: no Location header");
+                    ESP_LOGE(TAG, "Redirect failed: no Location header");
                     return -1;
                 }
-                Serial.printf("[OTA] Following redirect (%d)...\r\n", status);
+                ESP_LOGI(TAG, "Following redirect (%d)...", status);
                 continue;
             }
             return status;
         }
-        Serial.println("[OTA] Too many redirects");
+        ESP_LOGE(TAG, "Too many redirects");
         return -1;
     }
 };
@@ -105,7 +108,7 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     info.isValid = false;
 
     String apiUrl = String("https://api.github.com/repos/") + owner + "/" + repo + "/releases/latest";
-    Serial.printf("[OTA] Checking: %s\r\n", apiUrl.c_str());
+    ESP_LOGI(TAG, "Checking: %s", apiUrl.c_str());
 
     esp_http_client_config_t config{};
     config.url = apiUrl.c_str();
@@ -158,8 +161,8 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
             info.downloadUrl = asset["browser_download_url"].as<String>();
             info.size = asset["size"].as<size_t>();
             info.isValid = true;
-            Serial.printf("[OTA] Release %s: %s (%zu bytes)\r\n",
-                          info.version.c_str(), assetName.c_str(), info.size);
+            ESP_LOGI(TAG, "Release %s: %s (%zu bytes)",
+                     info.version.c_str(), assetName.c_str(), info.size);
             return true;
         }
     }
@@ -173,7 +176,7 @@ bool OTAUpdater::performUpdate(
     size_t expectedSize,
     const std::function<void(int, size_t)> &onProgress
 ) {
-    Serial.printf("[OTA] Downloading %zu bytes from %s\r\n", expectedSize, downloadUrl.c_str());
+    ESP_LOGI(TAG, "Downloading %zu bytes from %s", expectedSize, downloadUrl.c_str());
 
     updateInProgress = true;
 
@@ -193,7 +196,7 @@ bool OTAUpdater::performUpdate(
 
     const esp_partition_t *nextPartition = esp_ota_get_next_update_partition(nullptr);
     if (nextPartition == nullptr) {
-        Serial.println("[OTA] No OTA partition available");
+        ESP_LOGE(TAG, "No OTA partition available");
         cleanup();
         return false;
     }
@@ -207,32 +210,32 @@ bool OTAUpdater::performUpdate(
 
     HttpClient client(config);
     if (!client) {
-        Serial.println("[OTA] HTTP client init failed");
+        ESP_LOGE(TAG, "HTTP client init failed");
         cleanup();
         return false;
     }
 
     int statusCode = client.openWithRedirects();
     if (statusCode != 200) {
-        Serial.printf("[OTA] HTTP status: %d\r\n", statusCode);
+        ESP_LOGE(TAG, "HTTP status: %d", statusCode);
         cleanup();
         return false;
     }
 
     int contentLength = esp_http_client_get_content_length(client.handle);
     if (contentLength > 0 && static_cast<size_t>(contentLength) != expectedSize) {
-        Serial.printf("[OTA] Size mismatch: expected %zu, got %d\r\n", expectedSize, contentLength);
+        ESP_LOGE(TAG, "Size mismatch: expected %zu, got %d", expectedSize, contentLength);
         cleanup();
         return false;
     }
 
     if (!Update.begin(expectedSize, U_FLASH)) {
-        Serial.printf("[OTA] Update.begin() failed: %s\r\n", Update.errorString());
+        ESP_LOGE(TAG, "Update.begin() failed: %s", Update.errorString());
         cleanup();
         return false;
     }
 
-    Serial.printf("[OTA] Flashing to %s...\r\n", nextPartition->label);
+    ESP_LOGI(TAG, "Flashing to %s...", nextPartition->label);
 
     uint8_t buffer[CHUNK_SIZE];
     size_t totalRead = 0;
@@ -243,8 +246,8 @@ bool OTAUpdater::performUpdate(
                                               std::min(static_cast<size_t>(CHUNK_SIZE), expectedSize - totalRead));
 
         if (bytesRead <= 0) {
-            Serial.printf("[OTA] Download failed at %zu/%zu bytes (read returned %d)\r\n",
-                          totalRead, expectedSize, bytesRead);
+            ESP_LOGE(TAG, "Download failed at %zu/%zu bytes (read returned %d)",
+                     totalRead, expectedSize, bytesRead);
             Update.abort();
             cleanup();
             return false;
@@ -252,7 +255,7 @@ bool OTAUpdater::performUpdate(
 
         size_t bytesWritten = Update.write(buffer, bytesRead);
         if (bytesWritten != static_cast<size_t>(bytesRead)) {
-            Serial.printf("[OTA] Flash write failed at %zu bytes\r\n", totalRead);
+            ESP_LOGE(TAG, "Flash write failed at %zu bytes", totalRead);
             Update.abort();
             cleanup();
             return false;
@@ -271,12 +274,12 @@ bool OTAUpdater::performUpdate(
     }
 
     if (!Update.end(false)) {
-        Serial.printf("[OTA] Update.end() failed: %s\r\n", Update.errorString());
+        ESP_LOGE(TAG, "Update.end() failed: %s", Update.errorString());
         cleanup();
         return false;
     }
 
-    Serial.printf("[OTA] Complete: %zu bytes flashed\r\n", totalRead);
+    ESP_LOGI(TAG, "Complete: %zu bytes flashed", totalRead);
     cleanup();
     return true;
 }
@@ -284,10 +287,10 @@ bool OTAUpdater::performUpdate(
 bool OTAUpdater::confirmBoot() {
     esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
     if (err != ESP_OK) {
-        Serial.printf("[OTA] Boot confirmation failed: %s\r\n", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Boot confirmation failed: %s", esp_err_to_name(err));
         return false;
     }
-    Serial.println("[OTA] Boot confirmed");
+    ESP_LOGI(TAG, "Boot confirmed");
     return true;
 }
 
@@ -318,7 +321,7 @@ void OTAUpdater::getMemoryInfo(uint32_t &freeHeap, uint32_t &minFreeHeap) {
 bool OTAUpdater::hasEnoughMemory() {
     uint32_t freeHeap = esp_get_free_heap_size();
     if (freeHeap < MIN_FREE_HEAP) {
-        Serial.printf("[OTA] Insufficient heap: %u (need %d)\r\n", freeHeap, MIN_FREE_HEAP);
+        ESP_LOGW(TAG, "Insufficient heap: %u (need %d)", freeHeap, MIN_FREE_HEAP);
         return false;
     }
     return true;
