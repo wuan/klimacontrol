@@ -10,7 +10,7 @@
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
-#include <esp_log.h>
+#include "Log.h"
 #include "generated/config_gz.h"
 #include "generated/common_gz.h"
 #include "generated/favicon_gz.h"

@@ -3,7 +3,7 @@
 
 #ifdef ARDUINO
 #include <esp_system.h>
-#include <esp_log.h>
+#include "Log.h"
 #endif
 
 static const char* TAG = "config";

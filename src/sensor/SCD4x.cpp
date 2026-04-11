@@ -1,7 +1,5 @@
 #include "SCD4x.h"
-#ifdef ARDUINO
-#include <esp_log.h>
-#endif
+#include "Log.h"
 
 namespace Sensor {
 

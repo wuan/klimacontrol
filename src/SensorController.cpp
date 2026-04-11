@@ -6,7 +6,7 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <freertos/semphr.h>
-#include <esp_log.h>
+#include "Log.h"
 #endif
 
 static const char* TAG = "sensor";

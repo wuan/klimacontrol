@@ -114,12 +114,8 @@
 
 // OTA_LOG is deprecated — use ESP_LOGI("ota", ...) directly.
 // Kept for backward compatibility with example code below.
-#ifdef ARDUINO
-#include <esp_log.h>
+#include "Log.h"
 #define OTA_LOG(fmt, ...) ESP_LOGI("ota", fmt, ##__VA_ARGS__)
-#else
-#define OTA_LOG(fmt, ...)
-#endif
 
 // ============================================================================
 // Example: How to Use These Settings

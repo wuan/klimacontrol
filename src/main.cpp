@@ -4,7 +4,7 @@
 
 #ifdef ARDUINO
 #include "esp_pm.h"
-#include <esp_log.h>
+#include "Log.h"
 #include <Wire.h>
 #endif
 

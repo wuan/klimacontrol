@@ -1,7 +1,5 @@
 #include "BMP3xx.h"
-#ifdef ARDUINO
-#include <esp_log.h>
-#endif
+#include "Log.h"
 
 namespace Sensor {
 

@@ -17,7 +17,7 @@
 #ifdef ARDUINO
 #include <esp_pm.h>
 #include <esp_task_wdt.h>
-#include <esp_log.h>
+#include "Log.h"
 #endif
 
 #ifdef ARDUINO

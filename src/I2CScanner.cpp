@@ -13,7 +13,7 @@
 #ifdef ARDUINO
 #include <Wire.h>
 #include <Arduino.h>
-#include <esp_log.h>
+#include "Log.h"
 #endif
 
 static const char* TAG = "i2c";

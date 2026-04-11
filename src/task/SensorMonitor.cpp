@@ -6,7 +6,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_task_wdt.h>
-#include <esp_log.h>
+#include "Log.h"
 #endif
 
 static const char* TAG = "sensor";

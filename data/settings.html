@@ -114,6 +114,35 @@
         </div>
 
         <div class="section">
+            <h2>Syslog</h2>
+            <p>Forward device logs to a remote syslog server (UDP, RFC 3164).</p>
+
+            <div class="form-group toggle-row">
+                <span class="toggle-label">Enable Syslog</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="syslogEnabled">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="syslogHost">Syslog Host</label>
+                <input type="text" id="syslogHost" placeholder="e.g. 192.168.1.100 or syslog.example.com" maxlength="63">
+            </div>
+
+            <div class="form-group">
+                <label for="syslogPort">Port</label>
+                <input type="number" id="syslogPort" placeholder="514" min="1" max="65535" style="width: 120px;">
+            </div>
+
+            <button class="btn btn-primary" onclick="updateSyslog()">Save Syslog Settings</button>
+
+            <div class="info-box" id="syslogStatus">
+                <strong>Status: </strong><span id="syslogActiveStatus">Loading...</span>
+            </div>
+        </div>
+
+        <div class="section">
             <h2>WiFi Configuration</h2>
             <p>Update the WiFi network credentials. The device will restart after saving.</p>
 
@@ -535,6 +564,62 @@
         }
     }
 
+    // Syslog Functions
+    async function loadSyslogConfig() {
+        try {
+            const response = await fetch('/api/syslog');
+            const data = await response.json();
+
+            document.getElementById('syslogEnabled').checked = data.enabled;
+            document.getElementById('syslogHost').value = data.host || '';
+            document.getElementById('syslogPort').value = data.port || 514;
+
+            ['syslogHost', 'syslogPort'].forEach(id => {
+                markUnchanged(document.getElementById(id));
+            });
+
+            const status = data.enabled
+                ? (data.active ? 'Active' : 'Enabled (not connected)')
+                : 'Disabled';
+            document.getElementById('syslogActiveStatus').textContent = status;
+        } catch (error) {
+            console.error('Failed to load syslog config:', error);
+            document.getElementById('syslogActiveStatus').textContent = 'Error loading';
+        }
+    }
+
+    async function updateSyslog() {
+        const config = {
+            enabled: document.getElementById('syslogEnabled').checked,
+            host: document.getElementById('syslogHost').value.trim(),
+            port: parseInt(document.getElementById('syslogPort').value) || 514
+        };
+
+        if (config.enabled && !config.host) {
+            alert('Please enter a syslog host');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/syslog', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+
+            if (response.ok) {
+                alert('Syslog settings saved');
+                loadSyslogConfig();
+            } else {
+                const data = await response.json();
+                alert('Failed to save syslog settings: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to update syslog settings:', error);
+            alert('Error saving syslog settings');
+        }
+    }
+
     // I2C Sensor Functions
     let knownTypes = {}; // {type: [addresses]}
 
@@ -788,6 +873,7 @@
     loadOTAStatus();
     loadSensorConfig();
     loadMqttConfig();
+    loadSyslogConfig();
     loadEnergyConfig();
 </script>
 </body>

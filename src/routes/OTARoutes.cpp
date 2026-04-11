@@ -8,7 +8,7 @@
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
-#include <esp_log.h>
+#include "Log.h"
 #endif
 
 static const char* TAG = "ota";
