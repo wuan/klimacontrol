@@ -303,12 +303,18 @@ void SensorController::setTargetTemperature(float temperature) {
     // Clamp to reasonable range for room temperature control
     targetTemperature = std::max(10.0f, std::min(30.0f, temperature));
     ESP_LOGI(TAG, "Target temperature set to %.1f C", targetTemperature);
+    
+    // Persist to NVS using partial update
+    config.updateTargetTemperature(targetTemperature);
 }
 
 void SensorController::setControlEnabled(bool enabled) {
     if (controlEnabled != enabled) {
         controlEnabled = enabled;
         ESP_LOGI(TAG, "Temperature control %s", enabled ? "enabled" : "disabled");
+        
+        // Persist to NVS using partial update
+        config.updateTemperatureControlEnabled(enabled);
     }
 }
 

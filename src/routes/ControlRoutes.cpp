@@ -34,11 +34,6 @@ void WebServerManager::setupControlRoutes() {
                       float targetTemp = doc[JSON_KEY_VALUE];
                       sensorController.setTargetTemperature(targetTemp);
 
-                      // Save to config
-                      Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-                      deviceConfig.target_temperature = targetTemp;
-                      config.saveDeviceConfig(deviceConfig);
-
                       request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
                   }
               }
@@ -48,22 +43,12 @@ void WebServerManager::setupControlRoutes() {
     server.on("/api/control/enable", HTTP_POST, [this](AsyncWebServerRequest *request) {
         sensorController.setControlEnabled(true);
 
-        // Save to config
-        Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-        deviceConfig.temperature_control_enabled = true;
-        config.saveDeviceConfig(deviceConfig);
-
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
     });
 
     // POST /api/control/disable - Disable temperature control
     server.on("/api/control/disable", HTTP_POST, [this](AsyncWebServerRequest *request) {
         sensorController.setControlEnabled(false);
-
-        // Save to config
-        Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-        deviceConfig.temperature_control_enabled = false;
-        config.saveDeviceConfig(deviceConfig);
 
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
     });

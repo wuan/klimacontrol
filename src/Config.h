@@ -168,10 +168,18 @@ namespace Config {
         DeviceConfig loadDeviceConfig();
 
         /**
-         * Save device configuration to NVS
+         * Save device configuration to NVS (partial updates)
          * @param config Device configuration to save
          */
         void saveDeviceConfig(const DeviceConfig &config);
+        
+        /**
+         * Update individual device configuration fields
+         */
+        void updateDeviceName(const char* device_name);
+        void updateTargetTemperature(float temperature);
+        void updateTemperatureControlEnabled(bool enabled);
+        void updateElevation(float elevation);
 
         /**
          * Factory reset - clear all stored configuration

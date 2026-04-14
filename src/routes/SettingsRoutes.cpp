@@ -84,12 +84,10 @@ void WebServerManager::setupSettingsRoutes() {
                           return;
                       }
 
-                      // Load current config, update name, and save
-                      Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-                      strlcpy(deviceConfig.device_name, name, sizeof(deviceConfig.device_name));
-                      config.saveDeviceConfig(deviceConfig);
+                      // Update device name using partial update
+                      config.updateDeviceName(name);
 
-                      ESP_LOGI(TAG, "Device name updated: %s", deviceConfig.device_name);
+                      ESP_LOGI(TAG, "Device name updated: %s", name);
 
                       // Send success response (no restart needed)
                       request->send(200, CONTENT_TYPE_JSON, "{\"success\":true}");
@@ -120,9 +118,7 @@ void WebServerManager::setupSettingsRoutes() {
 
                       auto elevation = doc["elevation"].as<float>();
 
-                      Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-                      deviceConfig.elevation = elevation;
-                      config.saveDeviceConfig(deviceConfig);
+                      config.updateElevation(elevation);
                       sensorController.setElevation(elevation);
 
                       ESP_LOGI(TAG, "Elevation updated: %.0f m", elevation);

@@ -101,22 +101,23 @@ namespace Config {
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, true); // Read-only mode
 
-        prefs.getString("device_name", config.device_name, sizeof(config.device_name));
+        String deviceId = getDeviceId();
+        strlcpy(config.device_id, deviceId.c_str(), sizeof(config.device_id));
 
+        // Load device name (use device ID as fallback)
+        String deviceName = prefs.getString("device_name", "");
+        if (deviceName.length() > 0) {
+            strlcpy(config.device_name, deviceName.c_str(), sizeof(config.device_name));
+        } else {
+            strlcpy(config.device_name, config.device_id, sizeof(config.device_name));
+        }
+
+        // Load other device settings
         config.target_temperature = prefs.getFloat(TARGET_TEMPERATURE, 22.0f);
         config.temperature_control_enabled = prefs.getBool(TEMPERATURE_CONTROL_ENABLED, false);
         config.elevation = prefs.getFloat(ELEVATION, 0.0f);
 
         prefs.end();
-
-        // Always generate device ID from MAC
-        String deviceId = getDeviceId();
-        strlcpy(config.device_id, deviceId.c_str(), sizeof(config.device_id));
-
-        // If no custom name is set, use device ID as name
-        if (config.device_name[0] == '\0') {
-            strlcpy(config.device_name, config.device_id, sizeof(config.device_name));
-        }
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
@@ -135,6 +136,38 @@ namespace Config {
         prefs.putBool(TEMPERATURE_CONTROL_ENABLED, config.temperature_control_enabled);
         prefs.putFloat(ELEVATION, config.elevation);
 
+        prefs.end();
+#endif
+    }
+    
+    void ConfigManager::updateDeviceName([[maybe_unused]] const char* device_name) {
+#ifdef ARDUINO
+        prefs.begin(NAMESPACE, false);
+        prefs.putString("device_name", device_name);
+        prefs.end();
+#endif
+    }
+
+    void ConfigManager::updateTargetTemperature([[maybe_unused]] float temperature) {
+#ifdef ARDUINO
+        prefs.begin(NAMESPACE, false);
+        prefs.putFloat(TARGET_TEMPERATURE, temperature);
+        prefs.end();
+#endif
+    }
+
+    void ConfigManager::updateTemperatureControlEnabled([[maybe_unused]] bool enabled) {
+#ifdef ARDUINO
+        prefs.begin(NAMESPACE, false);
+        prefs.putBool(TEMPERATURE_CONTROL_ENABLED, enabled);
+        prefs.end();
+#endif
+    }
+
+    void ConfigManager::updateElevation([[maybe_unused]] float elevation) {
+#ifdef ARDUINO
+        prefs.begin(NAMESPACE, false);
+        prefs.putFloat(ELEVATION, elevation);
         prefs.end();
 #endif
     }
