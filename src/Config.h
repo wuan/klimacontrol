@@ -105,6 +105,8 @@ namespace Config {
         static constexpr const char *ELEVATION = "elevation";
         static constexpr const char *ENERGY_WIFI_PW = "energy_wifi_pw";
 
+        // In-memory cache of device config — always read from here, never maintain separate copies
+        DeviceConfig deviceConfig;
 
         bool restartRequested = false;
 #ifdef ARDUINO
@@ -162,17 +164,23 @@ namespace Config {
         void saveWiFiConfig(const WiFiConfig &config);
 
         /**
-         * Load device configuration from NVS
+         * Load device configuration from NVS into the in-memory cache
          * @return DeviceConfig structure with defaults if not found
          */
         DeviceConfig loadDeviceConfig();
+
+        /**
+         * Get reference to in-memory device configuration (source of truth at runtime)
+         * @return reference to current DeviceConfig
+         */
+        const DeviceConfig& getDeviceConfig() const { return deviceConfig; }
 
         /**
          * Save device configuration to NVS (partial updates)
          * @param config Device configuration to save
          */
         void saveDeviceConfig(const DeviceConfig &config);
-        
+
         /**
          * Update individual device configuration fields
          */

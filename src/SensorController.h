@@ -36,10 +36,7 @@ private:
     int32_t getIntMeasurement(Sensor::MeasurementType type) const;
 
     // Temperature control state
-    float targetTemperature;
-    bool controlEnabled;
     uint32_t lastReadingTime;
-    float elevation; // cached from DeviceConfig
 
 public:
     explicit SensorController(Config::ConfigManager &config);
@@ -91,11 +88,10 @@ public:
     Sensor::Sensor *getSensor(size_t index);
 
     void setTargetTemperature(float temperature);
-    void setElevation(float meters) { elevation = meters; }
-    float getTargetTemperature() const { return targetTemperature; }
+    float getTargetTemperature() const { return config.getDeviceConfig().target_temperature; }
 
     void setControlEnabled(bool enabled);
-    bool isControlEnabled() const { return controlEnabled; }
+    bool isControlEnabled() const { return config.getDeviceConfig().temperature_control_enabled; }
 
     float updateControl();
     uint32_t getTimeSinceLastReading() const;

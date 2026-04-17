@@ -119,7 +119,6 @@ void WebServerManager::setupSettingsRoutes() {
                       auto elevation = doc["elevation"].as<float>();
 
                       config.updateElevation(elevation);
-                      sensorController.setElevation(elevation);
 
                       ESP_LOGI(TAG, "Elevation updated: %.0f m", elevation);
 

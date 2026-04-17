@@ -33,6 +33,8 @@ namespace Config {
         // Preferences are initialized when needed in each method
         prefs.begin(NAMESPACE, true); // Read-only mode
 #endif
+        // Initialize in-memory device config cache from NVS
+        loadDeviceConfig();
     }
 
     bool ConfigManager::isConfigured() {
@@ -96,34 +98,32 @@ namespace Config {
     }
 
     DeviceConfig ConfigManager::loadDeviceConfig() {
-        DeviceConfig config;
-
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, true); // Read-only mode
 
         String deviceId = getDeviceId();
-        strlcpy(config.device_id, deviceId.c_str(), sizeof(config.device_id));
+        strlcpy(deviceConfig.device_id, deviceId.c_str(), sizeof(deviceConfig.device_id));
 
         // Load device name (use device ID as fallback)
         String deviceName = prefs.getString("device_name", "");
         if (deviceName.length() > 0) {
-            strlcpy(config.device_name, deviceName.c_str(), sizeof(config.device_name));
+            strlcpy(deviceConfig.device_name, deviceName.c_str(), sizeof(deviceConfig.device_name));
         } else {
-            strlcpy(config.device_name, config.device_id, sizeof(config.device_name));
+            strlcpy(deviceConfig.device_name, deviceConfig.device_id, sizeof(deviceConfig.device_name));
         }
 
         // Load other device settings
-        config.target_temperature = prefs.getFloat(TARGET_TEMPERATURE, 22.0f);
-        config.temperature_control_enabled = prefs.getBool(TEMPERATURE_CONTROL_ENABLED, false);
-        config.elevation = prefs.getFloat(ELEVATION, 0.0f);
+        deviceConfig.target_temperature = prefs.getFloat(TARGET_TEMPERATURE, 22.0f);
+        deviceConfig.temperature_control_enabled = prefs.getBool(TEMPERATURE_CONTROL_ENABLED, false);
+        deviceConfig.elevation = prefs.getFloat(ELEVATION, 0.0f);
 
         prefs.end();
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
-        validateDeviceConfig(config);
+        validateDeviceConfig(deviceConfig);
 
-        return config;
+        return deviceConfig;
     }
 
     void ConfigManager::saveDeviceConfig([[maybe_unused]] const DeviceConfig &config) {
@@ -138,6 +138,8 @@ namespace Config {
 
         prefs.end();
 #endif
+        // Also update in-memory cache
+        deviceConfig = config;
     }
     
     void ConfigManager::updateDeviceName([[maybe_unused]] const char* device_name) {
@@ -146,6 +148,7 @@ namespace Config {
         prefs.putString("device_name", device_name);
         prefs.end();
 #endif
+        strlcpy(deviceConfig.device_name, device_name, sizeof(deviceConfig.device_name));
     }
 
     void ConfigManager::updateTargetTemperature([[maybe_unused]] float temperature) {
@@ -154,6 +157,7 @@ namespace Config {
         prefs.putFloat(TARGET_TEMPERATURE, temperature);
         prefs.end();
 #endif
+        deviceConfig.target_temperature = temperature;
     }
 
     void ConfigManager::updateTemperatureControlEnabled([[maybe_unused]] bool enabled) {
@@ -162,6 +166,7 @@ namespace Config {
         prefs.putBool(TEMPERATURE_CONTROL_ENABLED, enabled);
         prefs.end();
 #endif
+        deviceConfig.temperature_control_enabled = enabled;
     }
 
     void ConfigManager::updateElevation([[maybe_unused]] float elevation) {
@@ -170,6 +175,7 @@ namespace Config {
         prefs.putFloat(ELEVATION, elevation);
         prefs.end();
 #endif
+        deviceConfig.elevation = elevation;
     }
 
     void ConfigManager::reset() {

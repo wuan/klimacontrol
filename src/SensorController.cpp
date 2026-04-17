@@ -26,13 +26,11 @@ SensorController::SensorController(Config::ConfigManager &config)
 #ifdef ARDUINO
       dataMutex(xSemaphoreCreateMutex()),
 #endif
-      targetTemperature(22.0f), controlEnabled(false), lastReadingTime(0), elevation(0.0f) {
+      lastReadingTime(0) {
 }
 
 void SensorController::begin() {
     ESP_LOGI(TAG, "Beginning sensor initialization...");
-
-    elevation = config.loadDeviceConfig().elevation;
 
     sortSensors();
 
@@ -52,10 +50,6 @@ void SensorController::begin() {
     }
 
     ESP_LOGI(TAG, "Found %u sensors total", sensors.size());
-
-    // Load configuration
-    targetTemperature = 22.0f;
-    controlEnabled = false;
 }
 
 void SensorController::addSensor(std::unique_ptr<Sensor::Sensor> sensor) {
@@ -134,7 +128,7 @@ void SensorController::readSensors() {
     bool anyValid = false;
 
     Sensor::ReadConfig readConfig;
-    readConfig.elevation = elevation;
+    readConfig.elevation = config.getDeviceConfig().elevation;
 
     // Pre-reserve: each sensor contributes measurementCount() data measurements
     // plus 1 Time measurement added per valid sensor by this function
@@ -301,26 +295,25 @@ Sensor::Sensor *SensorController::getSensor(size_t index) {
 
 void SensorController::setTargetTemperature(float temperature) {
     // Clamp to reasonable range for room temperature control
-    targetTemperature = std::max(10.0f, std::min(30.0f, temperature));
-    ESP_LOGI(TAG, "Target temperature set to %.1f C", targetTemperature);
-    
-    // Persist to NVS using partial update
-    config.updateTargetTemperature(targetTemperature);
+    float clamped = std::max(10.0f, std::min(30.0f, temperature));
+    ESP_LOGI(TAG, "Target temperature set to %.1f C", clamped);
+
+    // Persist to NVS using partial update (also updates in-memory cache)
+    config.updateTargetTemperature(clamped);
 }
 
 void SensorController::setControlEnabled(bool enabled) {
-    if (controlEnabled != enabled) {
-        controlEnabled = enabled;
+    if (config.getDeviceConfig().temperature_control_enabled != enabled) {
         ESP_LOGI(TAG, "Temperature control %s", enabled ? "enabled" : "disabled");
-        
-        // Persist to NVS using partial update
+
+        // Persist to NVS using partial update (also updates in-memory cache)
         config.updateTemperatureControlEnabled(enabled);
     }
 }
 
 float SensorController::updateControl() {
     float currentTemp = getTemperature();
-    if (!controlEnabled || !isDataValid() || std::isnan(currentTemp)) {
+    if (!config.getDeviceConfig().temperature_control_enabled || !isDataValid() || std::isnan(currentTemp)) {
         return 0.0f;
     }
 
@@ -333,6 +326,7 @@ float SensorController::updateControl() {
     float dt = (now - lastControlTime) / 1000.0f;
     lastControlTime = now;
 
+    float targetTemperature = config.getDeviceConfig().target_temperature;
     float error = targetTemperature - currentTemp;
 
     // Proportional term
