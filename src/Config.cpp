@@ -152,6 +152,10 @@ namespace Config {
     }
 
     void ConfigManager::updateTargetTemperature([[maybe_unused]] float temperature) {
+        // Validate — same logic as validateDeviceConfig()
+        if (std::isnan(temperature) || temperature < 10.0f || temperature > 30.0f) {
+            temperature = 22.0f;
+        }
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, false);
         prefs.putFloat(TARGET_TEMPERATURE, temperature);
@@ -170,6 +174,10 @@ namespace Config {
     }
 
     void ConfigManager::updateElevation([[maybe_unused]] float elevation) {
+        // Validate — same logic as validateDeviceConfig()
+        if (std::isnan(elevation) || elevation < -500.0f || elevation > 9000.0f) {
+            elevation = 0.0f;
+        }
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, false);
         prefs.putFloat(ELEVATION, elevation);
