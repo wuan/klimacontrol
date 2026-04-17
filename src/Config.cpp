@@ -95,8 +95,8 @@ namespace Config {
         if (std::isnan(config.elevation) || config.elevation < -500.0f || config.elevation > 9000.0f) {
             config.elevation = 0.0f;
         }
-        if (config.sensor_i2c_address < 0x08 || config.sensor_i2c_address > 0x77) {
-            config.sensor_i2c_address = 0x44;
+        if (config.sensor_i2c_address < MIN_SENSOR_I2C_ADDRESS || config.sensor_i2c_address > MAX_SENSOR_I2C_ADDRESS) {
+            config.sensor_i2c_address = DEFAULT_SENSOR_I2C_ADDRESS;
         }
     }
 
@@ -119,7 +119,7 @@ namespace Config {
         deviceConfig.target_temperature = prefs.getFloat(TARGET_TEMPERATURE, 22.0f);
         deviceConfig.temperature_control_enabled = prefs.getBool(TEMPERATURE_CONTROL_ENABLED, false);
         deviceConfig.elevation = prefs.getFloat(ELEVATION, 0.0f);
-        deviceConfig.sensor_i2c_address = prefs.getUChar(SENSOR_I2C_ADDRESS, 0x44);
+        deviceConfig.sensor_i2c_address = prefs.getUChar(SENSOR_I2C_ADDRESS, DEFAULT_SENSOR_I2C_ADDRESS);
 
         prefs.end();
 #endif
@@ -195,8 +195,8 @@ namespace Config {
 
     void ConfigManager::updateSensorI2CAddress([[maybe_unused]] uint8_t address) {
         // Validate: valid 7-bit I2C addresses are 0x08-0x77 (reserved: 0x00-0x07, 0x78-0x7F)
-        if (address < 0x08 || address > 0x77) {
-            address = 0x44; // default
+        if (address < MIN_SENSOR_I2C_ADDRESS || address > MAX_SENSOR_I2C_ADDRESS) {
+            address = DEFAULT_SENSOR_I2C_ADDRESS;
         }
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, false);
