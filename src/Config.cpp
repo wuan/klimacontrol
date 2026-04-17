@@ -131,22 +131,24 @@ namespace Config {
     }
 
     void ConfigManager::saveDeviceConfig([[maybe_unused]] const DeviceConfig &config) {
+        // Validate before persisting to keep NVS consistent
+        DeviceConfig validated = config;
+        validateDeviceConfig(validated);
+
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, false); // Read-write mode
-
-        prefs.putString("device_name", config.device_name);
-
-        prefs.putFloat(TARGET_TEMPERATURE, config.target_temperature);
-        prefs.putBool(TEMPERATURE_CONTROL_ENABLED, config.temperature_control_enabled);
-        prefs.putFloat(ELEVATION, config.elevation);
-        prefs.putUChar(SENSOR_I2C_ADDRESS, config.sensor_i2c_address);
-
+        prefs.putString("device_name", validated.device_name);
+        prefs.putFloat(TARGET_TEMPERATURE, validated.target_temperature);
+        prefs.putBool(TEMPERATURE_CONTROL_ENABLED, validated.temperature_control_enabled);
+        prefs.putFloat(ELEVATION, validated.elevation);
+        prefs.putUChar(SENSOR_I2C_ADDRESS, validated.sensor_i2c_address);
         prefs.end();
 #endif
+
         // Also update in-memory cache
-        deviceConfig = config;
+        deviceConfig = validated;
     }
-    
+
     void ConfigManager::updateDeviceName([[maybe_unused]] const char* device_name) {
 #ifdef ARDUINO
         prefs.begin(NAMESPACE, false);
