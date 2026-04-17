@@ -193,7 +193,7 @@ namespace Config {
         deviceConfig.elevation = elevation;
     }
 
-    void ConfigManager::updateSensorI2CAddress([[maybe_unused]] uint8_t address) {
+    void ConfigManager::updateSensorI2CAddress(uint8_t address) {
         // Validate: valid 7-bit I2C addresses are 0x08-0x77 (reserved: 0x00-0x07, 0x78-0x7F)
         if (address < MIN_SENSOR_I2C_ADDRESS || address > MAX_SENSOR_I2C_ADDRESS) {
             address = DEFAULT_SENSOR_I2C_ADDRESS;
