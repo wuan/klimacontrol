@@ -14,6 +14,11 @@ using String = std::string;
 #include "Constants.h"
 
 namespace Config {
+    // Valid 7-bit I2C address range (0x00-0x07 and 0x78-0x7F are reserved)
+    constexpr uint8_t MIN_SENSOR_I2C_ADDRESS = 0x08;
+    constexpr uint8_t MAX_SENSOR_I2C_ADDRESS = 0x77;
+    constexpr uint8_t DEFAULT_SENSOR_I2C_ADDRESS = 0x44;
+
     /**
      * WiFi configuration structure
      */
@@ -89,11 +94,6 @@ namespace Config {
     void validateDeviceConfig(DeviceConfig &config);
     void validateMqttConfig(MqttConfig &config);
     void validateEnergyConfig(EnergyConfig &config);
-
-    // Valid 7-bit I2C address range (0x00-0x07 and 0x78-0x7F are reserved)
-    constexpr uint8_t MIN_SENSOR_I2C_ADDRESS = 0x08;
-    constexpr uint8_t MAX_SENSOR_I2C_ADDRESS = 0x77;
-    constexpr uint8_t DEFAULT_SENSOR_I2C_ADDRESS = 0x44;
 
     /**
      * Configuration Manager
