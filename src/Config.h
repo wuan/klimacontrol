@@ -34,7 +34,7 @@ namespace Config {
         char device_name[32] = ""; // Custom device name
 
         // Sensor and temperature control configuration
-        uint8_t sensor_i2c_address = 0x44; // Default I2C address for sensors
+        uint8_t sensor_i2c_address = DEFAULT_SENSOR_I2C_ADDRESS; // Default I2C address for sensors
         float target_temperature = 22.0f; // Target temperature for control
         bool temperature_control_enabled = false; // Temperature control enabled
         float elevation = 0.0f; // Meters above sea level, for sea-level pressure calculation
