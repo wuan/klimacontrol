@@ -33,22 +33,30 @@ void SyslogOutput::end() {
 }
 
 void SyslogOutput::setConfig(const Config::SyslogConfig& config) {
+    bool doBegin = false;
+    bool doEnd = false;
+
     if (mutex && xSemaphoreTake(mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         bool wasEnabled = currentConfig.enabled;
         currentConfig = config;
+        doBegin = (!wasEnabled && config.enabled && !active);
+        doEnd = (wasEnabled && !config.enabled && active);
         xSemaphoreGive(mutex);
-
-        if (!wasEnabled && config.enabled && !active) {
-            begin(config);
-        } else if (wasEnabled && !config.enabled && active) {
-            end();
-        }
     } else {
-        // No mutex yet — just update config
+        // No mutex yet — update directly
         currentConfig = config;
         if (config.enabled && !active) {
             begin(config);
         }
+        return;
+    }
+
+    // begin()/end() called after releasing the mutex so they don't
+    // deadlock if they ever need to acquire it internally.
+    if (doBegin) {
+        begin(config);
+    } else if (doEnd) {
+        end();
     }
 }
 
