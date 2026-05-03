@@ -13,6 +13,46 @@ using String = std::string;
 
 #include "Constants.h"
 
+#ifdef ARDUINO
+/**
+ * RAII wrapper for Preferences to ensure proper cleanup.
+ * Automatically calls end() in destructor, even if exception is thrown.
+ */
+class PreferencesGuard {
+    Preferences& prefs;
+public:
+    /**
+     * Constructor - opens the Preferences namespace
+     * @param p Preferences instance to wrap
+     * @param ns Namespace name
+     * @param readOnly true for read-only access, false for read-write
+     */
+    PreferencesGuard(Preferences& p, const char* ns, bool readOnly)
+        : prefs(p) {
+        prefs.begin(ns, readOnly);
+    }
+
+    /**
+     * Destructor - closes the Preferences namespace
+     */
+    ~PreferencesGuard() {
+        prefs.end();
+    }
+
+    /**
+     * Get reference to the underlying Preferences object
+     * @return Preferences reference
+     */
+    Preferences& get() { return prefs; }
+
+    /**
+     * Disallow copying
+     */
+    PreferencesGuard(const PreferencesGuard&) = delete;
+    PreferencesGuard& operator=(const PreferencesGuard&) = delete;
+};
+#endif
+
 namespace Config {
     // Valid 7-bit I2C address range (0x00-0x07 and 0x78-0x7F are reserved)
     constexpr uint8_t MIN_SENSOR_I2C_ADDRESS = 0x08;

@@ -30,8 +30,12 @@ namespace Config {
 
     void ConfigManager::begin() {
 #ifdef ARDUINO
+        // Initialize in-memory device config cache from NVS
         // Preferences are initialized when needed in each method
-        prefs.begin(NAMESPACE, true); // Read-only mode
+        {
+            PreferencesGuard guard(prefs, NAMESPACE, true); // Read-only mode
+            // Just ensure it's initialized
+        }
 #endif
         // Initialize in-memory device config cache from NVS
         loadDeviceConfig();
@@ -39,10 +43,8 @@ namespace Config {
 
     bool ConfigManager::isConfigured() {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
-        bool configured = prefs.getBool("configured", false);
-        prefs.end();
-        return configured;
+        PreferencesGuard guard(prefs, NAMESPACE, true); // Read-only mode
+        return guard.get().getBool("configured", false);
 #else
         return false;
 #endif
@@ -50,9 +52,8 @@ namespace Config {
 
     void ConfigManager::markUnconfigured() {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
-        prefs.putBool("configured", false);
-        prefs.end();
+        PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
+        guard.get().putBool("configured", false);
 #endif
     }
 
@@ -60,17 +61,15 @@ namespace Config {
         WiFiConfig config;
 
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
+        PreferencesGuard guard(prefs, NAMESPACE, true); // Read-only mode
 
-        config.configured = prefs.getBool("configured", false);
-        config.connection_failures = prefs.getUChar("wifi_failures", 0);
+        config.configured = guard.get().getBool("configured", false);
+        config.connection_failures = guard.get().getUChar("wifi_failures", 0);
 
         if (config.configured) {
-            prefs.getString("wifi_ssid", config.ssid, sizeof(config.ssid));
-            prefs.getString("wifi_pass", config.password, sizeof(config.password));
+            guard.get().getString("wifi_ssid", config.ssid, sizeof(config.ssid));
+            guard.get().getString("wifi_pass", config.password, sizeof(config.password));
         }
-
-        prefs.end();
 #endif
 
         return config;
@@ -78,13 +77,11 @@ namespace Config {
 
     void ConfigManager::saveWiFiConfig([[maybe_unused]] const WiFiConfig &config) {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
+        PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
 
-        prefs.putString("wifi_ssid", config.ssid);
-        prefs.putString("wifi_pass", config.password);
-        prefs.putBool("configured", config.configured);
-
-        prefs.end();
+        guard.get().putString("wifi_ssid", config.ssid);
+        guard.get().putString("wifi_pass", config.password);
+        guard.get().putBool("configured", config.configured);
 #endif
     }
 
@@ -102,13 +99,13 @@ namespace Config {
 
     DeviceConfig ConfigManager::loadDeviceConfig() {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
+        PreferencesGuard guard(prefs, NAMESPACE, true); // Read-only mode
 
         String deviceId = getDeviceId();
         strlcpy(deviceConfig.device_id, deviceId.c_str(), sizeof(deviceConfig.device_id));
 
         // Load device name (use device ID as fallback)
-        String deviceName = prefs.getString("device_name", "");
+        String deviceName = guard.get().getString("device_name", "");
         if (deviceName.length() > 0) {
             strlcpy(deviceConfig.device_name, deviceName.c_str(), sizeof(deviceConfig.device_name));
         } else {
@@ -116,12 +113,10 @@ namespace Config {
         }
 
         // Load other device settings
-        deviceConfig.target_temperature = prefs.getFloat(TARGET_TEMPERATURE, 22.0f);
-        deviceConfig.temperature_control_enabled = prefs.getBool(TEMPERATURE_CONTROL_ENABLED, false);
-        deviceConfig.elevation = prefs.getFloat(ELEVATION, 0.0f);
-        deviceConfig.sensor_i2c_address = prefs.getUChar(SENSOR_I2C_ADDRESS, DEFAULT_SENSOR_I2C_ADDRESS);
-
-        prefs.end();
+        deviceConfig.target_temperature = guard.get().getFloat(TARGET_TEMPERATURE, 22.0f);
+        deviceConfig.temperature_control_enabled = guard.get().getBool(TEMPERATURE_CONTROL_ENABLED, false);
+        deviceConfig.elevation = guard.get().getFloat(ELEVATION, 0.0f);
+        deviceConfig.sensor_i2c_address = guard.get().getUChar(SENSOR_I2C_ADDRESS, DEFAULT_SENSOR_I2C_ADDRESS);
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
@@ -136,13 +131,12 @@ namespace Config {
         validateDeviceConfig(validated);
 
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
-        prefs.putString("device_name", validated.device_name);
-        prefs.putFloat(TARGET_TEMPERATURE, validated.target_temperature);
-        prefs.putBool(TEMPERATURE_CONTROL_ENABLED, validated.temperature_control_enabled);
-        prefs.putFloat(ELEVATION, validated.elevation);
-        prefs.putUChar(SENSOR_I2C_ADDRESS, validated.sensor_i2c_address);
-        prefs.end();
+        PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
+        guard.get().putString("device_name", validated.device_name);
+        guard.get().putFloat(TARGET_TEMPERATURE, validated.target_temperature);
+        guard.get().putBool(TEMPERATURE_CONTROL_ENABLED, validated.temperature_control_enabled);
+        guard.get().putFloat(ELEVATION, validated.elevation);
+        guard.get().putUChar(SENSOR_I2C_ADDRESS, validated.sensor_i2c_address);
 #endif
 
         // Also update in-memory cache
@@ -151,9 +145,8 @@ namespace Config {
 
     void ConfigManager::updateDeviceName([[maybe_unused]] const char* device_name) {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false);
-        prefs.putString("device_name", device_name);
-        prefs.end();
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putString("device_name", device_name);
 #endif
         strlcpy(deviceConfig.device_name, device_name, sizeof(deviceConfig.device_name));
     }
@@ -164,18 +157,16 @@ namespace Config {
             temperature = 22.0f;
         }
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false);
-        prefs.putFloat(TARGET_TEMPERATURE, temperature);
-        prefs.end();
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putFloat(TARGET_TEMPERATURE, temperature);
 #endif
         deviceConfig.target_temperature = temperature;
     }
 
     void ConfigManager::updateTemperatureControlEnabled([[maybe_unused]] bool enabled) {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false);
-        prefs.putBool(TEMPERATURE_CONTROL_ENABLED, enabled);
-        prefs.end();
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putBool(TEMPERATURE_CONTROL_ENABLED, enabled);
 #endif
         deviceConfig.temperature_control_enabled = enabled;
     }
@@ -186,9 +177,8 @@ namespace Config {
             elevation = 0.0f;
         }
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false);
-        prefs.putFloat(ELEVATION, elevation);
-        prefs.end();
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putFloat(ELEVATION, elevation);
 #endif
         deviceConfig.elevation = elevation;
     }
@@ -199,18 +189,16 @@ namespace Config {
             address = DEFAULT_SENSOR_I2C_ADDRESS;
         }
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false);
-        prefs.putUChar(SENSOR_I2C_ADDRESS, address);
-        prefs.end();
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putUChar(SENSOR_I2C_ADDRESS, address);
 #endif
         deviceConfig.sensor_i2c_address = address;
     }
 
     void ConfigManager::reset() {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
-        prefs.clear(); // Clear all keys in this namespace
-        prefs.end();
+        PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
+        guard.get().clear(); // Clear all keys in this namespace
 #endif
     }
 
@@ -231,11 +219,10 @@ namespace Config {
 
     uint8_t ConfigManager::incrementConnectionFailures() {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
-        uint8_t failures = prefs.getUChar("wifi_failures", 0);
+        PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
+        uint8_t failures = guard.get().getUChar("wifi_failures", 0);
         failures++;
-        prefs.putUChar("wifi_failures", failures);
-        prefs.end();
+        guard.get().putUChar("wifi_failures", failures);
         return failures;
 #else
         return 0;
@@ -244,18 +231,15 @@ namespace Config {
 
     void ConfigManager::resetConnectionFailures() {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
-        prefs.putUChar("wifi_failures", 0);
-        prefs.end();
+        PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
+        guard.get().putUChar("wifi_failures", 0);
 #endif
     }
 
     uint8_t ConfigManager::getConnectionFailures() {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
-        uint8_t failures = prefs.getUChar("wifi_failures", 0);
-        prefs.end();
-        return failures;
+        PreferencesGuard guard(prefs, NAMESPACE, true); // Read-only mode
+        return guard.get().getUChar("wifi_failures", 0);
 #else
         return 0;
 #endif
@@ -265,13 +249,11 @@ namespace Config {
         SensorConfig sensorConfig;
 
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
+        PreferencesGuard guard(prefs, NAMESPACE, true); // Read-only mode
 
-        String assign = prefs.getString("sns_assign", "");
+        String assign = guard.get().getString("sns_assign", "");
 
         strlcpy(sensorConfig.assignments, assign.c_str(), sizeof(sensorConfig.assignments));
-
-        prefs.end();
 
         ESP_LOGD(TAG, "SensorConfig: Loaded assignments='%s'", sensorConfig.assignments);
 #endif
@@ -281,11 +263,9 @@ namespace Config {
 
     void ConfigManager::saveSensorConfig([[maybe_unused]] const SensorConfig &config) {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
+        PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
 
-        prefs.putString("sns_assign", config.assignments);
-
-        prefs.end();
+        guard.get().putString("sns_assign", config.assignments);
 
         ESP_LOGD(TAG, "SensorConfig: Saved assignments='%s'", config.assignments);
 #endif
@@ -307,17 +287,15 @@ namespace Config {
         MqttConfig mqttConfig;
 
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, true); // Read-only mode
+        PreferencesGuard guard(prefs, NAMESPACE, true); // Read-only mode
 
-        mqttConfig.enabled = prefs.getBool("mqtt_enabled", false);
-        prefs.getString("mqtt_host", mqttConfig.host, sizeof(mqttConfig.host));
-        mqttConfig.port = prefs.getUShort("mqtt_port", 1883);
-        prefs.getString("mqtt_user", mqttConfig.username, sizeof(mqttConfig.username));
-        prefs.getString("mqtt_pass", mqttConfig.password, sizeof(mqttConfig.password));
-        prefs.getString("mqtt_prefix", mqttConfig.prefix, sizeof(mqttConfig.prefix));
-        mqttConfig.interval = prefs.getUShort("mqtt_interval", 15);
-
-        prefs.end();
+        mqttConfig.enabled = guard.get().getBool("mqtt_enabled", false);
+        guard.get().getString("mqtt_host", mqttConfig.host, sizeof(mqttConfig.host));
+        mqttConfig.port = guard.get().getUShort("mqtt_port", 1883);
+        guard.get().getString("mqtt_user", mqttConfig.username, sizeof(mqttConfig.username));
+        guard.get().getString("mqtt_pass", mqttConfig.password, sizeof(mqttConfig.password));
+        guard.get().getString("mqtt_prefix", mqttConfig.prefix, sizeof(mqttConfig.prefix));
+        mqttConfig.interval = guard.get().getUShort("mqtt_interval", 15);
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
@@ -328,17 +306,15 @@ namespace Config {
 
     void ConfigManager::saveMqttConfig([[maybe_unused]] const MqttConfig &config) {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false); // Read-write mode
+        PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
 
-        prefs.putBool("mqtt_enabled", config.enabled);
-        prefs.putString("mqtt_host", config.host);
-        prefs.putUShort("mqtt_port", config.port);
-        prefs.putString("mqtt_user", config.username);
-        prefs.putString("mqtt_pass", config.password);
-        prefs.putString("mqtt_prefix", config.prefix);
-        prefs.putUShort("mqtt_interval", config.interval);
-
-        prefs.end();
+        guard.get().putBool("mqtt_enabled", config.enabled);
+        guard.get().putString("mqtt_host", config.host);
+        guard.get().putUShort("mqtt_port", config.port);
+        guard.get().putString("mqtt_user", config.username);
+        guard.get().putString("mqtt_pass", config.password);
+        guard.get().putString("mqtt_prefix", config.prefix);
+        guard.get().putUShort("mqtt_interval", config.interval);
 
         ESP_LOGD(TAG, "Saved MQTT configuration");
 #endif
@@ -354,11 +330,9 @@ namespace Config {
         EnergyConfig energyConfig;
 
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, true);
+        PreferencesGuard guard(prefs, NAMESPACE, true);
 
-        energyConfig.wifi_power = prefs.getUChar(ENERGY_WIFI_PW, Constants::DEFAULT_WIFI_POWER);
-
-        prefs.end();
+        energyConfig.wifi_power = guard.get().getUChar(ENERGY_WIFI_PW, Constants::DEFAULT_WIFI_POWER);
 #endif
 
         // Validate wifi_power is one of the known values
@@ -369,11 +343,9 @@ namespace Config {
 
     void ConfigManager::saveEnergyConfig([[maybe_unused]] const EnergyConfig &config) {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false);
+        PreferencesGuard guard(prefs, NAMESPACE, false);
 
-        prefs.putUChar(ENERGY_WIFI_PW, config.wifi_power);
-
-        prefs.end();
+        guard.get().putUChar(ENERGY_WIFI_PW, config.wifi_power);
 
         ESP_LOGD(TAG, "Saved energy configuration");
 #endif
@@ -381,26 +353,22 @@ namespace Config {
     SyslogConfig ConfigManager::loadSyslogConfig() {
         SyslogConfig config;
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, true);
+        PreferencesGuard guard(prefs, NAMESPACE, true);
 
-        config.enabled = prefs.getBool("syslog_on", false);
-        config.port = prefs.getUShort("syslog_port", 514);
-        prefs.getString("syslog_host", config.host, sizeof(config.host));
-
-        prefs.end();
+        config.enabled = guard.get().getBool("syslog_on", false);
+        config.port = guard.get().getUShort("syslog_port", 514);
+        guard.get().getString("syslog_host", config.host, sizeof(config.host));
 #endif
         return config;
     }
 
     void ConfigManager::saveSyslogConfig([[maybe_unused]] const SyslogConfig &config) {
 #ifdef ARDUINO
-        prefs.begin(NAMESPACE, false);
+        PreferencesGuard guard(prefs, NAMESPACE, false);
 
-        prefs.putBool("syslog_on", config.enabled);
-        prefs.putUShort("syslog_port", config.port);
-        prefs.putString("syslog_host", config.host);
-
-        prefs.end();
+        guard.get().putBool("syslog_on", config.enabled);
+        guard.get().putUShort("syslog_port", config.port);
+        guard.get().putString("syslog_host", config.host);
 
         ESP_LOGD(TAG, "Saved syslog configuration");
 #endif
