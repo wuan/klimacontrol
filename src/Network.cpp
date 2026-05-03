@@ -197,6 +197,9 @@ void Network::configureUsingAPMode() {
     }
     ESP_LOGI(TAG, "Configuration received");
 
+    // Reset failure counter since user has provided new credentials
+    config.resetConnectionFailures();
+
     vTaskDelay(5000 / portTICK_PERIOD_MS);
 
     ESP_LOGI(TAG, "Stopping captive portal");
@@ -234,15 +237,18 @@ void Network::configureUsingAPMode() {
     uint8_t failures = config.getConnectionFailures();
     ESP_LOGI(TAG, "Previous connection failures: %u", failures);
 
-    if (failures >= AP_FALLBACK_THRESHOLD) {
-        // Temporarily open AP so the user can reconfigure WiFi credentials.
-        // If nobody reconfigures within the timeout, restart back into STA to
-        // retry the original credentials (handles temporary WLAN outages).
-        config.resetConnectionFailures();
+    // Enter AP mode every 3rd failure (3, 6, 9, ...) to allow user reconfiguration
+    // while still periodically retrying STA mode for temporary outages
+    if (failures > 0 && failures % AP_FALLBACK_THRESHOLD == 0) {
+        // Open AP mode for WiFi reconfiguration.
+        // Device will enter AP mode periodically (every 3 failures) to allow
+        // user reconfiguration, while still retrying STA mode in between.
+        // Each AP timeout increments the failure counter, ensuring device
+        // will eventually enter AP mode again for reconfiguration.
 
         static constexpr unsigned long AP_FALLBACK_TIMEOUT_MS = 5UL * 60 * 1000; // 5 minutes
-        ESP_LOGW(TAG, "Too many connection failures - opening AP for %lu s",
-                 AP_FALLBACK_TIMEOUT_MS / 1000);
+        ESP_LOGW(TAG, "Multiple connection failures (%u) - opening AP for %lu s for reconfiguration",
+                 failures, AP_FALLBACK_TIMEOUT_MS / 1000);
 
         startAP();
         webServer = std::make_unique<ConfigWebServerManager>(config, *this, sensorController, sensorMonitor);
@@ -259,18 +265,18 @@ void Network::configureUsingAPMode() {
         webServer.reset();
 
         if (config.isConfigured()) {
-            ESP_LOGI(TAG, "New configuration received - restarting...");
+            ESP_LOGI(TAG, "New configuration received - resetting failure count and restarting...");
+            config.resetConnectionFailures();
             vTaskDelay(1000 / portTICK_PERIOD_MS);
             ESP.restart();
         }
 
-        // AP fallback timed out — original credentials failed.
-        // Increment the failure counter so this restart counts toward
-        // the AP fallback threshold (3 failures → 5-minute AP window for reconfiguration).
+        // AP fallback timed out - increment counter so device will enter AP mode again
+        // on next boot, giving user another opportunity to reconfigure.
         // incrementConnectionFailures() already writes wifi_failures to NVS.
         uint8_t newFailures = config.incrementConnectionFailures();
-        ESP_LOGW(TAG, "AP fallback timed out (failure %u/%u) - waiting before retry...",
-                 newFailures, AP_FALLBACK_THRESHOLD);
+        ESP_LOGW(TAG, "AP fallback timed out (total failures: %u) - restarting to retry AP mode...",
+                 newFailures);
 
         // Brief pause so the restart isn't instantaneous
         vTaskDelay(1000 / portTICK_PERIOD_MS);
