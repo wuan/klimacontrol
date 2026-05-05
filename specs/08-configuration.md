@@ -46,8 +46,8 @@ Define persistent configuration storage using ESP32 Preferences (NVS).
 
 ### Validation
 25. **S8.25** SHALL provide validateDeviceConfig()
-26. **S8.26** SHALL check temperature range: -40.0 to 125.0
-27. **S8.27** SHALL check elevation range: -100.0 to 10000.0
+26. **S8.26** SHALL check temperature range: 10.0 to 30.0°C
+27. **S8.27** SHALL check elevation range: -500.0 to 9000.0m
 28. **S8.28** SHALL check sensor_i2c_address range: 0x08 to 0x77
 
 ### Factory Reset

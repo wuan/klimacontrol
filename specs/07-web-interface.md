@@ -13,7 +13,7 @@ Define web-based user interface, HTML/CSS/JS structure, pages, and real-time upd
 
 ### Pages
 4. **S7.4** SHALL provide main dashboard at /
-5. **S7.5** SHALL provide WiFi config page at /config
+5. **S7.5** SHALL provide settings page at /settings
 
 ### Dashboard
 6. **S7.6** SHALL display current temperature and humidity

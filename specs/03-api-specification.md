@@ -50,7 +50,7 @@ Define all REST API endpoints, request/response formats, error handling, and sta
 
 ### Page Routes
 29. **S3.29** SHALL provide `GET /` - Main dashboard
-30. **S3.30** SHALL provide `GET /config` - WiFi configuration page
+30. **S3.30** SHALL provide `GET /settings` - Settings page (WiFi, device config)
 
 ## Scenarios
 

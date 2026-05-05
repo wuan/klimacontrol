@@ -15,7 +15,7 @@ Define PID-based temperature control algorithm.
 4. **S10.4** SHALL track target temperature setpoint
 5. **S10.5** SHALL store in DeviceConfig.target_temperature
 6. **S10.6** Default setpoint SHALL be 22.0°C
-7. **S10.7** Setpoint SHALL be valid in range -40.0°C to 125.0°C
+7. **S10.7** Setpoint SHALL be valid in range 10.0°C to 30.0°C
 
 ### Control Loop
 8. **S10.8** SHALL execute in SensorMonitor task
@@ -36,10 +36,10 @@ Define PID-based temperature control algorithm.
 19. **S10.19** Default parameters SHALL provide stable response
 
 ### Integral Windup Prevention
-20. **S10.20** SHALL implement integral windup prevention
-21. **S10.21** SHALL clamp integral term
-22. **S10.22** SHALL stop accumulation when output saturated
-23. **S10.23** SHALL reset integral term when control disabled
+20. **S10.20** SHALL implement integral windup prevention (anti-windup clamping)
+21. **S10.21** SHALL clamp integral term to output range
+22. **S10.22** FUTURE: Stop accumulation when output saturated (not implemented)
+23. **S10.23** FUTURE: Reset integral term when control disabled (not implemented)
 
 ### Output Handling
 24. **S10.24** updateControl() SHALL return control output value
@@ -51,9 +51,9 @@ Define PID-based temperature control algorithm.
 28. **S10.28** SHALL check isDataValid() and hasConnectedSensors()
 
 ### Hysteresis
-29. **S10.29** SHALL implement configurable hysteresis
-30. **S10.30** Default hysteresis SHALL be 0.5°C
-31. **S10.31** Output SHALL be 0.0 within hysteresis band
+29. **S10.29** FUTURE: Implement configurable hysteresis (not implemented)
+30. **S10.30** FUTURE: Default hysteresis 0.5°C (not implemented)
+31. **S10.31** FUTURE: Output 0.0 within hysteresis band (not implemented)
 
 ### Safety Limits
 32. **S10.32** SHALL implement maximum output limits

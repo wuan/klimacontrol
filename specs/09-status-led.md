@@ -11,7 +11,7 @@ Define visual feedback system using built-in NeoPixel LED.
 2. **S9.2** SHALL use NEO_GRB format (Red, Green, Blue)
 
 ### LED States
-3. **S9.3** SHALL define LedState enum: OFF, ON, BLINK_SLOW, BLINK_FAST, PULSE, MEASURING
+3. **S9.3** SHALL define LedState enum: OFF, ON, STARTUP, TRANSMIT_DATA
 
 ### StatusLed Class
 4. **S9.4** SHALL provide StatusLed class
@@ -20,48 +20,29 @@ Define visual feedback system using built-in NeoPixel LED.
 7. **S9.7** SHALL provide show() method to update LED
 
 ### Color Mapping
-8. **S9.8** ON SHALL display GREEN (0, 255, 0)
-9. **S9.9** MEASURING SHALL display YELLOW (255, 255, 0)
-10. **S9.10** BLINK_SLOW SHALL display BLUE (0, 0, 255) with 2000ms period
-11. **S9.11** PULSE SHALL display RED (255, 0, 0) with sine wave brightness
-
-### Convenience Methods
-12. **S9.12** SHALL provide setNormal() for ON
-13. **S9.13** SHALL provide setMeasuring() for MEASURING
-14. **S9.14** SHALL provide setApMode() for BLINK_SLOW
-15. **S9.15** SHALL provide setError() for PULSE
+8. **S9.8** ON SHALL display solid color (implementation-defined)
+9. **S9.9** STARTUP SHALL blink slowly (1 Hz)
+10. **S9.10** TRANSMIT_DATA SHALL flash briefly (MQTT publish indication)
 
 ### Usage Rules
-16. **S9.16** Normal operation SHALL use ON (green)
-17. **S9.17** Sensor measurement SHALL use MEASURING (yellow)
-18. **S9.18** AP mode SHALL use BLINK_SLOW (blue)
-19. **S9.19** Error condition SHALL use PULSE (red)
+11. **S9.11** Normal operation SHALL use ON state
+12. **S9.12** Boot sequence SHALL use STARTUP state
+13. **S9.13** MQTT transmission SHALL use TRANSMIT_DATA state
 
 ### Timing
-20. **S9.20** update() SHALL be called periodically (>= every 50ms)
-21. **S9.21** SHALL use millis() for timing
+14. **S9.14** update() SHALL be called periodically
+15. **S9.15** SHALL use millis() for timing
 
 ## Scenarios
 
 ### Scenario S9-A: Normal Operation
 Given device operational,
-Then LED SHALL display solid GREEN
+Then LED SHALL display solid color
 
-### Scenario S9-B: Sensor Measurement
-Given sensor read in progress,
-Then LED SHALL display solid YELLOW
+### Scenario S9-B: Boot Sequence
+Given device booting,
+Then LED SHALL blink slowly (1 Hz)
 
-### Scenario S9-C: AP Mode
-Given device in AP mode,
-Then LED SHALL blink BLUE with 2000ms period (1s on, 1s off)
-
-### Scenario S9-D: Error Condition
-Given repeated sensor failures,
-Then LED SHALL pulse RED with sine wave pattern
-
-### Scenario S9-E: WiFi Connection Sequence
-Given booting in STA mode,
-Then:
-- Initial: BLINK_FAST (white) - connecting
-- Success: ON (green)
-- Failure 3x: BLINK_SLOW (blue) - AP mode
+### Scenario S9-C: MQTT Transmission
+Given MQTT publish in progress,
+Then LED SHALL flash briefly

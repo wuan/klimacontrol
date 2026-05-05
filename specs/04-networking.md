@@ -13,10 +13,10 @@ Define WiFi connectivity, network modes (STA and AP), mDNS, captive portal, NTP.
 4. **S4.4** SHALL enter AP mode after 3 consecutive connection failures
 
 ### AP Mode
-5. **S4.5** SHALL use SSID format: `klima-AABBCC` (last 3 MAC bytes)
+5. **S4.5** SHALL use SSID format: `Klima-AABBCC` (last 3 MAC bytes)
 6. **S4.6** SHALL use IP: 192.168.4.1
 7. **S4.7** SHALL implement captive portal with DNS redirection
-8. **S4.8** SHALL serve configuration page at /config
+8. **S4.8** SHALL serve configuration page at /settings
 
 ### STA Mode
 9. **S4.9** SHALL connect to configured WiFi network

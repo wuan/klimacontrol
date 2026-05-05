@@ -21,7 +21,7 @@ paths:
     get:
       operationId: getStatus
       summary: Get current system status
-      description: Returns temperature, humidity, and control status
+      description: Returns device info, sensor data, temperature control status, and WiFi status
       tags:
         - status
       responses:
@@ -33,23 +33,6 @@ paths:
                 $ref: '#/components/schemas/SystemStatus'
 
   /temperature/target:
-    get:
-      operationId: getTargetTemperature
-      summary: Get target temperature
-      tags:
-        - control
-      responses:
-        '200':
-          description: Current target temperature
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  target:
-                    type: number
-                    format: float
-                    example: 22.5
     post:
       operationId: setTargetTemperature
       summary: Set target temperature
@@ -62,10 +45,13 @@ paths:
             schema:
               type: object
               properties:
-                target:
+                value:
                   type: number
                   format: float
+                  description: Target temperature in °C
                   example: 22.5
+              required:
+                - value
       responses:
         '200':
           description: Target temperature updated
@@ -75,36 +61,75 @@ components:
     SystemStatus:
       type: object
       properties:
+        device_id:
+          type: string
+          description: Device identifier
+          example: "D3E4F5"
+        device_name:
+          type: string
+          description: Configured device name
+          example: "Klima-Control"
+        firmware_version:
+          type: string
+          description: Firmware version string
+          example: "v1.0.0"
+        elevation:
+          type: number
+          format: float
+          description: Configured elevation in meters
+          example: 100.0
+        ota_partition:
+          type: string
+          description: Currently running OTA partition label
+          example: "app0"
+        sensor_connected:
+          type: boolean
+          description: Whether sensors are connected
+          example: true
+        sensor_valid:
+          type: boolean
+          description: Whether sensor data is valid
+          example: true
         temperature:
           type: number
           format: float
           description: Current temperature in °C
           example: 23.45
-        humidity:
+        relative_humidity:
           type: number
           format: float
-          description: Current humidity in %
+          description: Current relative humidity in %
           example: 45.6
-        targetTemperature:
+        dew_point:
+          type: number
+          format: float
+          description: Calculated dew point in °C
+          example: 14.2
+        sensor_timestamp:
+          type: integer
+          description: Timestamp of last sensor reading
+          example: 1704067200
+        target_temperature:
           type: number
           format: float
           description: Target temperature in °C
           example: 22.0
-        controlEnabled:
+        control_enabled:
           type: boolean
           description: Whether temperature control is active
           example: true
-        controlOutput:
-          type: number
-          format: float
-          description: Current control output (0-1)
-          example: 0.75
-      required:
-        - temperature
-        - humidity
-        - targetTemperature
-        - controlEnabled
-        - controlOutput
+        wifi_connected:
+          type: boolean
+          description: WiFi connection status
+          example: true
+        ip_address:
+          type: string
+          description: Local IP address
+          example: "192.168.1.100"
+        wifi_ssid:
+          type: string
+          description: Connected WiFi SSID
+          example: "MyNetwork"
 
   securitySchemes:
     basicAuth:
