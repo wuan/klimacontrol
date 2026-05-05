@@ -47,12 +47,13 @@ jobs:
             exit 1
           fi
 
+      - name: Install markdown converter
+        run: npm install -g marked
+
       - name: Generate HTML documentation
         run: |
-          # Create output directory
           mkdir -p docs/specs
-          
-          # Generate simple index page
+
           cat > docs/specs/index.html << 'EOF'
           <!DOCTYPE html>
           <html>
@@ -86,17 +87,20 @@ jobs:
           </body>
           </html>
           EOF
-          
-          # Convert spec.md to HTML
-          echo "Generating HTML for spec.md"
-          npx @fission-ai/openspec render specs/spec.md --output docs/specs/spec.html
-          
-          # Convert individual spec files to HTML
+
+          convert_markdown() {
+            local input=$1
+            local output=$2
+            echo "Converting $input to $output"
+            marked -o "$output" -i "$input"
+          }
+
+          convert_markdown specs/spec.md docs/specs/spec.html
+
           for file in specs/*.md; do
               if [ "$file" != "specs/spec.md" ]; then
                   filename=$(basename "$file" .md)
-                  echo "Generating HTML for $file to docs/specs/$filename.html"
-                  npx @fission-ai/openspec render "$file" --output "docs/specs/$filename.html"
+                  convert_markdown "$file" "docs/specs/$filename.html"
               fi
           done
 
