@@ -36,64 +36,12 @@ jobs:
           # Create output directory
           mkdir -p docs/specs
           
-          # Convert spec.md to HTML
-          npx @fission-ai/openspec render specs/spec.md --output docs/specs/index.html
-          
-          # Convert individual spec files to HTML
-          for file in specs/*.md; do
-              if [ "$file" != "specs/spec.md" ]; then
-                  filename=$(basename "$file" .md)
-                  npx @fission-ai/openspec render "$file" --output "docs/specs/$filename.html"
-              fi
-          done
-
-      - name: Generate HTML documentation
-        run: |
-          # Install tools for converting markdown to HTML
-          pip install markdown2
-          
-          # Create output directory
-          mkdir -p docs/specs
-          
-          # Convert each spec to HTML
-          for file in specs/*.md; do
-              if [ "$file" != "specs/spec.md" ]; then
-                  output="docs/specs/$(basename "$file" .md).html"
-                  echo "Generating HTML for $file to $output"
-                  python -c "
-                  import markdown2, sys
-                  with open(sys.argv[1], 'r') as f:
-                      content = f.read()
-                  html = markdown2.markdown(content, extras=['tables', 'fenced-code-blocks'])
-                  with open(sys.argv[2], 'w') as f:
-                      f.write('''<!DOCTYPE html>
-                  <html>
-                  <head>
-                      <meta charset='utf-8'>
-                      <title>Klima-Control Specs - ''' + sys.argv[1] + '''</title>
-                      <style>
-                          body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
-                          h1, h2, h3 { color: #2c3e50; }
-                          pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
-                          table { border-collapse: collapse; width: 100%; margin: 20px 0; }
-                          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                          th { background-color: #f2f2f2; }
-                      </style>
-                  </head>
-                  <body>
-                  ''' + html + '''
-                  </body>
-                  </html>''')
-                  " "$file" "$output"
-              fi
-          done
-          
           # Generate index page
           python -c "
           import os, re
           
           # Get all spec files
-          files = sorted([f for f in os.listdir('specs/') if f.endswith('.md') and f != 'spec.md'])
+          files = sorted([f for f in os.listdir('specs/') if f.endswith('.md')])
           
           # Generate HTML index
           html = '''<!DOCTYPE html>
@@ -116,9 +64,13 @@ jobs:
           '''
           
           for file in files:
-              num = file.split('-')[0]
-              name = file.split('-')[1].split('.')[0].replace('-', ' ').title()
-              html += f'                  <li><a href="{name}.html">{num}: {name}</a></li>\n'
+              if file == 'spec.md':
+                  name = 'Index'
+                  num = ''
+              else:
+                  num = file.split('-')[0]
+                  name = file.split('-')[1].split('.')[0].replace('-', ' ').title()
+              html += f'                  <li><a href="{os.path.splitext(file)[0]}.html">{num} {name}</a></li>\n'
           
           html += '''              </ul>
           </body>
@@ -127,6 +79,13 @@ jobs:
           with open('docs/specs/index.html', 'w') as f:
               f.write(html)
           "
+          
+          # Convert all spec files to HTML using OpenSpec CLI
+          for file in specs/*.md; do
+              filename=$(basename "$file" .md)
+              echo "Generating HTML for $file to docs/specs/$filename.html"
+              npx @fission-ai/openspec render "$file" --output "docs/specs/$filename.html"
+          done
 
       - name: Upload documentation artifact
         uses: actions/upload-artifact@v3
