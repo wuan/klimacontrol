@@ -40,12 +40,11 @@ jobs:
           
           # Validate all spec files using OpenSpec CLI
           echo "Validating spec content with OpenSpec CLI..."
-          openspec validate specs/ || exit_code=$?
-          
-          # Check if validation failed
-          if [ $exit_code -ne 0 ]; then
+          if openspec validate --specs --json 2>/dev/null | grep -q '"items":\s*\[\]'; then
+            echo "No OpenSpec items found to validate. Skipping OpenSpec validation."
+          elif ! openspec validate --specs; then
             echo "OpenSpec validation failed"
-            exit $exit_code
+            exit 1
           fi
 
       - name: Generate HTML documentation

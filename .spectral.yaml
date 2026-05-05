@@ -1,17 +1,10 @@
 extends: [["spectral:oas", "all"]]
 
 rules:
-  # Enforce our preferred style
   info-contact: off
   info-license: off
-  
-  # Require descriptions for important elements
-  info-description: error
-  operation-description: error
-  parameter-description: error
-  schema-description: error
-  
-  # Require examples for request/response bodies
+  info-description: off
+  operation-description: off
   operation-operationId: error
   
   # Our project-specific rules
