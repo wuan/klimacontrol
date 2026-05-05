@@ -33,15 +33,37 @@ jobs:
         run: |
           npm install -g @redocly/cli redoc-cli marked
 
-      - name: Generate OpenAPI documentation
+- name: Generate OpenAPI documentation
         run: |
           mkdir -p pages/api
+
           for spec in docs/api/*.yaml docs/api/*.yml; do
             if [ -f "$spec" ] && grep -q "openapi:\|swagger:" "$spec"; then
               filename=$(basename "$spec" | sed 's/\.ya\?ml$//')
               echo "Generating OpenAPI docs for $filename"
               redoc-cli bundle "$spec" -o "pages/api/${filename}.html"
             fi
+          done
+
+          if [ -f pages/api/klimacontrol-api.html ]; then
+            cat > pages/api/index.html << 'EOF'
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset='utf-8'><title>API Documentation</title>
+            <meta http-equiv="refresh" content="0;url=klimacontrol-api.html">
+            </head>
+            <body><p>Redirecting to <a href="klimacontrol-api.html">API Documentation</a>...</p></body>
+            </html>
+            EOF
+          elif [ ! -f pages/api/index.html ]; then
+            cat > pages/api/index.html << 'EOF'
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset='utf-8'><title>API Documentation</title></head>
+            <body><h1>API Documentation</h1><p>No API specifications found.</p></body>
+            </html>
+            EOF
+          fi
           done
 
           if [ ! -f pages/api/index.html ]; then
@@ -79,6 +101,9 @@ jobs:
               <h1>Klima-Control Specifications</h1>
               <ul>
 HEADER
+            if [ -f pages/specs/spec.html ]; then
+              echo "                  <li><a href=\"spec.html\">Overview</a></li>" >> "$output"
+            fi
             for file in specs/*.md; do
               if [ "$file" != "specs/spec.md" ]; then
                 filename=$(basename "$file" .md)

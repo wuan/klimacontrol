@@ -31,10 +31,9 @@ jobs:
       - name: Find OpenAPI specs
         id: find-specs
         run: |
-          # Find all YAML files in docs/api that look like OpenAPI specs
           SPECS=$(find docs/api -type f \( -name "*.yaml" -o -name "*.yml" \) | \
                  xargs grep -l "openapi:\|swagger:" | \
-                 paste -sd "," -)
+                 tr '\n' ' ')
           
           echo "Found specs: $SPECS"
           echo "specs=$SPECS" >> $GITHUB_OUTPUT
