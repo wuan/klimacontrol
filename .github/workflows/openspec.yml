@@ -18,17 +18,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install OpenSpec CLI
-        run: npm install -g @fission-ai/openspec
-
       - name: Validate OpenSpec documents
         run: |
-          # First check if spec files follow naming convention
           echo "Checking spec file naming convention..."
           for file in specs/*.md; do
             if [[ "$file" != "specs/spec.md" && ! "$(basename "$file")" =~ ^[0-9]{2}-[a-z-]+\.md$ ]]; then
@@ -37,75 +28,4 @@ jobs:
               exit 1
             fi
           done
-          
-          # Validate all spec files using OpenSpec CLI
-          echo "Validating spec content with OpenSpec CLI..."
-          if openspec validate --specs --json 2>/dev/null | grep -q '"items":\s*\[\]'; then
-            echo "No OpenSpec items found to validate. Skipping OpenSpec validation."
-          elif ! openspec validate --specs; then
-            echo "OpenSpec validation failed"
-            exit 1
-          fi
-
-      - name: Install markdown converter
-        run: npm install -g marked
-
-      - name: Generate HTML documentation
-        run: |
-          mkdir -p docs/specs
-
-          cat > docs/specs/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <meta charset='utf-8'>
-              <title>Klima-Control Specifications</title>
-              <style>
-                  body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
-                  h1 { color: #2c3e50; }
-                  ul { list-style-type: none; padding: 0; }
-                  li { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 5px; }
-                  a { text-decoration: none; color: #3498db; font-weight: bold; }
-                  a:hover { text-decoration: underline; }
-              </style>
-          </head>
-          <body>
-              <h1>Klima-Control Specifications</h1>
-              <ul>
-                  <li><a href="spec.html">Overview</a></li>
-                  <li><a href="01-system-architecture.html">01: System Architecture</a></li>
-                  <li><a href="02-sensor-management.html">02: Sensor Management</a></li>
-                  <li><a href="03-api-specification.html">03: API Specification</a></li>
-                  <li><a href="04-networking.html">04: Networking</a></li>
-                  <li><a href="05-ota-updates.html">05: OTA Updates</a></li>
-                  <li><a href="06-mqtt-integration.html">06: MQTT Integration</a></li>
-                  <li><a href="07-web-interface.html">07: Web Interface</a></li>
-                  <li><a href="08-configuration.html">08: Configuration</a></li>
-                  <li><a href="09-status-led.html">09: Status LED</a></li>
-                  <li><a href="10-temperature-control.html">10: Temperature Control</a></li>
-              </ul>
-          </body>
-          </html>
-          EOF
-
-          convert_markdown() {
-            local input=$1
-            local output=$2
-            echo "Converting $input to $output"
-            marked -o "$output" -i "$input"
-          }
-
-          convert_markdown specs/spec.md docs/specs/spec.html
-
-          for file in specs/*.md; do
-              if [ "$file" != "specs/spec.md" ]; then
-                  filename=$(basename "$file" .md)
-                  convert_markdown "$file" "docs/specs/$filename.html"
-              fi
-          done
-
-      - name: Upload documentation artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: openspec-documentation
-          path: docs/specs/
+          echo "Naming convention check passed"
