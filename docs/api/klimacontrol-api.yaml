@@ -1,0 +1,106 @@
+openapi: 3.0.3
+info:
+  title: KlimaControl API
+  description: API for controlling and monitoring the KlimaControl temperature/humidity system
+  version: 1.0.0
+servers:
+  - url: http://{device-id}.local/api
+    description: Local device API (mDNS)
+    variables:
+      device-id:
+        default: klima-aabbcc
+        description: Device mDNS hostname
+  - url: http://192.168.4.1/api
+    description: Access Point mode
+
+paths:
+  /status:
+    get:
+      summary: Get current system status
+      description: Returns temperature, humidity, and control status
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+
+  /temperature/target:
+    get:
+      summary: Get target temperature
+      responses:
+        '200':
+          description: Current target temperature
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  target:
+                    type: number
+                    format: float
+                    example: 22.5
+    post:
+      summary: Set target temperature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target:
+                  type: number
+                  format: float
+                  example: 22.5
+      responses:
+        '200':
+          description: Target temperature updated
+
+components:
+  schemas:
+    SystemStatus:
+      type: object
+      properties:
+        temperature:
+          type: number
+          format: float
+          description: Current temperature in °C
+          example: 23.45
+        humidity:
+          type: number
+          format: float
+          description: Current humidity in %
+          example: 45.6
+        targetTemperature:
+          type: number
+          format: float
+          description: Target temperature in °C
+          example: 22.0
+        controlEnabled:
+          type: boolean
+          description: Whether temperature control is active
+          example: true
+        controlOutput:
+          type: number
+          format: float
+          description: Current control output (0-1)
+          example: 0.75
+      required:
+        - temperature
+        - humidity
+        - targetTemperature
+        - controlEnabled
+        - controlOutput
+
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+
+tags:
+  - name: status
+    description: System status and monitoring
+  - name: control
+    description: Temperature control operations
