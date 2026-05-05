@@ -78,14 +78,15 @@ When updateControl() is called,
 Then:
 - error = 0.0
 - P = 0.0
-- Within hysteresis band, output SHALL be 0.0
+- Output = 0.0 (proportional and integral terms contribute nothing at zero error)
 
 ### Scenario S10-C: Overshoot Handling
 Given target 22.0°C, current 23.0°C,
 When updateControl() is called,
 Then:
 - error = -1.0
-- Output SHALL be negative or zero (for heating-only systems)
+- Output is reduced (negative error reduces P term contribution)
+- Output clamped to [0.0, 1.0]
 
 ### Scenario S10-D: Enabling Control
 Given control disabled,
@@ -96,4 +97,4 @@ Then:
 
 ### Scenario S10-E: Integral Windup Prevention
 Given large error, output saturated at 1.0,
-Then integral term SHALL stop accumulating
+Then integral term is clamped to prevent windup

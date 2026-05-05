@@ -29,11 +29,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install documentation tools
-        run: |
-          npm install -g @redocly/cli redoc-cli marked
-
-- name: Generate OpenAPI documentation
+      - name: Generate OpenAPI documentation
         run: |
           mkdir -p pages/api
 
@@ -55,18 +51,7 @@ jobs:
             <body><p>Redirecting to <a href="klimacontrol-api.html">API Documentation</a>...</p></body>
             </html>
             EOF
-          elif [ ! -f pages/api/index.html ]; then
-            cat > pages/api/index.html << 'EOF'
-            <!DOCTYPE html>
-            <html>
-            <head><meta charset='utf-8'><title>API Documentation</title></head>
-            <body><h1>API Documentation</h1><p>No API specifications found.</p></body>
-            </html>
-            EOF
-          fi
-          done
-
-          if [ ! -f pages/api/index.html ]; then
+          else
             cat > pages/api/index.html << 'EOF'
             <!DOCTYPE html>
             <html>

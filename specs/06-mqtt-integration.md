@@ -20,7 +20,7 @@ Define MQTT client for sensor data publishing.
 ### Connection Management
 8. **S6.8** SHALL attempt connection on startup if enabled
 9. **S6.9** SHALL implement automatic reconnection
-10. **S6.10** SHALL use exponential backoff (max 5 minutes)
+10. **S6.10** SHALL reconnect with fixed 5 second interval
 
 ### Message Publishing
 11. **S6.11** SHALL publish at configured interval

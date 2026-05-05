@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: KlimaControl API
-  description: API for controlling and monitoring the KlimaControl temperature/humidity system
+  description: REST API for controlling and monitoring the KlimaControl temperature/humidity system
   version: 1.0.0
   license:
     name: MIT
@@ -130,11 +130,6 @@ components:
           type: string
           description: Connected WiFi SSID
           example: "MyNetwork"
-
-  securitySchemes:
-    basicAuth:
-      type: http
-      scheme: basic
 
 tags:
   - name: control
