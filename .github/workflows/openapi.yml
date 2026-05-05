@@ -1,0 +1,79 @@
+name: OpenAPI Validation and Documentation
+
+on:
+  push:
+    paths:
+      - '**.yaml'
+      - '**.yml'
+      - '.github/workflows/openapi.yml'
+  pull_request:
+    paths:
+      - '**.yaml'
+      - '**.yml'
+      - '.github/workflows/openapi.yml'
+
+jobs:
+  validate-and-render:
+    name: Validate and Render OpenAPI Specs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install OpenAPI tools
+        run: npm install -g @redocly/cli @stoplight/spectral-cli redoc-cli
+
+      - name: Find OpenAPI specs
+        id: find-specs
+        run: |
+          # Find all YAML files that look like OpenAPI specs
+          SPECS=$(find . -type f -name "*.yaml" -o -name "*.yml" | \
+                 xargs grep -l "openapi:\|swagger:" | \
+                 paste -sd "," -)
+          
+          echo "Found specs: $SPECS"
+          echo "specs=$SPECS" >> $GITHUB_OUTPUT
+
+      - name: Validate OpenAPI specs
+        if: steps.find-specs.outputs.specs != ''
+        run: |
+          for spec in ${{ steps.find-specs.outputs.specs }}; do
+            echo "Validating $spec"
+            spectral lint "$spec" || exit 1
+          done
+
+      - name: Generate HTML documentation
+        if: steps.find-specs.outputs.specs != ''
+        run: |
+          mkdir -p docs/api
+          for spec in ${{ steps.find-specs.outputs.specs }}; do
+            filename=$(basename "$spec" | sed 's/\.ya?ml$//')
+            output="docs/api/${filename}.html"
+            echo "Generating documentation for $spec to $output"
+            redoc-cli bundle "$spec" -o "$output" || exit 1
+          done
+
+      - name: Upload documentation artifact
+        if: steps.find-specs.outputs.specs != ''
+        uses: actions/upload-artifact@v3
+        with:
+          name: api-documentation
+          path: docs/api/
+
+      - name: Check for OpenAPI changes without specs
+        if: steps.find-specs.outputs.specs == ''
+        run: |
+          echo "::warning::No OpenAPI specifications found in the repository"
+          echo "If you intended to add API specs, make sure they contain 'openapi:' or 'swagger:'"
+          echo "in their root and have a .yaml or .yml extension"
+
+      - name: Create placeholder if no specs found
+        if: steps.find-specs.outputs.specs == ''
+        run: |
+          mkdir -p docs/api
+          echo "<html><body><h1>API Documentation</h1><p>No OpenAPI specifications found in this project yet.</p></body></html>" > docs/api/index.html

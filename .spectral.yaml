@@ -1,0 +1,31 @@
+extends: [["spectral:oas", "all"]]
+
+rules:
+  # Enforce our preferred style
+  info-contact: off
+  info-license: off
+  
+  # Require descriptions for important elements
+  info-description: error
+  operation-description: error
+  parameter-description: error
+  schema-description: error
+  
+  # Require examples for request/response bodies
+  operation-operationId: error
+  
+  # Our project-specific rules
+  klimacontrol-tag-description: 
+    description: "Tags should have descriptions"
+    given: "$.tags[*]"
+    then:
+      field: "description"
+      function: truthy
+    severity: error
+  
+  klimacontrol-security-defined:
+    description: "Security schemes must be defined"
+    given: "$.components.securitySchemes"
+    then:
+      function: truthy
+    severity: error
