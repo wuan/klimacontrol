@@ -58,7 +58,9 @@ jobs:
         run: |
           mkdir -p pages/specs
 
-          cat > pages/specs/index.html << 'EOF'
+          generate_index() {
+            local output=$1
+            cat > "$output" << 'HEADER'
           <!DOCTYPE html>
           <html>
           <head>
@@ -76,21 +78,21 @@ jobs:
           <body>
               <h1>Klima-Control Specifications</h1>
               <ul>
-                  <li><a href="spec.html">Overview</a></li>
-                  <li><a href="01-system-architecture.html">01: System Architecture</a></li>
-                  <li><a href="02-sensor-management.html">02: Sensor Management</a></li>
-                  <li><a href="03-api-specification.html">03: API Specification</a></li>
-                  <li><a href="04-networking.html">04: Networking</a></li>
-                  <li><a href="05-ota-updates.html">05: OTA Updates</a></li>
-                  <li><a href="06-mqtt-integration.html">06: MQTT Integration</a></li>
-                  <li><a href="07-web-interface.html">07: Web Interface</a></li>
-                  <li><a href="08-configuration.html">08: Configuration</a></li>
-                  <li><a href="09-status-led.html">09: Status LED</a></li>
-                  <li><a href="10-temperature-control.html">10: Temperature Control</a></li>
+HEADER
+            for file in specs/*.md; do
+              if [ "$file" != "specs/spec.md" ]; then
+                filename=$(basename "$file" .md)
+                echo "                  <li><a href=\"${filename}.html\">${filename}</a></li>" >> "$output"
+              fi
+            done
+            cat >> "$output" << 'FOOTER'
               </ul>
           </body>
           </html>
-          EOF
+FOOTER
+          }
+
+          generate_index pages/specs/index.html
 
           convert_markdown() {
             marked -o "$2" -i "$1"
