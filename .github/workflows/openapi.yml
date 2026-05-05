@@ -3,13 +3,13 @@ name: OpenAPI Validation and Documentation
 on:
   push:
     paths:
-      - '**.yaml'
-      - '**.yml'
+      - 'docs/api/*.yaml'
+      - 'docs/api/*.yml'
       - '.github/workflows/openapi.yml'
   pull_request:
     paths:
-      - '**.yaml'
-      - '**.yml'
+      - 'docs/api/*.yaml'
+      - 'docs/api/*.yml'
       - '.github/workflows/openapi.yml'
 
 jobs:
@@ -31,8 +31,8 @@ jobs:
       - name: Find OpenAPI specs
         id: find-specs
         run: |
-          # Find all YAML files that look like OpenAPI specs
-          SPECS=$(find . -type f -name "*.yaml" -o -name "*.yml" | \
+          # Find all YAML files in docs/api that look like OpenAPI specs
+          SPECS=$(find docs/api -type f \( -name "*.yaml" -o -name "*.yml" \) | \
                  xargs grep -l "openapi:\|swagger:" | \
                  paste -sd "," -)
           

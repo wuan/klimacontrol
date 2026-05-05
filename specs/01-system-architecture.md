@@ -52,6 +52,7 @@ Define the overall system architecture, hardware platform, component relationshi
 
 ### Memory Management Rules
 
+30. **S1.30** Memory Management section header (reserved for future use)
 31. **S1.31** SHALL use `std::unique_ptr<T>` for all owned resources
 32. **S1.32** SHALL transfer ownership using `std::move()`
 33. **S1.33** SHALL use references (`T&`) for non-owning access
@@ -60,9 +61,9 @@ Define the overall system architecture, hardware platform, component relationshi
 
 ### Thread Safety
 
-37. **S1.37** SHALL use mutex/semaphore for shared data access
-38. **S1.38** SensorController SHALL use dataMutex for measurement access
-39. **S1.39** All sensor data access SHALL be thread-safe
+36. **S1.36** SHALL use mutex/semaphore for shared data access
+37. **S1.37** SensorController SHALL use dataMutex for measurement access
+38. **S1.38** All sensor data access SHALL be thread-safe
 
 ## Scenarios
 

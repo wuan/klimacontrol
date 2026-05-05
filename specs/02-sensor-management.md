@@ -29,44 +29,44 @@ Define how sensors are discovered, configured, initialized, read, managed, and h
 
 ### Sensor Interface
 
-18. **S2.18** All sensors SHALL inherit from `Sensor::Sensor` base class
-19. **S2.19** Each sensor SHALL implement `begin()` for initialization
-20. **S2.20** Each sensor SHALL implement `read()` returning SensorReading
-21. **S2.21** Each sensor SHALL implement `isConnected()` for connectivity check
-22. **S2.22** Each sensor SHALL implement `getType()` returning sensor type string
-23. **S2.23** Each sensor SHALL implement `getStatus()` returning SensorStatus enum
+16. **S2.16** All sensors SHALL inherit from `Sensor::Sensor` base class
+17. **S2.17** Each sensor SHALL implement `begin()` for initialization
+18. **S2.18** Each sensor SHALL implement `read()` returning SensorReading
+19. **S2.19** Each sensor SHALL implement `isConnected()` for connectivity check
+20. **S2.20** Each sensor SHALL implement `getType()` returning sensor type string
+21. **S2.21** Each sensor SHALL implement `getStatus()` returning SensorStatus enum
 
 ### Sensor Status Tracking
 
-26. **S2.26** SensorStatus SHALL have values: Uninitialized, Online, InitFailed, ReadFailing
-27. **S2.27** Sensor SHALL start in Uninitialized state
-28. **S2.28** On successful `begin()`, sensor SHALL transition to Online state
-29. **S2.29** On failed `begin()`, sensor SHALL transition to InitFailed state
-30. **S2.30** On 10 consecutive read failures, sensor SHALL transition to ReadFailing state
-31. **S2.31** READ_FAILURE_THRESHOLD SHALL be 10 consecutive failures
+22. **S2.22** SensorStatus SHALL have values: Uninitialized, Online, InitFailed, ReadFailing
+23. **S2.23** Sensor SHALL start in Uninitialized state
+24. **S2.24** On successful `begin()`, sensor SHALL transition to Online state
+25. **S2.25** On failed `begin()`, sensor SHALL transition to InitFailed state
+26. **S2.26** On 10 consecutive read failures, sensor SHALL transition to ReadFailing state
+27. **S2.27** READ_FAILURE_THRESHOLD SHALL be 10 consecutive failures
 
 ### Measurement Types
 
-34. **S2.34** SHALL support MeasurementType enum
-35. **S2.35** MeasurementType SHALL include: Temperature, RelativeHumidity, DewPoint, Pressure, SeaLevelPressure, GasResistance, CO2, Illuminance, Particles, PM concentrations, VocIndex
-36. **S2.36** Each MeasurementType SHALL have associated label and unit strings
-37. **S2.37** Measurement value SHALL be `std::variant<float, int32_t>`
+28. **S2.28** SHALL support MeasurementType enum
+29. **S2.29** MeasurementType SHALL include: Temperature, RelativeHumidity, DewPoint, Pressure, SeaLevelPressure, GasResistance, CO2, Illuminance, Particles, PM concentrations, VocIndex
+30. **S2.30** Each MeasurementType SHALL have associated label and unit strings
+31. **S2.31** Measurement value SHALL be `std::variant<float, int32_t>`
 
 ### SensorController Responsibilities
 
-42. **S2.42** SensorController SHALL manage all sensor instances
-43. **S2.43** SensorController SHALL provide `addSensor(std::unique_ptr<Sensor::Sensor>)` method
-44. **S2.44** SensorController SHALL provide `readSensors()` to read all sensors
-45. **S2.45** SensorController SHALL average readings from multiple sensors of same type
-46. **S2.46** SensorController SHALL provide `getTemperature()` returning first temperature or NAN
-47. **S2.47** SensorController SHALL provide `getRelativeHumidity()` returning first humidity or NAN
-48. **S2.48** SensorController SHALL provide `getDewPoint()` calculated from temperature and humidity
-49. **S2.49** SensorController SHALL provide `hasConnectedSensors()` and `isDataValid()`
+32. **S2.32** SensorController SHALL manage all sensor instances
+33. **S2.33** SensorController SHALL provide `addSensor(std::unique_ptr<Sensor::Sensor>)` method
+34. **S2.34** SensorController SHALL provide `readSensors()` to read all sensors
+35. **S2.35** SensorController SHALL average readings from multiple sensors of same type
+36. **S2.36** SensorController SHALL provide `getTemperature()` returning first temperature or NAN
+37. **S2.37** SensorController SHALL provide `getRelativeHumidity()` returning first humidity or NAN
+38. **S2.38** SensorController SHALL provide `getDewPoint()` calculated from temperature and humidity
+39. **S2.39** SensorController SHALL provide `hasConnectedSensors()` and `isDataValid()`
 
 ### Calculated Measurements
 
-56. **S2.56** SHALL calculate dew point using Magnus formula: `a=17.625, b=243.04`
-57. **S2.57** SHALL calculate sea-level pressure using hypsometric formula
+40. **S2.40** SHALL calculate dew point using Magnus formula: `a=17.625, b=243.04`
+41. **S2.41** SHALL calculate sea-level pressure using hypsometric formula
 
 ## Scenarios
 

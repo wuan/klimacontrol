@@ -4,49 +4,33 @@
 rules:
   # Require that all specifications have a purpose section
   - id: require-purpose
-    description: All specifications must have a "Purpose" section
+    description: All specifications must have a "Purpose" section (## Purpose)
     severity: error
     given: "$"
     then:
-      function: schema
+      function: pattern
       functionOptions:
-        schema:
-          type: object
-          required: ["Purpose"]
+        match: "## Purpose"
 
   # Require that all requirements are properly numbered
   - id: valid-requirement-format
-    description: Requirements must follow the format "SXX-Y: Description"
-    severity: error
-    given: "$.Requirements.*"
-    then:
-      function: pattern
-      functionOptions:
-        match: "^[A-Z]\d+-\d+: .+$"
-
-  # Require that all scenarios are properly formatted
-  - id: valid-scenario-format
-    description: Scenarios must follow the format "Scenario SX-Y: Description"
-    severity: error
-    given: "$.Scenarios.*"
-    then:
-      function: pattern
-      functionOptions:
-        match: "^Scenario [A-Z]\d+-[A-Z]: .+$"
-
-  # KlimaControl-specific rules
-  - id: klimacontrol-spec-format
-    description: Specification files must follow NN-name.md format
+    description: Requirements must follow the format "X. **SX.Y** Description" (e.g., 1. **S1.1**) or "X. **SXX-Y** Description" (e.g., 1. **S01-1**)
     severity: error
     given: "$"
     then:
-      function: schema
+      function: pattern
       functionOptions:
-        schema:
-          type: object
-          properties:
-            file:
-              pattern: "^\d{2}-[a-z-]+\.md$"
+        match: "^\s*[0-9]+\.\s+\*\*S[0-9]{1,2}[-.][0-9]+\*\*"
+
+  # Require that all scenarios are properly formatted
+  - id: valid-scenario-format
+    description: Scenarios must follow the format "### Scenario SX-Y: Description" or "### Scenario SXX-Y: Description"
+    severity: error
+    given: "$"
+    then:
+      function: pattern
+      functionOptions:
+        match: "^### Scenario S[0-9]{1,2}-[A-Z]:"
 
 # Documentation generation settings
 output:

@@ -1,5 +1,9 @@
 # Klima-Control OpenSpec Specifications
 
+## Purpose
+
+Provide a central index and overview of all OpenSpec specifications for the Klima-Control ESP32 temperature controller project, enabling easy navigation and understanding of the complete system documentation.
+
 This is the index for all OpenSpec specifications for the Klima-Control ESP32 temperature controller project.
 
 ## Specifications
