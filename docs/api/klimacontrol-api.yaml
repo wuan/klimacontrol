@@ -3,6 +3,9 @@ info:
   title: KlimaControl API
   description: API for controlling and monitoring the KlimaControl temperature/humidity system
   version: 1.0.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
 servers:
   - url: http://{device-id}.local/api
     description: Local device API (mDNS)
@@ -16,8 +19,11 @@ servers:
 paths:
   /status:
     get:
+      operationId: getStatus
       summary: Get current system status
       description: Returns temperature, humidity, and control status
+      tags:
+        - status
       responses:
         '200':
           description: Successful response
@@ -28,7 +34,10 @@ paths:
 
   /temperature/target:
     get:
+      operationId: getTargetTemperature
       summary: Get target temperature
+      tags:
+        - control
       responses:
         '200':
           description: Current target temperature
@@ -42,7 +51,10 @@ paths:
                     format: float
                     example: 22.5
     post:
+      operationId: setTargetTemperature
       summary: Set target temperature
+      tags:
+        - control
       requestBody:
         required: true
         content:
@@ -100,7 +112,7 @@ components:
       scheme: basic
 
 tags:
-  - name: status
-    description: System status and monitoring
   - name: control
     description: Temperature control operations
+  - name: status
+    description: System status and monitoring
