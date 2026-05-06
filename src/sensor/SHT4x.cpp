@@ -26,12 +26,14 @@ namespace Sensor {
 #endif
     }
 
-    SensorReading SHT4x::read() {
+    SensorReading SHT4x::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
+        (void) config;
+        (void) prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
 
-        if (!initialized || !isConnected()) {
+        if (!initialized) {
             reading.valid = false;
             return reading;
         }

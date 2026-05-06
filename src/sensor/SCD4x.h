@@ -24,7 +24,7 @@ namespace Sensor {
         static uint8_t addressCount() { return 1; }
 
         bool begin() override;
-        SensorReading read() override;
+        SensorReading read(const ReadConfig& config, const std::vector<Measurement>& prior) override;
         const char* getType() const override { return type(); }
         TypeSpan providesMeasurements() const override {
             static constexpr MeasurementType types[] = {

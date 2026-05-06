@@ -7,6 +7,8 @@ using SensorStatus = ::Sensor::SensorStatus;
 using SensorReading = ::Sensor::SensorReading;
 using MeasurementType = ::Sensor::MeasurementType;
 using TypeSpan = ::Sensor::TypeSpan;
+using ReadConfig = ::Sensor::ReadConfig;
+using Measurement = ::Sensor::Measurement;
 
 void setUp() {}
 void tearDown() {}
@@ -19,7 +21,7 @@ namespace {
 
         bool begin() override { return beginResult; }
 
-        SensorReading read() override {
+        SensorReading read(const ReadConfig&, const std::vector<Measurement>&) override {
             SensorReading r;
             r.valid = readValid;
             if (readValid) {
@@ -30,7 +32,6 @@ namespace {
         }
 
         const char* getType() const override { return "Mock"; }
-        bool isConnected() override { return sensorStatus == SensorStatus::Online; }
 
         [[nodiscard]] TypeSpan providesMeasurements() const override {
             static constexpr MeasurementType types[] = {
@@ -190,9 +191,8 @@ void test_status_label_read_failing() {
 void test_default_provides_empty() {
     struct MinimalSensor : public SensorBase {
         bool begin() override { return true; }
-        SensorReading read() override { return {}; }
+        SensorReading read(const ReadConfig&, const std::vector<Measurement>&) override { return {}; }
         const char* getType() const override { return "Minimal"; }
-        bool isConnected() override { return true; }
     };
     MinimalSensor sensor;
     TEST_ASSERT_EQUAL(0, sensor.providesMeasurements().count);

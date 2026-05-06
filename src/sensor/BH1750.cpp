@@ -18,12 +18,14 @@ namespace Sensor {
 #endif
     }
 
-    SensorReading BH1750Sensor::read() {
+    SensorReading BH1750Sensor::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
+        (void) config;
+        (void) prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
 
-        if (!initialized || !isConnected()) {
+        if (!initialized) {
             reading.valid = false;
             return reading;
         }

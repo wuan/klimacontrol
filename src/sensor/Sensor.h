@@ -211,17 +211,13 @@ namespace Sensor {
             }
         }
 
-        virtual SensorReading read() = 0;
+        // Single read entry point. Drivers that don't need context ignore the parameters
+        // (use [[maybe_unused]] or `(void) config; (void) prior;`). SensorController
+        // always calls this signature, so there's no dual-dispatch ambiguity.
+        virtual SensorReading read(const ReadConfig &config,
+                                   const std::vector<Measurement> &prior) = 0;
 
-        virtual SensorReading read(const ReadConfig &config, const std::vector<Measurement> &prior) {
-            (void) config;
-            (void) prior;
-            return read();
-        }
-
-        virtual const char *getType() const = 0;
-
-        virtual bool isConnected() = 0;
+        [[nodiscard]] virtual const char *getType() const = 0;
 
         [[nodiscard]] SensorStatus getStatus() const { return sensorStatus; }
         [[nodiscard]] uint32_t getLastInitAttempt() const { return lastInitAttempt; }

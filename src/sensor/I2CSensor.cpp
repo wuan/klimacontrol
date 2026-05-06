@@ -14,15 +14,4 @@ namespace Sensor {
     }
 #endif
 
-    bool I2CSensor::isConnected() {
-#ifdef ARDUINO
-        if (!initialized) return false;
-
-        wire.beginTransmission(i2cAddress);
-        return wire.endTransmission() == 0;
-#else
-        return initialized;
-#endif
-    }
-
 } // namespace Sensor

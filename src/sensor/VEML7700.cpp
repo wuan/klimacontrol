@@ -22,12 +22,14 @@ namespace Sensor {
 #endif
     }
 
-    SensorReading VEML7700::read() {
+    SensorReading VEML7700::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
+        (void) config;
+        (void) prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
 
-        if (!initialized || !isConnected()) {
+        if (!initialized) {
             reading.valid = false;
             return reading;
         }

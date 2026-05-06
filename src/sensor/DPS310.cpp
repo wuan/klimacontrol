@@ -22,17 +22,13 @@ namespace Sensor {
 #endif
     }
 
-    SensorReading DPS310::read() {
-        return read({}, {});
-    }
-
     SensorReading DPS310::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
         (void) prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
 
-        if (!initialized || !isConnected()) {
+        if (!initialized) {
             reading.valid = false;
             return reading;
         }

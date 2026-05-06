@@ -161,9 +161,8 @@ void test_find_measurement_int_value() {
 namespace {
     struct ThreeMeasurementSensor : public Sensor::Sensor {
         bool begin() override { return true; }
-        ::Sensor::SensorReading read() override { return {}; }
+        ::Sensor::SensorReading read(const ::Sensor::ReadConfig&, const std::vector<::Sensor::Measurement>&) override { return {}; }
         const char* getType() const override { return "Test3"; }
-        bool isConnected() override { return true; }
         [[nodiscard]] ::Sensor::TypeSpan providesMeasurements() const override {
             static constexpr ::Sensor::MeasurementType types[] = {
                 ::Sensor::MeasurementType::Temperature,
@@ -176,9 +175,8 @@ namespace {
 
     struct OneMeasurementSensor : public Sensor::Sensor {
         bool begin() override { return true; }
-        ::Sensor::SensorReading read() override { return {}; }
+        ::Sensor::SensorReading read(const ::Sensor::ReadConfig&, const std::vector<::Sensor::Measurement>&) override { return {}; }
         const char* getType() const override { return "Test1"; }
-        bool isConnected() override { return true; }
         [[nodiscard]] ::Sensor::TypeSpan providesMeasurements() const override {
             static constexpr ::Sensor::MeasurementType types[] = {
                 ::Sensor::MeasurementType::Illuminance
@@ -189,9 +187,8 @@ namespace {
 
     struct NineMeasurementSensor : public Sensor::Sensor {
         bool begin() override { return true; }
-        ::Sensor::SensorReading read() override { return {}; }
+        ::Sensor::SensorReading read(const ::Sensor::ReadConfig&, const std::vector<::Sensor::Measurement>&) override { return {}; }
         const char* getType() const override { return "Test9"; }
-        bool isConnected() override { return true; }
         [[nodiscard]] ::Sensor::TypeSpan providesMeasurements() const override {
             static constexpr ::Sensor::MeasurementType types[] = {
                 ::Sensor::MeasurementType::Particles03,

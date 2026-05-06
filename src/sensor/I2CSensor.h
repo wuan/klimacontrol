@@ -23,7 +23,6 @@ namespace Sensor {
 #else
         explicit I2CSensor(uint8_t address = 0x77);
 #endif
-        bool isConnected() override;
     };
 
 } // namespace Sensor

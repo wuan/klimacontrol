@@ -15,9 +15,8 @@ namespace Sensor {
         static const char* type() { return "ESP32"; }
 
         bool begin() override;
-        SensorReading read() override;
+        SensorReading read(const ReadConfig& config, const std::vector<Measurement>& prior) override;
         [[nodiscard]] const char* getType() const override { return type(); }
-        bool isConnected() override;
         [[nodiscard]] TypeSpan providesMeasurements() const override {
             static constexpr MeasurementType types[] = {
                 MeasurementType::Rssi, MeasurementType::Channel,

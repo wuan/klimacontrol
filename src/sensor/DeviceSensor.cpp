@@ -12,7 +12,9 @@ namespace Sensor {
         return true;
     }
 
-    SensorReading DeviceSensor::read() {
+    SensorReading DeviceSensor::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
+        (void) config;
+        (void) prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.valid = true;
@@ -40,10 +42,6 @@ namespace Sensor {
 #endif
 
         return reading;
-    }
-
-    bool DeviceSensor::isConnected() {
-        return true;  // Always available
     }
 
 } // namespace Sensor
