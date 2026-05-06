@@ -45,6 +45,13 @@ void MqttClient::begin(const Config::MqttConfig& mqttConfig) {
     // Cap TCP connect/read timeout to prevent blocking the network task
     wifiClient.setTimeout(3);  // seconds
     mqttClient.setSocketTimeout(3);  // seconds
+
+    // Override PubSubClient's compile-time default of MQTT_MAX_PACKET_SIZE = 256.
+    // Returns false if heap allocation for the larger buffer fails — log but proceed
+    // (the smaller default still works for most payloads).
+    if (!mqttClient.setBufferSize(MQTT_BUFFER_SIZE)) {
+        ESP_LOGW(TAG, "setBufferSize(%u) failed — continuing with default", MQTT_BUFFER_SIZE);
+    }
 #endif
 
 #ifdef ARDUINO
@@ -65,6 +72,7 @@ void MqttClient::setConfig(const Config::MqttConfig& mqttConfig) {
     config = mqttConfig;
     configured = true;
     lastConnectAttempt = 0;
+    consecutiveConnectFailures = 0; // fresh config — start at base backoff
     applyServer();
 
 #ifdef ARDUINO
@@ -82,9 +90,16 @@ void MqttClient::loop() {
         return;
     }
 
-    // Reconnect with backoff
+    // Reconnect with exponential backoff. Cap shift so RECONNECT_INTERVAL_MS << shift
+    // can't undefined-behavior overflow uint32_t; the std::min against the cap handles
+    // the actual ceiling.
     uint32_t now = millis();
-    if (now - lastConnectAttempt < RECONNECT_INTERVAL_MS) return;
+    uint32_t shift = consecutiveConnectFailures < 16 ? consecutiveConnectFailures : 16;
+    uint64_t scaled = static_cast<uint64_t>(RECONNECT_INTERVAL_MS) << shift;
+    uint32_t backoff = scaled > MAX_RECONNECT_INTERVAL_MS
+        ? MAX_RECONNECT_INTERVAL_MS
+        : static_cast<uint32_t>(scaled);
+    if (now - lastConnectAttempt < backoff) return;
     lastConnectAttempt = now;
 
     // Stale socket fix: stop WiFiClient before every connect attempt
@@ -94,7 +109,9 @@ void MqttClient::loop() {
     // network task for 7-15s on the default lwIP SYN retransmit timeout.
     static constexpr int TCP_CONNECT_TIMEOUT_MS = 3000;
     if (!wifiClient.connect(config.host, config.port, TCP_CONNECT_TIMEOUT_MS)) {
-        ESP_LOGW(TAG, "TCP connect to %s:%u failed", config.host, config.port);
+        consecutiveConnectFailures++;
+        ESP_LOGW(TAG, "TCP connect to %s:%u failed (failures=%u, next retry in %ums)",
+                 config.host, config.port, consecutiveConnectFailures, backoff);
         return;
     }
 
@@ -107,9 +124,12 @@ void MqttClient::loop() {
     }
 
     if (connected) {
+        consecutiveConnectFailures = 0;
         ESP_LOGI(TAG, "Connected to %s:%u", config.host, config.port);
     } else {
-        ESP_LOGW(TAG, "MQTT handshake failed, rc=%d", mqttClient.state());
+        consecutiveConnectFailures++;
+        ESP_LOGW(TAG, "MQTT handshake failed, rc=%d (failures=%u)",
+                 mqttClient.state(), consecutiveConnectFailures);
         wifiClient.stop();
     }
 #endif

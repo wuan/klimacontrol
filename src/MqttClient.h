@@ -31,7 +31,12 @@ private:
     PubSubClient mqttClient;
 #endif
     uint32_t lastConnectAttempt;
-    static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;
+    uint32_t consecutiveConnectFailures = 0;
+    static constexpr uint32_t RECONNECT_INTERVAL_MS = 5000;       // initial backoff
+    static constexpr uint32_t MAX_RECONNECT_INTERVAL_MS = 300000; // cap at 5 minutes
+    // Headroom for full packets: topic (~150) + JSON payload (~256) + MQTT framing.
+    // PubSubClient's compile-time default of 256 is too tight for our publishes.
+    static constexpr uint16_t MQTT_BUFFER_SIZE = 1024;
 
     // Publish statistics
     uint32_t publishedCount = 0;    // successful individual publishes
