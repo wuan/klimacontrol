@@ -34,6 +34,10 @@ jobs:
           pip install --upgrade platformio
           pio --version
 
+      - name: Update packages
+        run: |
+          pio pkg update
+
       - name: Build Firmware
         run: |
           echo "Building firmware for ESP32-S2..."
