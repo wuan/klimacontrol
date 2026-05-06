@@ -1,0 +1,158 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/api/**'
+      - 'docs/specs/**'
+      - '.github/workflows/deploy-pages.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate OpenAPI documentation
+        run: |
+          mkdir -p pages/api
+
+          for spec in docs/api/*.yaml docs/api/*.yml; do
+            if [ -f "$spec" ] && grep -q "openapi:\|swagger:" "$spec"; then
+              filename=$(basename "$spec" | sed 's/\.ya\?ml$//')
+              echo "Generating OpenAPI docs for $filename"
+              redoc-cli bundle "$spec" -o "pages/api/${filename}.html"
+            fi
+          done
+
+          if [ -f pages/api/klimacontrol-api.html ]; then
+            cat > pages/api/index.html << 'EOF'
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset='utf-8'><title>API Documentation</title>
+            <meta http-equiv="refresh" content="0;url=klimacontrol-api.html">
+            </head>
+            <body><p>Redirecting to <a href="klimacontrol-api.html">API Documentation</a>...</p></body>
+            </html>
+            EOF
+          else
+            cat > pages/api/index.html << 'EOF'
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset='utf-8'><title>API Documentation</title></head>
+            <body><h1>API Documentation</h1><p>No API specifications found.</p></body>
+            </html>
+            EOF
+          fi
+
+      - name: Generate OpenSpec documentation
+        run: |
+          mkdir -p pages/specs
+
+          generate_index() {
+            local output=$1
+            cat > "$output" << 'HEADER'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset='utf-8'>
+              <title>Klima-Control Specifications</title>
+              <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
+                  h1 { color: #2c3e50; }
+                  ul { list-style-type: none; padding: 0; }
+                  li { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 5px; }
+                  a { text-decoration: none; color: #3498db; font-weight: bold; }
+                  a:hover { text-decoration: underline; }
+              </style>
+          </head>
+          <body>
+              <h1>Klima-Control Specifications</h1>
+              <ul>
+HEADER
+            if [ -f pages/specs/spec.html ]; then
+              echo "                  <li><a href=\"spec.html\">Overview</a></li>" >> "$output"
+            fi
+            for file in specs/*.md; do
+              if [ "$file" != "specs/spec.md" ]; then
+                filename=$(basename "$file" .md)
+                echo "                  <li><a href=\"${filename}.html\">${filename}</a></li>" >> "$output"
+              fi
+            done
+            cat >> "$output" << 'FOOTER'
+              </ul>
+          </body>
+          </html>
+FOOTER
+          }
+
+          generate_index pages/specs/index.html
+
+          convert_markdown() {
+            marked -o "$2" -i "$1"
+          }
+
+          if [ -f specs/spec.md ]; then
+            convert_markdown specs/spec.md pages/specs/spec.html
+          fi
+
+          for file in specs/*.md; do
+            if [ "$file" != "specs/spec.md" ]; then
+              filename=$(basename "$file" .md)
+              convert_markdown "$file" "pages/specs/$filename.html"
+            fi
+          done
+
+      - name: Create root index
+        run: |
+          cat > pages/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset='utf-8'>
+              <title>Klima-Control Documentation</title>
+              <style>
+                  body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
+                  h1 { color: #2c3e50; }
+                  .card { background: #f9f9f9; padding: 20px; margin: 10px 0; border-radius: 5px; }
+                  a { text-decoration: none; color: #3498db; font-size: 18px; }
+              </style>
+          </head>
+          <body>
+              <h1>Klima-Control Documentation</h1>
+              <div class="card">
+                  <a href="api/">📚 API Documentation</a>
+                  <p>OpenAPI specifications for the KlimaControl REST API</p>
+              </div>
+              <div class="card">
+                  <a href="specs/">📋 Specifications</a>
+                  <p>OpenSpec documents describing system architecture and features</p>
+              </div>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

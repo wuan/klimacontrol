@@ -1,0 +1,31 @@
+name: OpenSpec Validation
+
+on:
+  push:
+    paths:
+      - 'specs/**'
+      - '.github/workflows/openspec.yml'
+  pull_request:
+    paths:
+      - 'specs/**'
+      - '.github/workflows/openspec.yml'
+
+jobs:
+  validate-specs:
+    name: Validate OpenSpec Documents
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate OpenSpec documents
+        run: |
+          echo "Checking spec file naming convention..."
+          for file in specs/*.md; do
+            if [[ "$file" != "specs/spec.md" && ! "$(basename "$file")" =~ ^[0-9]{2}-[a-z-]+\.md$ ]]; then
+              echo "ERROR: Invalid spec filename: $(basename "$file")"
+              echo "Expected format: NN-name.md (e.g., 01-system.md)"
+              exit 1
+            fi
+          done
+          echo "Naming convention check passed"

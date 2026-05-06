@@ -21,7 +21,7 @@ ESP32-based temperature and humidity controller with web interface for monitorin
 - **OTA updates** - Update firmware over WiFi from GitHub releases
 - **Easy setup** - Captive portal for WiFi configuration
 - **mDNS discovery** - Access device at `klima-XXXXXX.local`
-- **Visual feedback** - Status LED indicates device state (green=normal, yellow=measuring, blue=AP mode, red=error)
+- **Visual feedback** - Status LED indicates device state (solid=on, blink=startup, flash=MQTT transmit)
 
 ## Hardware
 
@@ -76,7 +76,7 @@ pio device monitor
 ### Initial Setup
 
 1. Power on the device
-2. The device enters AP mode and broadcasts WiFi network `klima-XXXXXX` (where XXXXXX is derived from MAC address)
+2. The device enters AP mode and broadcasts WiFi network `Klima-XXXXXX` (where XXXXXX is derived from MAC address)
 3. Connect to this network (default IP: 192.168.4.1)
 4. A captive portal opens automatically - enter your WiFi credentials
 5. The device restarts and connects to your network
@@ -94,20 +94,18 @@ pio device monitor
 
 ## REST API
 
+The project includes an [OpenAPI specification](docs/api/klimacontrol-api.yaml) documenting the primary API endpoints with request/response schemas. Interactive HTML documentation is deployed to GitHub Pages.
+
+> **Note**: The OpenAPI spec currently covers the primary endpoints. Additional endpoints (MQTT, OTA, sensors, settings) are documented in the source code.
+
+### Key Endpoints
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/status` | GET | Device status, current temperature, humidity, and control state |
-| `/api/temperature` | GET | Current temperature and target settings |
 | `/api/temperature/target` | POST | Set target temperature |
 | `/api/control/enable` | POST | Enable/disable temperature control |
 | `/api/sensors` | GET | Detailed sensor information |
-| `/api/settings/device` | POST | Update device name and settings |
-| `/api/settings/factory-reset` | POST | Factory reset (erases all stored config) |
-| `/api/ota/check` | GET | Check for firmware updates on GitHub |
-| `/api/ota/update` | POST | Download and install firmware update |
-| `/api/ota/status` | GET | Current OTA status and firmware version |
-| `/api/syslog` | GET | Get syslog configuration |
-| `/api/syslog` | POST | Update syslog configuration |
 
 ## Configuration
 
@@ -208,6 +206,67 @@ Firmware updates from GitHub releases:
 See [OTA Documentation](docs/OTA_FIRMWARE_UPDATES.md) for detailed setup.
 
 ## Development
+
+### Specifications
+
+The project includes two types of specifications:
+
+1. **OpenSpec Documents** in `specs/` - Markdown-based system specifications
+2. **OpenAPI Specifications** in `docs/api/` - API interface definitions
+
+#### OpenSpec Validation
+
+The OpenSpec documents in the `specs/` directory define the system architecture, requirements, and behavior. These are validated using the official OpenSpec CLI:
+
+- GitHub Actions automatically validates all OpenSpec documents on push/pull request
+- HTML documentation is generated from the Markdown specs
+- Validation includes proper formatting, cross-references, and requirement syntax
+
+To validate locally:
+```bash
+openspec validate --specs
+```
+
+#### API Documentation
+
+The project includes OpenAPI specification files in the `docs/api/` directory. When you push changes to these files:
+
+1. GitHub Actions automatically validates the OpenAPI specs
+2. HTML documentation is generated using Redoc
+3. The documentation is deployed to GitHub Pages
+
+To validate OpenAPI specs locally:
+```bash
+spectral lint docs/api/*.yaml
+```
+
+To generate HTML documentation locally:
+```bash
+redoc-cli bundle docs/api/klimacontrol-api.yaml -o docs/api/index.html
+```
+
+#### API Documentation
+
+The project includes OpenAPI specification files in the `docs/api/` directory. When you push changes to these files:
+
+1. GitHub Actions automatically validates the OpenAPI specs
+2. HTML documentation is generated using Redoc
+3. The documentation is available as a downloadable artifact
+
+To view the API documentation:
+1. Go to the Actions tab in GitHub
+2. Find the latest "OpenAPI Validation and Documentation" workflow run
+3. Download the "api-documentation" artifact
+4. Open the HTML files in your browser
+
+You can also generate the documentation locally:
+```bash
+# Install required tools
+npm install -g redoc-cli
+
+# Generate HTML from OpenAPI spec
+redoc-cli bundle docs/api/klimacontrol-api.yaml -o docs/api/index.html
+```
 
 ### Run Tests
 
