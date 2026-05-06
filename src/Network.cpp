@@ -36,14 +36,16 @@ Network::Network(Config::ConfigManager &config, SensorController &sensorControll
 }
 
 String Network::generateHostname() {
+    if (cachedHostname.isEmpty()) {
 #ifdef ARDUINO
-    String deviceId = DeviceId::getDeviceId();
-    String hostname = Constants::HOSTNAME_PREFIX + deviceId;
-    hostname.toLowerCase();
-    return hostname;
+        String deviceId = DeviceId::getDeviceId();
+        cachedHostname = Constants::HOSTNAME_PREFIX + deviceId;
+        cachedHostname.toLowerCase();
 #else
-    return Constants::PROJECT_NAME;
+        cachedHostname = Constants::PROJECT_NAME;
 #endif
+    }
+    return cachedHostname;
 }
 
 void Network::configureMDNS() {
@@ -340,7 +342,7 @@ void Network::configureUsingAPMode() {
     static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 300000; // 5 minutes
     static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
     while (true) {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
 
         esp_task_wdt_reset();
 

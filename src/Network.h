@@ -51,6 +51,7 @@ private:
     CaptivePortal captivePortal;
     TaskHandle_t taskHandle = nullptr;
     String mdnsInstanceName;  // Must outlive MDNS.setInstanceName() call
+    String cachedHostname;
 
     /**
      * Generate mDNS hostname from device ID
