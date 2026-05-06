@@ -6,12 +6,15 @@ on:
       - main
     paths:
       - 'docs/api/**'
-      - 'docs/specs/**'
+      - 'specs/**'
       - '.github/workflows/deploy-pages.yml'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       contents: read
       pages: write
@@ -28,6 +31,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Install documentation tools
+        run: npm install -g redoc-cli marked
 
       - name: Generate OpenAPI documentation
         run: |
