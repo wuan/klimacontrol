@@ -21,7 +21,11 @@ namespace Config {
 
     void ConfigManager::checkRestart() {
 #ifdef ARDUINO
-        if (restartRequested && millis() >= restartAt) {
+        // Wrap-safe deadline comparison: signed difference handles the case where
+        // restartAt = millis() + delayMs has wrapped past UINT32_MAX while millis()
+        // has not yet. Plain `millis() >= restartAt` would fail to fire for ~49 days
+        // after the wrap.
+        if (restartRequested && static_cast<int32_t>(millis() - restartAt) >= 0) {
             ESP_LOGI(TAG, "Performing scheduled restart...");
             ESP.restart();
         }

@@ -337,6 +337,7 @@ void Network::configureUsingAPMode() {
     SyslogOutput::begin(syslogConfig);
 
     // Main loop - NTP updates and touch control
+    const unsigned long bootMs = millis(); // baseline for boot-relative checks (wrap-safe via subtraction)
     unsigned long lastCheck = millis();
     unsigned long lastSecond = millis();
     unsigned long lastDiagnostics = millis();
@@ -423,7 +424,7 @@ void Network::configureUsingAPMode() {
                     // Seed lastMqttPublish on first eligible cycle
                     if (lastMqttPublish == 0) lastMqttPublish = now;
 
-                    if (intervalMs > 0 && now >= 60000 && (now - lastMqttPublish >= intervalMs)) {
+                    if (intervalMs > 0 && (now - bootMs >= 60000) && (now - lastMqttPublish >= intervalMs)) {
                         // Atomic snapshot: validity and data are read under the same lock,
                         // so we never publish stale measurements after a fresh read failed.
                         auto measurements = sensorController.getValidMeasurements();
