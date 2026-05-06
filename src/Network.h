@@ -53,6 +53,12 @@ private:
     String mdnsInstanceName;  // Must outlive MDNS.setInstanceName() call
     String cachedHostname;
 
+    // NTP sync state. NTPClient::getEpochTime() returns elapsed-since-boot before any
+    // successful sync (because _currentEpoc is 0 and millis-since-_lastUpdate accumulates),
+    // so "epoch > 0" is not a reliable synced indicator. Track it explicitly instead.
+    bool ntpSynced = false;
+    uint32_t lastNtpUpdateEpoch = 0; // epoch seconds at last successful sync
+
     /**
      * Generate mDNS hostname from device ID
      * Creates hostname like "klima-aabbcc" from device ID (removes dash)
@@ -136,10 +142,10 @@ public:
 
     /**
      * Get current NTP epoch time
-     * @return Current epoch time, or 0 if NTP not available
+     * @return Current epoch time, or 0 if NTP not yet successfully synced
      */
 #ifdef ARDUINO
-    uint32_t getCurrentEpoch() const { return ntpClient.getEpochTime(); }
+    uint32_t getCurrentEpoch() const { return ntpSynced ? ntpClient.getEpochTime() : 0; }
 #else
     uint32_t getCurrentEpoch() const { return 0; }
 #endif

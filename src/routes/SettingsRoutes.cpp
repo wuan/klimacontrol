@@ -52,11 +52,10 @@ void WebServerManager::setupSettingsRoutes() {
 
                       ESP_LOGI(TAG, "WiFi credentials updated: SSID=%s", wifiConfig.ssid);
 
-                      // Send success response and restart
+                      // Send success response and request deferred restart
                       request->send(200, CONTENT_TYPE_JSON,
                                     R"({"success":true,"message":"WiFi updated, restarting..."})");
-                      delay(1000); // Give time for response to send
-                      ESP.restart();
+                      config.requestRestart(1000);
                   }
               }
     );
@@ -152,10 +151,9 @@ void WebServerManager::setupSettingsRoutes() {
     });
 
     // POST /api/restart - Restart the device
-    server.on("/api/restart", HTTP_POST, [](AsyncWebServerRequest *request) {
+    server.on("/api/restart", HTTP_POST, [this](AsyncWebServerRequest *request) {
         request->send(200, CONTENT_TYPE_JSON, R"({"success":true,"message":"Restarting..."})");
-        delay(500); // Give time for response to send
-        ESP.restart();
+        config.requestRestart(1000);
     });
 
     // GET /api/settings/energy - Get energy configuration

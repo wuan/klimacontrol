@@ -55,6 +55,14 @@ public:
     std::vector<Sensor::Measurement> getMeasurements() const;
 
     /**
+     * Atomically returns measurements only if data is currently valid.
+     * Returns an empty vector if data is invalid or the mutex acquisition times out.
+     * Use this when validity and the data must be consistent (e.g. to avoid publishing
+     * stale data after a sensor read just failed).
+     */
+    std::vector<Sensor::Measurement> getValidMeasurements() const;
+
+    /**
      * Get current temperature (first temperature measurement found)
      * @return temperature value, or NAN if not available
      */

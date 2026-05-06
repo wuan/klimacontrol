@@ -202,6 +202,20 @@ std::vector<Sensor::Measurement> SensorController::getMeasurements() const {
 #endif
 }
 
+std::vector<Sensor::Measurement> SensorController::getValidMeasurements() const {
+#ifdef ARDUINO
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        std::vector<Sensor::Measurement> result;
+        if (dataValid) result = currentMeasurements;
+        xSemaphoreGive(dataMutex);
+        return result;
+    }
+    return {};
+#else
+    return dataValid ? currentMeasurements : std::vector<Sensor::Measurement>{};
+#endif
+}
+
 float SensorController::getFloatMeasurement(Sensor::MeasurementType type) const {
 #ifdef ARDUINO
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {

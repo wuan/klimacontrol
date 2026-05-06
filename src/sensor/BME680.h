@@ -29,9 +29,9 @@ namespace Sensor {
             static constexpr MeasurementType types[] = {
                 MeasurementType::Temperature, MeasurementType::RelativeHumidity,
                 MeasurementType::DewPoint, MeasurementType::Pressure,
-                MeasurementType::SeaLevelPressure
+                MeasurementType::GasResistance, MeasurementType::SeaLevelPressure
             };
-            return {types, 5};
+            return {types, 6};
         }
     };
 

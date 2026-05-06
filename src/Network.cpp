@@ -165,12 +165,18 @@ void Network::startSTA(const char *ssid, const char *password) {
         ESP_LOGI(TAG, "%s available at http://%s.local/ or http://%s",
                  Constants::PROJECT_NAME, hostname.c_str(), WiFi.localIP().toString().c_str());
 
-        // Start NTP client
+        // Start NTP client. Use forceUpdate() so we get a definite sync signal —
+        // update() short-circuits and returns true if its internal interval hasn't elapsed,
+        // which would not actually exchange any packets.
         ESP_LOGI(TAG, "Starting NTP...");
         ntpClient.begin();
-        ntpClient.update();
-
-        ESP_LOGI(TAG, "NTP time: %s", ntpClient.getFormattedTime().c_str());
+        if (ntpClient.forceUpdate()) {
+            ntpSynced = true;
+            lastNtpUpdateEpoch = ntpClient.getEpochTime();
+            ESP_LOGI(TAG, "NTP time: %s", ntpClient.getFormattedTime().c_str());
+        } else {
+            ESP_LOGW(TAG, "NTP initial sync failed; will retry");
+        }
 
         // Initialize MQTT client
         ESP_LOGI(TAG, "Initializing MQTT...");
@@ -331,8 +337,6 @@ void Network::configureUsingAPMode() {
     SyslogOutput::begin(syslogConfig);
 
     // Main loop - NTP updates and touch control
-    auto lastNtpUpdate = ntpClient.getEpochTime();
-
     unsigned long lastCheck = millis();
     unsigned long lastSecond = millis();
     unsigned long lastDiagnostics = millis();
@@ -385,26 +389,26 @@ void Network::configureUsingAPMode() {
             }
             wasConnected = isConnected;
 
-            // NTP update
-            uint32_t currentEpoch = ntpClient.getEpochTime();
+            // NTP update — drives off the explicit ntpSynced flag, not getEpochTime() > 0.
             static constexpr uint32_t NTP_UPDATE_INTERVAL_S = 3600;
 
-            if (currentEpoch > 0) {
-                // Already synced, check for periodic update
-                if (lastNtpUpdate == 0 || currentEpoch - lastNtpUpdate >= NTP_UPDATE_INTERVAL_S) {
-                    bool result = ntpClient.update();
-                    if (result) {
-                        lastNtpUpdate = ntpClient.getEpochTime();
+            if (ntpSynced) {
+                uint32_t currentEpoch = ntpClient.getEpochTime();
+                if (currentEpoch - lastNtpUpdateEpoch >= NTP_UPDATE_INTERVAL_S) {
+                    if (ntpClient.forceUpdate()) {
+                        lastNtpUpdateEpoch = ntpClient.getEpochTime();
                         ESP_LOGI(TAG, "NTP update: %s", ntpClient.getFormattedTime().c_str());
                     } else {
                         ESP_LOGW(TAG, "NTP update failed");
+                        // Stay synced — the previous epoch is still usable, just stale.
                     }
                 }
             } else if (now - lastNtpRetry >= NTP_UNSYNCED_RETRY_MS) {
                 // NTP not yet synced - retry at most once per minute
                 lastNtpRetry = now;
-                if (ntpClient.update()) {
-                    lastNtpUpdate = ntpClient.getEpochTime();
+                if (ntpClient.forceUpdate()) {
+                    ntpSynced = true;
+                    lastNtpUpdateEpoch = ntpClient.getEpochTime();
                     ESP_LOGI(TAG, "NTP initial sync: %s", ntpClient.getFormattedTime().c_str());
                 }
             }
@@ -420,10 +424,14 @@ void Network::configureUsingAPMode() {
                     if (lastMqttPublish == 0) lastMqttPublish = now;
 
                     if (intervalMs > 0 && now >= 60000 && (now - lastMqttPublish >= intervalMs)) {
-                        if (statusLed) statusLed->setState(LedState::TRANSMIT_DATA);
-
-                        lastMqttPublish = now;
-                        publishMeasurements(sensorController.getMeasurements());
+                        // Atomic snapshot: validity and data are read under the same lock,
+                        // so we never publish stale measurements after a fresh read failed.
+                        auto measurements = sensorController.getValidMeasurements();
+                        if (!measurements.empty()) {
+                            if (statusLed) statusLed->setState(LedState::TRANSMIT_DATA);
+                            lastMqttPublish = now;
+                            publishMeasurements(measurements);
+                        }
                     }
 
                     // Update MQTT progress for green→red gradient on status LED
