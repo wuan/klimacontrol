@@ -135,8 +135,8 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     JsonDocument filter;
     filter["tag_name"] = true;
     filter["name"] = true;
-    filter["body"] = true;
     filter["assets"] = true;
+    // Skip "body" (release notes) to save heap - can be hundreds of KB
 
     JsonDocument doc;
     DeserializationError jsonErr = deserializeJson(doc, reader,
@@ -155,7 +155,7 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
 
     info.version = doc["tag_name"].as<String>();
     info.name = doc["name"].as<String>();
-    info.releaseNotes = doc["body"].as<String>();
+    // Release notes intentionally not fetched to save heap
 
     if (info.version.isEmpty()) {
         info.errorMessage = "No tag_name in release response";

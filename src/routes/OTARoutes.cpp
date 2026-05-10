@@ -30,7 +30,6 @@ void WebServerManager::setupOTARoutes() {
             doc["release_name"] = info.name;
             doc["size_bytes"] = info.size;
             doc["download_url"] = info.downloadUrl;
-            doc["release_notes"] = info.releaseNotes;
         } else {
             doc["update_available"] = false;
             doc["current_version"] = FIRMWARE_VERSION;

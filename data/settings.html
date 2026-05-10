@@ -219,9 +219,7 @@
                 <div class="success-box">
                     <strong>Update Available!</strong><br>
                     <strong>Version: </strong><span id="latestVersion"></span><br>
-                    <strong>Size: </strong><span id="updateSize"></span><br>
-                    <strong>Release Notes:</strong><br>
-                    <div id="releaseNotes" style="margin-top: 5px; white-space: pre-wrap; font-size: 12px;"></div>
+                    <strong>Size: </strong><span id="updateSize"></span>
                 </div>
                 <button class="btn btn-primary" onclick="performUpdate()" id="installUpdateBtn">Install Update</button>
             </div>
@@ -433,7 +431,6 @@
                 updateInfo = data;
                 document.getElementById('latestVersion').textContent = data.latest_version;
                 document.getElementById('updateSize').textContent = formatBytes(data.size_bytes);
-                document.getElementById('releaseNotes').textContent = data.release_notes || 'No release notes available.';
                 document.getElementById('updateAvailable').style.display = 'block';
                 resultDiv.style.display = 'none';
                 btn.textContent = 'Update Available!';
