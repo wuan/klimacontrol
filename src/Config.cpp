@@ -328,6 +328,10 @@ namespace Config {
         if (wp != 8 && wp != 34 && wp != 52 && wp != 68 && wp != 80) {
             config.wifi_power = Constants::DEFAULT_WIFI_POWER;
         }
+        // Validate wifi_sleep_mode: 0=NONE, 1=MIN_MODEM, 2=MAX_MODEM
+        if (config.wifi_sleep_mode > 2) {
+            config.wifi_sleep_mode = 0; // Default to WIFI_PS_NONE
+        }
     }
 
     EnergyConfig ConfigManager::loadEnergyConfig() {
@@ -337,9 +341,10 @@ namespace Config {
         PreferencesGuard guard(prefs, NAMESPACE, true);
 
         energyConfig.wifi_power = guard.get().getUChar(ENERGY_WIFI_PW, Constants::DEFAULT_WIFI_POWER);
+        energyConfig.wifi_sleep_mode = guard.get().getUChar(ENERGY_WIFI_SLEEP, 0);
 #endif
 
-        // Validate wifi_power is one of the known values
+        // Validate configuration values
         validateEnergyConfig(energyConfig);
 
         return energyConfig;
@@ -350,8 +355,10 @@ namespace Config {
         PreferencesGuard guard(prefs, NAMESPACE, false);
 
         guard.get().putUChar(ENERGY_WIFI_PW, config.wifi_power);
+        guard.get().putUChar(ENERGY_WIFI_SLEEP, config.wifi_sleep_mode);
 
-        ESP_LOGD(TAG, "Saved energy configuration");
+        ESP_LOGD(TAG, "Saved energy configuration: wifi_power=%u, wifi_sleep_mode=%u",
+                 config.wifi_power, config.wifi_sleep_mode);
 #endif
     }
     SyslogConfig ConfigManager::loadSyslogConfig() {

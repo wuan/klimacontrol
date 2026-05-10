@@ -116,6 +116,7 @@ namespace Config {
      */
     struct EnergyConfig {
         uint8_t wifi_power = Constants::DEFAULT_WIFI_POWER; // wifi_power_t raw value, default Constants::DEFAULT_WIFI_POWER (13 dBm)
+        uint8_t wifi_sleep_mode = 0; // 0=WIFI_PS_NONE, 1=WIFI_PS_MIN_MODEM, 2=WIFI_PS_MAX_MODEM
         EnergyConfig() = default;
     };
 
@@ -149,6 +150,7 @@ namespace Config {
         static constexpr const char *TEMPERATURE_CONTROL_ENABLED = "temperature_control_enabled";
         static constexpr const char *ELEVATION = "elevation";
         static constexpr const char *ENERGY_WIFI_PW = "energy_wifi_pw";
+        static constexpr const char *ENERGY_WIFI_SLEEP = "energy_wifi_sleep";
         static constexpr const char *SENSOR_I2C_ADDRESS = "sensor_i2c_address";
 
         // In-memory cache of device config — always read from here, never maintain separate copies

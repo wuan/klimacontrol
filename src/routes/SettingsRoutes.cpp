@@ -162,6 +162,7 @@ void WebServerManager::setupSettingsRoutes() {
 
         JsonDocument doc;
         doc["wifi_power"] = energyConfig.wifi_power;
+        doc["wifi_sleep_mode"] = energyConfig.wifi_sleep_mode;
 
         String response;
         serializeJson(doc, response);
@@ -192,6 +193,17 @@ void WebServerManager::setupSettingsRoutes() {
                           } else {
                               request->send(400, CONTENT_TYPE_JSON,
                                             R"({"success":false,"error":"Invalid wifi_power value"})");
+                              return;
+                          }
+                      }
+
+                      if (doc["wifi_sleep_mode"].is<int>()) {
+                          uint8_t sm = doc["wifi_sleep_mode"];
+                          if (sm <= 2) {
+                              energyConfig.wifi_sleep_mode = sm;
+                          } else {
+                              request->send(400, CONTENT_TYPE_JSON,
+                                            R"({"success":false,"error":"Invalid wifi_sleep_mode value"})");
                               return;
                           }
                       }

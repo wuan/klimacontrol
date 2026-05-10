@@ -125,13 +125,24 @@ void Network::startSTA(const char *ssid, const char *password) {
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
-    WiFi.setSleep(WIFI_PS_NONE);
 
-    // Apply WiFi TX power from energy config
+    // Apply WiFi energy config (TX power and sleep mode)
     Config::EnergyConfig energyConfig = config.loadEnergyConfig();
     WiFi.setTxPower(static_cast<wifi_power_t>(energyConfig.wifi_power));
 
-    ESP_LOGI(TAG, "WiFi config: TX Power=%d, Sleep Mode=%d (0=NONE)", WiFi.getTxPower(), WiFi.getSleep());
+    // Apply WiFi sleep mode: 0=WIFI_PS_NONE, 1=WIFI_PS_MIN_MODEM, 2=WIFI_PS_MAX_MODEM
+    wifi_ps_type_t sleepMode = WIFI_PS_NONE;
+    const char* sleepModeStr = "NONE";
+    if (energyConfig.wifi_sleep_mode == 1) {
+        sleepMode = WIFI_PS_MIN_MODEM;
+        sleepModeStr = "MIN_MODEM";
+    } else if (energyConfig.wifi_sleep_mode == 2) {
+        sleepMode = WIFI_PS_MAX_MODEM;
+        sleepModeStr = "MAX_MODEM";
+    }
+    WiFi.setSleep(sleepMode);
+
+    ESP_LOGI(TAG, "WiFi config: TX Power=%d, Sleep Mode=%s", WiFi.getTxPower(), sleepModeStr);
 
     WiFi.begin(ssid, password);
 

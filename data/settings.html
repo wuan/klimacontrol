@@ -170,7 +170,7 @@
 
         <div class="section">
             <h2>Energy</h2>
-            <p>Adjust WiFi transmit power and CPU frequency. Lower values reduce power consumption.</p>
+            <p>Adjust WiFi power settings to reduce CPU temperature and power consumption.</p>
 
             <div class="form-group">
                 <label for="wifiPower">WiFi TX Power</label>
@@ -181,6 +181,17 @@
                     <option value="68">High (17 dBm)</option>
                     <option value="80">Max (20 dBm)</option>
                 </select>
+                <small class="form-hint">Lower values reduce power consumption and CPU temperature</small>
+            </div>
+
+            <div class="form-group">
+                <label for="wifiSleepMode">WiFi Sleep Mode</label>
+                <select id="wifiSleepMode">
+                    <option value="0">Disabled (Best Reception, Higher Heat)</option>
+                    <option value="1">Min Modem (Balanced)</option>
+                    <option value="2">Max Modem (Lowest Power, Lower Latency)</option>
+                </select>
+                <small class="form-hint">Sleep mode allows WiFi module to idle between beacons, reducing CPU temperature</small>
             </div>
 
             <button class="btn btn-primary" onclick="updateEnergy()">Save Energy Settings</button>
@@ -837,6 +848,7 @@
             const data = await response.json();
 
             document.getElementById('wifiPower').value = data.wifi_power || 52;
+            document.getElementById('wifiSleepMode').value = data.wifi_sleep_mode || 0;
         } catch (error) {
             console.error('Failed to load energy config:', error);
         }
@@ -844,6 +856,7 @@
 
     async function updateEnergy() {
         const wifiPower = parseInt(document.getElementById('wifiPower').value);
+        const wifiSleepMode = parseInt(document.getElementById('wifiSleepMode').value);
 
         if (!confirm('Save energy settings?\n\nThe device will restart to apply changes.')) {
             return;
@@ -853,7 +866,7 @@
             const response = await fetch('/api/settings/energy', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({wifi_power: wifiPower})
+                body: JSON.stringify({wifi_power: wifiPower, wifi_sleep_mode: wifiSleepMode})
             });
 
             if (response.ok) {
