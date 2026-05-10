@@ -4,7 +4,6 @@
 #ifdef ARDUINO
 #include <WiFiUdp.h>
 #include <NTPClient.h>
-#include <Adafruit_NeoPixel.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #endif

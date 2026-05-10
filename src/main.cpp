@@ -113,12 +113,9 @@ void setup() {
     sensorController.setControlEnabled(deviceConfig.temperature_control_enabled);
 
 #ifdef ARDUINO
-    // esp_pm_config_esp32s2_t pm_config = {
-    //     .max_freq_mhz = 80,
-    //     .min_freq_mhz = 10,
-    //     .light_sleep_enable = true
-    // };
-    // esp_pm_configure(&pm_config);
+    // Power management API conflicts with WIFI_PS_NONE configuration
+    // DFS doesn't work in Arduino+WiFi_PS_NONE. Focus on reducing Serial logging instead.
+    // See: POWER_OPTIMIZATION.md - "Why it's not working"
 #endif
 
     ESP_LOGI(TAG, "Starting network task");
