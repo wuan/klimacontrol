@@ -344,7 +344,7 @@ namespace Config {
         energyConfig.wifi_power = guard.get().getUChar(PrefsKeys::ENERGY_WIFI_POWER, Constants::DEFAULT_WIFI_POWER);
         energyConfig.wifi_sleep_mode = guard.get().getUChar(PrefsKeys::ENERGY_WIFI_SLEEP_MODE, 0);
 
-        ESP_LOGI(TAG, "Loaded energy config from NVS: power=%u, sleep_mode=%u",
+        ESP_LOGD(TAG, "Loaded energy config from NVS: power=%u, sleep=%u",
                  energyConfig.wifi_power, energyConfig.wifi_sleep_mode);
 #endif
 
@@ -362,11 +362,9 @@ namespace Config {
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false);
 
-        ESP_LOGI(TAG, "Saving energy config: power=%u, sleep=%u", validated.wifi_power, validated.wifi_sleep_mode);
+        ESP_LOGD(TAG, "Saving energy config: power=%u, sleep=%u", validated.wifi_power, validated.wifi_sleep_mode);
         guard.get().putUChar(PrefsKeys::ENERGY_WIFI_POWER, validated.wifi_power);
         guard.get().putUChar(PrefsKeys::ENERGY_WIFI_SLEEP_MODE, validated.wifi_sleep_mode);
-
-        ESP_LOGI(TAG, "Energy config saved to NVS");
 #endif
     }
     SyslogConfig ConfigManager::loadSyslogConfig() {
