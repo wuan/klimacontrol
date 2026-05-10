@@ -160,6 +160,9 @@ void WebServerManager::setupSettingsRoutes() {
     server.on("/api/settings/energy", HTTP_GET, [this](AsyncWebServerRequest *request) {
         Config::EnergyConfig energyConfig = config.loadEnergyConfig();
 
+        ESP_LOGD(TAG, "Loaded energy config: wifi_power=%u, wifi_sleep_mode=%u",
+                 energyConfig.wifi_power, energyConfig.wifi_sleep_mode);
+
         JsonDocument doc;
         doc["wifi_power"] = energyConfig.wifi_power;
         doc["wifi_sleep_mode"] = energyConfig.wifi_sleep_mode;
@@ -201,13 +204,17 @@ void WebServerManager::setupSettingsRoutes() {
                           uint8_t sm = doc["wifi_sleep_mode"];
                           if (sm <= 2) {
                               energyConfig.wifi_sleep_mode = sm;
+                              ESP_LOGI(TAG, "WiFi sleep mode set to: %u", sm);
                           } else {
+                              ESP_LOGW(TAG, "Invalid wifi_sleep_mode value: %u", sm);
                               request->send(400, CONTENT_TYPE_JSON,
                                             R"({"success":false,"error":"Invalid wifi_sleep_mode value"})");
                               return;
                           }
                       }
 
+                      ESP_LOGI(TAG, "Saving energy config: power=%u, sleep_mode=%u",
+                               energyConfig.wifi_power, energyConfig.wifi_sleep_mode);
                       config.saveEnergyConfig(energyConfig);
                       config.requestRestart(1000);
 

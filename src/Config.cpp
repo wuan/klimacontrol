@@ -1,4 +1,5 @@
 #include "Config.h"
+#include "PrefsKeys.h"
 #include <cmath>
 
 #ifdef ARDUINO
@@ -65,14 +66,14 @@ namespace Config {
         WiFiConfig config;
 
 #ifdef ARDUINO
-        PreferencesGuard guard(prefs, NAMESPACE, true); // Read-only mode
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, true); // Read-only mode
 
-        config.configured = guard.get().getBool("configured", false);
-        config.connection_failures = guard.get().getUChar("wifi_failures", 0);
+        config.configured = guard.get().getBool(PrefsKeys::WIFI_CONFIGURED, false);
+        config.connection_failures = guard.get().getUChar(PrefsKeys::WIFI_FAILURES, 0);
 
         if (config.configured) {
-            guard.get().getString("wifi_ssid", config.ssid, sizeof(config.ssid));
-            guard.get().getString("wifi_pass", config.password, sizeof(config.password));
+            guard.get().getString(PrefsKeys::WIFI_SSID, config.ssid, sizeof(config.ssid));
+            guard.get().getString(PrefsKeys::WIFI_PASS, config.password, sizeof(config.password));
         }
 #endif
 
@@ -81,11 +82,11 @@ namespace Config {
 
     void ConfigManager::saveWiFiConfig([[maybe_unused]] const WiFiConfig &config) {
 #ifdef ARDUINO
-        PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false); // Read-write mode
 
-        guard.get().putString("wifi_ssid", config.ssid);
-        guard.get().putString("wifi_pass", config.password);
-        guard.get().putBool("configured", config.configured);
+        guard.get().putString(PrefsKeys::WIFI_SSID, config.ssid);
+        guard.get().putString(PrefsKeys::WIFI_PASS, config.password);
+        guard.get().putBool(PrefsKeys::WIFI_CONFIGURED, config.configured);
 #endif
     }
 
@@ -338,10 +339,13 @@ namespace Config {
         EnergyConfig energyConfig;
 
 #ifdef ARDUINO
-        PreferencesGuard guard(prefs, NAMESPACE, true);
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, true);
 
-        energyConfig.wifi_power = guard.get().getUChar(ENERGY_WIFI_PW, Constants::DEFAULT_WIFI_POWER);
-        energyConfig.wifi_sleep_mode = guard.get().getUChar(ENERGY_WIFI_SLEEP, 0);
+        energyConfig.wifi_power = guard.get().getUChar(PrefsKeys::ENERGY_WIFI_POWER, Constants::DEFAULT_WIFI_POWER);
+        energyConfig.wifi_sleep_mode = guard.get().getUChar(PrefsKeys::ENERGY_WIFI_SLEEP_MODE, 0);
+
+        ESP_LOGI(TAG, "Loaded energy config from NVS: power=%u, sleep_mode=%u",
+                 energyConfig.wifi_power, energyConfig.wifi_sleep_mode);
 #endif
 
         // Validate configuration values
@@ -351,14 +355,18 @@ namespace Config {
     }
 
     void ConfigManager::saveEnergyConfig([[maybe_unused]] const EnergyConfig &config) {
+        // Validate before persisting to keep NVS consistent
+        EnergyConfig validated = config;
+        validateEnergyConfig(validated);
+
 #ifdef ARDUINO
-        PreferencesGuard guard(prefs, NAMESPACE, false);
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false);
 
-        guard.get().putUChar(ENERGY_WIFI_PW, config.wifi_power);
-        guard.get().putUChar(ENERGY_WIFI_SLEEP, config.wifi_sleep_mode);
+        ESP_LOGI(TAG, "Saving energy config: power=%u, sleep=%u", validated.wifi_power, validated.wifi_sleep_mode);
+        guard.get().putUChar(PrefsKeys::ENERGY_WIFI_POWER, validated.wifi_power);
+        guard.get().putUChar(PrefsKeys::ENERGY_WIFI_SLEEP_MODE, validated.wifi_sleep_mode);
 
-        ESP_LOGD(TAG, "Saved energy configuration: wifi_power=%u, wifi_sleep_mode=%u",
-                 config.wifi_power, config.wifi_sleep_mode);
+        ESP_LOGI(TAG, "Energy config saved to NVS");
 #endif
     }
     SyslogConfig ConfigManager::loadSyslogConfig() {
