@@ -18,14 +18,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Validate OpenSpec documents
-        run: |
-          echo "Checking spec file naming convention..."
-          for file in specs/*.md; do
-            if [[ "$file" != "specs/spec.md" && ! "$(basename "$file")" =~ ^[0-9]{2}-[a-z-]+\.md$ ]]; then
-              echo "ERROR: Invalid spec filename: $(basename "$file")"
-              echo "Expected format: NN-name.md (e.g., 01-system.md)"
-              exit 1
-            fi
-          done
-          echo "Naming convention check passed"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate OpenSpec changes and specs
+        run: npx -y @fission-ai/openspec@latest validate --all --strict --no-interactive
