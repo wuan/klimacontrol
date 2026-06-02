@@ -58,6 +58,18 @@ private:
     bool ntpSynced = false;
     uint32_t lastNtpUpdateEpoch = 0; // epoch seconds at last successful sync
 
+    // WiFi connection state — written from the WiFi event task, read from the network task.
+    // 32-bit aligned scalars are atomic on ESP32, so volatile is sufficient.
+    volatile uint8_t lastWifiDisconnectReason = 0; // esp_wifi_types reason code
+    volatile unsigned long lastWifiConnectMs = 0;
+    volatile unsigned long lastWifiDisconnectMs = 0;
+    unsigned long lastActiveReconnectMs = 0; // network-task-local
+    uint8_t activeReconnectFailures = 0;     // network-task-local
+
+#ifdef ARDUINO
+    void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
+#endif
+
     /**
      * Generate mDNS hostname from device ID
      * Creates hostname like "klima-aabbcc" from device ID (removes dash)
