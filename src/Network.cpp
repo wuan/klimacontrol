@@ -26,6 +26,31 @@
 
 static const char* TAG = "net";
 
+#ifdef ARDUINO
+namespace {
+    const char* wifiDisconnectReasonStr(uint8_t reason) {
+        switch (reason) {
+            case WIFI_REASON_UNSPECIFIED:           return "UNSPECIFIED";
+            case WIFI_REASON_AUTH_EXPIRE:           return "AUTH_EXPIRE";
+            case WIFI_REASON_AUTH_LEAVE:            return "AUTH_LEAVE";
+            case WIFI_REASON_ASSOC_EXPIRE:          return "ASSOC_EXPIRE";
+            case WIFI_REASON_ASSOC_TOOMANY:         return "ASSOC_TOOMANY";
+            case WIFI_REASON_NOT_AUTHED:            return "NOT_AUTHED";
+            case WIFI_REASON_NOT_ASSOCED:           return "NOT_ASSOCED";
+            case WIFI_REASON_ASSOC_LEAVE:           return "ASSOC_LEAVE";
+            case WIFI_REASON_ASSOC_NOT_AUTHED:      return "ASSOC_NOT_AUTHED";
+            case WIFI_REASON_BEACON_TIMEOUT:        return "BEACON_TIMEOUT";
+            case WIFI_REASON_NO_AP_FOUND:           return "NO_AP_FOUND";
+            case WIFI_REASON_AUTH_FAIL:             return "AUTH_FAIL";
+            case WIFI_REASON_ASSOC_FAIL:            return "ASSOC_FAIL";
+            case WIFI_REASON_HANDSHAKE_TIMEOUT:     return "HANDSHAKE_TIMEOUT";
+            case WIFI_REASON_CONNECTION_FAIL:       return "CONNECTION_FAIL";
+            default:                                return "OTHER";
+        }
+    }
+}
+#endif
+
 Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor)
     : config(config), sensorController(sensorController), sensorMonitor(sensorMonitor), mode(NetworkMode::NONE)
 #ifdef ARDUINO
@@ -112,6 +137,35 @@ void Network::startAP() {
 #endif
 }
 
+void Network::onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+#ifdef ARDUINO
+    switch (event) {
+        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+            lastWifiConnectMs = millis();
+            ESP_LOGI(TAG, "WiFi event: STA_CONNECTED ch=%u", info.wifi_sta_connected.channel);
+            break;
+        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+            ESP_LOGI(TAG, "WiFi event: GOT_IP %s rssi=%d",
+                     IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str(),
+                     WiFi.RSSI());
+            break;
+        case ARDUINO_EVENT_WIFI_STA_LOST_IP:
+            ESP_LOGW(TAG, "WiFi event: LOST_IP");
+            break;
+        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
+            uint8_t reason = info.wifi_sta_disconnected.reason;
+            lastWifiDisconnectReason = reason;
+            lastWifiDisconnectMs = millis();
+            ESP_LOGW(TAG, "WiFi event: DISCONNECTED reason=%u (%s)",
+                     reason, wifiDisconnectReasonStr(reason));
+            break;
+        }
+        default:
+            break;
+    }
+#endif
+}
+
 void Network::startSTA(const char *ssid, const char *password) {
 #ifdef ARDUINO
     mode = NetworkMode::STA;
@@ -125,6 +179,12 @@ void Network::startSTA(const char *ssid, const char *password) {
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
+
+    // Register WiFi event handler for diagnostic logging and reconnect tracking.
+    // Registered once; handler captures `this` for member access.
+    WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info) {
+        this->onWiFiEvent(event, info);
+    });
 
     // Apply WiFi energy config (TX power and sleep mode)
     Config::EnergyConfig energyConfig = config.loadEnergyConfig();
@@ -144,23 +204,42 @@ void Network::startSTA(const char *ssid, const char *password) {
 
     ESP_LOGI(TAG, "WiFi config: TX Power=%d, Sleep Mode=%s", WiFi.getTxPower(), sleepModeStr);
 
-    WiFi.begin(ssid, password);
+    // Try up to MAX_CONNECT_TRIES times before giving up. Each attempt waits
+    // MAX_WAIT_SLOTS * 500ms (~15s) for association. Between attempts we briefly
+    // back off so the AP isn't hammered.
+    constexpr int MAX_CONNECT_TRIES = 3;
+    constexpr int MAX_WAIT_SLOTS = 30;
+    constexpr int BACKOFF_MS = 3000;
 
-    ESP_LOGI(TAG, "Connecting to WiFi %s ...", ssid);
+    for (int tryNum = 1; tryNum <= MAX_CONNECT_TRIES; tryNum++) {
+        ESP_LOGI(TAG, "Connecting to WiFi %s (attempt %d/%d) ...", ssid, tryNum, MAX_CONNECT_TRIES);
+        WiFi.begin(ssid, password);
 
-    // Wait for connection with timeout
-    int attempts = 0;
-    const int maxAttempts = 30; // 15 seconds
-
-    while (WiFi.status() != WL_CONNECTED && attempts < maxAttempts) {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        attempts++;
-        if (attempts % 5 == 0) {
-            ESP_LOGI(TAG, "Still connecting... (attempt %d/%d)", attempts, maxAttempts);
+        int slots = 0;
+        while (WiFi.status() != WL_CONNECTED && slots < MAX_WAIT_SLOTS) {
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            esp_task_wdt_reset();
+            slots++;
+            if (slots % 5 == 0) {
+                ESP_LOGI(TAG, "Still connecting... (%d/%d, status=%d)",
+                         slots, MAX_WAIT_SLOTS, WiFi.status());
+            }
         }
+
+        if (WiFi.status() == WL_CONNECTED) break;
+
+        ESP_LOGW(TAG, "Connect attempt %d failed (last reason=%u %s), backing off %d ms",
+                 tryNum, lastWifiDisconnectReason,
+                 wifiDisconnectReasonStr(lastWifiDisconnectReason), BACKOFF_MS);
+        WiFi.disconnect(false);
+        vTaskDelay(BACKOFF_MS / portTICK_PERIOD_MS);
+        esp_task_wdt_reset();
     }
 
     if (WiFi.status() == WL_CONNECTED) {
+        // Seed lastWifiConnectMs so a later silent drop (no DISCONNECTED event
+        // delivered) still has a valid "connected since" baseline to reason from.
+        if (lastWifiConnectMs == 0) lastWifiConnectMs = millis();
         ESP_LOGI(TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
         ESP_LOGD(TAG, "WiFi diagnostics: SSID=%s BSSID=%s Ch=%d RSSI=%d dBm MAC=%s",
                  WiFi.SSID().c_str(), WiFi.BSSIDstr().c_str(), WiFi.channel(),
@@ -349,8 +428,11 @@ void Network::configureUsingAPMode() {
 
     // Main loop - NTP updates and touch control
     const unsigned long bootMs = millis(); // baseline for boot-relative checks (wrap-safe via subtraction)
-    unsigned long lastCheck = millis();
     unsigned long lastSecond = millis();
+    // Tracks when the previous 1 s block finished its work. Used together with
+    // the new entry time to attribute long iterations to either in-block work
+    // (this task is slow) or external wait (another priority-1 task held the CPU).
+    unsigned long lastBlockExitMs = millis();
     unsigned long lastDiagnostics = millis();
     unsigned long lastNtpRetry = 0; // millis() of last NTP retry when unsynced
     bool wasConnected = true;  // Track WiFi state transitions for mDNS re-advertisement
@@ -386,20 +468,65 @@ void Network::configureUsingAPMode() {
 
             // WiFi state tracking — auto-reconnect is handled by WiFi.setAutoReconnect(true)
             bool isConnected = WiFi.status() == WL_CONNECTED;
-            if (now - lastCheck > 1100) {
-                ESP_LOGW(TAG, "WiFi status: %d delayed %lu", WiFi.status(), now - lastCheck);
-            }
-            lastCheck = now;
+            [[maybe_unused]] unsigned long waitMs = now - lastBlockExitMs;
 
             if (!wasConnected && isConnected) {
                 ESP_LOGI(TAG, "WiFi reconnected (IP: %s)", WiFi.localIP().toString().c_str());
                 configureMDNS();
                 // Reset MQTT publish timer to avoid burst after reconnection
                 lastMqttPublish = now;
+                activeReconnectFailures = 0;
+                // Clear disconnect timestamp so the next drop is timed from when it happens,
+                // not from the previous disconnect period.
+                lastWifiDisconnectMs = 0;
+                lastWifiConnectMs = now;
             } else if (wasConnected && !isConnected) {
-                ESP_LOGW(TAG, "WiFi disconnected - waiting for auto-reconnect");
+                // Defensive: stamp the disconnect time from the polling path if the
+                // WiFi event handler did not. Some failure modes observed in the
+                // field never deliver ARDUINO_EVENT_WIFI_STA_DISCONNECTED, leaving
+                // lastWifiDisconnectMs at 0 — the active-reconnect block below
+                // would then never fire and the device gets stuck at WL_IDLE_STATUS.
+                if (lastWifiDisconnectMs == 0) {
+                    lastWifiDisconnectMs = now;
+                }
+                ESP_LOGW(TAG, "WiFi disconnected (last reason=%u %s) - waiting for auto-reconnect",
+                         lastWifiDisconnectReason,
+                         wifiDisconnectReasonStr(lastWifiDisconnectReason));
             }
             wasConnected = isConnected;
+
+            // Active reconnect path. Arduino's setAutoReconnect(true) gives up silently on
+            // some disconnect reasons (BEACON_TIMEOUT, ASSOC_EXPIRE, AUTH_EXPIRE after long
+            // sessions). If we've been disconnected for ACTIVE_RECONNECT_AFTER_MS without
+            // recovering, force a reconnect ourselves with exponential-ish backoff.
+            // After MAX_ACTIVE_RECONNECT_FAILURES tries, restart the device — usually it's
+            // a deep stack state that only a clean boot can recover from.
+            static constexpr unsigned long ACTIVE_RECONNECT_AFTER_MS = 30000;
+            static constexpr unsigned long ACTIVE_RECONNECT_MIN_INTERVAL_MS = 30000;
+            static constexpr uint8_t MAX_ACTIVE_RECONNECT_FAILURES = 6;
+            if (!isConnected) {
+                unsigned long downForMs = (lastWifiDisconnectMs != 0)
+                    ? (now - lastWifiDisconnectMs) : 0;
+                bool dueToActiveReconnect = (now - lastActiveReconnectMs) >= ACTIVE_RECONNECT_MIN_INTERVAL_MS;
+                if (downForMs >= ACTIVE_RECONNECT_AFTER_MS && dueToActiveReconnect) {
+                    activeReconnectFailures++;
+                    ESP_LOGW(TAG, "WiFi down %lus - forcing reconnect (attempt %u/%u, last reason=%u %s)",
+                             downForMs / 1000, activeReconnectFailures,
+                             MAX_ACTIVE_RECONNECT_FAILURES,
+                             lastWifiDisconnectReason,
+                             wifiDisconnectReasonStr(lastWifiDisconnectReason));
+                    lastActiveReconnectMs = now;
+                    WiFi.disconnect(false);
+                    vTaskDelay(100 / portTICK_PERIOD_MS);
+                    WiFi.reconnect();
+
+                    if (activeReconnectFailures >= MAX_ACTIVE_RECONNECT_FAILURES) {
+                        ESP_LOGE(TAG, "Active reconnect exhausted - restarting");
+                        vTaskDelay(500 / portTICK_PERIOD_MS);
+                        ESP.restart();
+                    }
+                }
+            }
 
             // NTP update — drives off the explicit ntpSynced flag, not getEpochTime() > 0.
             static constexpr uint32_t NTP_UPDATE_INTERVAL_S = 3600;
@@ -468,6 +595,19 @@ void Network::configureUsingAPMode() {
                              uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
                 }
             }
+
+            // Iteration timing diagnostic at DEBUG level. We only log when this
+            // task's own work is slow — large `wait` is expected RTOS scheduling
+            // contention with SensorMonitor (same priority, single core) and is
+            // harmless. workMs > 500 ms points at something blocking inside the
+            // block (MQTT loop, NTP, mDNS) and is worth investigating.
+            unsigned long blockExit = millis();
+            unsigned long workMs = blockExit - now;
+            if (workMs > 500) {
+                ESP_LOGD(TAG, "Tick slow work: work=%lums wait=%lums status=%d",
+                         workMs, waitMs, WiFi.status());
+            }
+            lastBlockExitMs = blockExit;
         }
     }
 #endif

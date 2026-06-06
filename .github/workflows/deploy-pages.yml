@@ -59,26 +59,17 @@ jobs:
 
           {
             printf '%s\n' '<!DOCTYPE html>' '<html>' '<head><meta charset="utf-8"><title>Klima-Control Specifications</title>' '<style>' 'body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }' 'h1 { color: #2c3e50; }' 'ul { list-style-type: none; padding: 0; }' 'li { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 5px; }' 'a { text-decoration: none; color: #3498db; font-weight: bold; }' 'a:hover { text-decoration: underline; }' '</style></head>' '<body>' '<h1>Klima-Control Specifications</h1>' '<ul>'
-            [ -f pages/specs/spec.html ] && printf '%s\n' '<li><a href="spec.html">Overview</a></li>'
-            for file in specs/*.md; do
-              if [ "$file" != "specs/spec.md" ]; then
-                filename=$(basename "$file" .md)
-                printf '<li><a href="%s.html">%s</a></li>\n' "$filename" "$filename"
-              fi
+            for dir in specs/openspec/specs/*/; do
+              capability=$(basename "$dir")
+              printf '<li><a href="%s.html">%s</a></li>\n' "$capability" "$capability"
             done
             printf '%s\n' '</ul>' '</body>' '</html>'
           } > pages/specs/index.html
 
-          convert_markdown() {
-            marked -o "$2" -i "$1"
-          }
-
-          [ -f specs/spec.md ] && convert_markdown specs/spec.md pages/specs/spec.html
-
-          for file in specs/*.md; do
-            if [ "$file" != "specs/spec.md" ]; then
-              filename=$(basename "$file" .md)
-              convert_markdown "$file" "pages/specs/$filename.html"
+          for dir in specs/openspec/specs/*/; do
+            capability=$(basename "$dir")
+            if [ -f "$dir/spec.md" ]; then
+              marked -o "pages/specs/$capability.html" -i "$dir/spec.md"
             fi
           done
 
