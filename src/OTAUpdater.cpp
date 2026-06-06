@@ -107,6 +107,16 @@ struct HttpClient {
 bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInfo &info) {
     info.isValid = false;
 
+    // Mark OTA in progress for the duration of the check: the TLS connection to
+    // api.github.com plus the JSON document together consume tens of KB and can
+    // drive free heap below the network task's low-heap guard threshold, which
+    // would otherwise restart the device mid-check. The flag is restored on
+    // every return path by the RAII guard below.
+    updateInProgress = true;
+    struct InProgressGuard {
+        ~InProgressGuard() { updateInProgress = false; }
+    } guard;
+
     String apiUrl = String("https://api.github.com/repos/") + owner + "/" + repo + "/releases/latest";
     ESP_LOGI(TAG, "Checking: %s", apiUrl.c_str());
 
