@@ -43,7 +43,12 @@ The system SHALL register a `WiFi.onEvent()` handler in `startSTA()` that logs W
 
 ### Requirement: Recover mid-session disconnects via active reconnect
 
-When the device has been associated and then loses the WiFi connection, the system SHALL NOT rely solely on Arduino's `setAutoReconnect(true)`. After WiFi has been disconnected for at least 30 seconds without recovering, the network task SHALL force a reconnect by calling `WiFi.disconnect(false)` followed by `WiFi.reconnect()`. Forced reconnects SHALL be spaced at least 30 seconds apart. After 6 consecutive forced reconnects without success, the system SHALL call `ESP.restart()` to clear deep stack state. The "disconnected duration" SHALL be measured from the timestamp captured in the WiFi event callback, not from the 1-second polling loop.
+When the device has been associated and then loses the WiFi connection, the system SHALL NOT rely solely on Arduino's `setAutoReconnect(true)`. After WiFi has been disconnected for at least 30 seconds without recovering, the network task SHALL force a reconnect by calling `WiFi.disconnect(false)` followed by `WiFi.reconnect()`. Forced reconnects SHALL be spaced at least 30 seconds apart. After 6 consecutive forced reconnects without success, the system SHALL call `ESP.restart()` to clear deep stack state. The "disconnected duration" SHALL be measured from a disconnect timestamp captured by the WiFi event callback; if the polling loop observes `WiFi.status() != WL_CONNECTED` after a prior connected state and no event timestamp has been recorded, the polling loop SHALL stamp the disconnect timestamp itself so recovery proceeds even when the underlying event is not delivered.
+
+#### Scenario: Disconnect event is silently dropped
+
+- **WHEN** WiFi transitions from `WL_CONNECTED` to a non-connected status (e.g. `WL_IDLE_STATUS`) without `ARDUINO_EVENT_WIFI_STA_DISCONNECTED` being delivered to the registered handler
+- **THEN** on the first poll iteration that observes the missing connection, the network task stamps the disconnect timestamp from `millis()`, and the 30-second active-reconnect timer begins counting from that moment
 
 #### Scenario: Auto-reconnect succeeds within 30 seconds
 

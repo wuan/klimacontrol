@@ -237,6 +237,9 @@ void Network::startSTA(const char *ssid, const char *password) {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
+        // Seed lastWifiConnectMs so a later silent drop (no DISCONNECTED event
+        // delivered) still has a valid "connected since" baseline to reason from.
+        if (lastWifiConnectMs == 0) lastWifiConnectMs = millis();
         ESP_LOGI(TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
         ESP_LOGD(TAG, "WiFi diagnostics: SSID=%s BSSID=%s Ch=%d RSSI=%d dBm MAC=%s",
                  WiFi.SSID().c_str(), WiFi.BSSIDstr().c_str(), WiFi.channel(),
@@ -473,7 +476,19 @@ void Network::configureUsingAPMode() {
                 // Reset MQTT publish timer to avoid burst after reconnection
                 lastMqttPublish = now;
                 activeReconnectFailures = 0;
+                // Clear disconnect timestamp so the next drop is timed from when it happens,
+                // not from the previous disconnect period.
+                lastWifiDisconnectMs = 0;
+                lastWifiConnectMs = now;
             } else if (wasConnected && !isConnected) {
+                // Defensive: stamp the disconnect time from the polling path if the
+                // WiFi event handler did not. Some failure modes observed in the
+                // field never deliver ARDUINO_EVENT_WIFI_STA_DISCONNECTED, leaving
+                // lastWifiDisconnectMs at 0 — the active-reconnect block below
+                // would then never fire and the device gets stuck at WL_IDLE_STATUS.
+                if (lastWifiDisconnectMs == 0) {
+                    lastWifiDisconnectMs = now;
+                }
                 ESP_LOGW(TAG, "WiFi disconnected (last reason=%u %s) - waiting for auto-reconnect",
                          lastWifiDisconnectReason,
                          wifiDisconnectReasonStr(lastWifiDisconnectReason));
