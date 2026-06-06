@@ -428,8 +428,11 @@ void Network::configureUsingAPMode() {
 
     // Main loop - NTP updates and touch control
     const unsigned long bootMs = millis(); // baseline for boot-relative checks (wrap-safe via subtraction)
-    unsigned long lastCheck = millis();
     unsigned long lastSecond = millis();
+    // Tracks when the previous 1 s block finished its work. Used together with
+    // the new entry time to attribute long iterations to either in-block work
+    // (this task is slow) or external wait (another priority-1 task held the CPU).
+    unsigned long lastBlockExitMs = millis();
     unsigned long lastDiagnostics = millis();
     unsigned long lastNtpRetry = 0; // millis() of last NTP retry when unsynced
     bool wasConnected = true;  // Track WiFi state transitions for mDNS re-advertisement
@@ -465,10 +468,7 @@ void Network::configureUsingAPMode() {
 
             // WiFi state tracking — auto-reconnect is handled by WiFi.setAutoReconnect(true)
             bool isConnected = WiFi.status() == WL_CONNECTED;
-            if (now - lastCheck > 1100) {
-                ESP_LOGW(TAG, "WiFi status: %d delayed %lu", WiFi.status(), now - lastCheck);
-            }
-            lastCheck = now;
+            [[maybe_unused]] unsigned long waitMs = now - lastBlockExitMs;
 
             if (!wasConnected && isConnected) {
                 ESP_LOGI(TAG, "WiFi reconnected (IP: %s)", WiFi.localIP().toString().c_str());
@@ -595,6 +595,19 @@ void Network::configureUsingAPMode() {
                              uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
                 }
             }
+
+            // Iteration timing diagnostic at DEBUG level. We only log when this
+            // task's own work is slow — large `wait` is expected RTOS scheduling
+            // contention with SensorMonitor (same priority, single core) and is
+            // harmless. workMs > 500 ms points at something blocking inside the
+            // block (MQTT loop, NTP, mDNS) and is worth investigating.
+            unsigned long blockExit = millis();
+            unsigned long workMs = blockExit - now;
+            if (workMs > 500) {
+                ESP_LOGD(TAG, "Tick slow work: work=%lums wait=%lums status=%d",
+                         workMs, waitMs, WiFi.status());
+            }
+            lastBlockExitMs = blockExit;
         }
     }
 #endif
