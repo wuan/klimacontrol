@@ -67,16 +67,12 @@ void WebServerManager::setupOTARoutes() {
 
                       ESP_LOGI(TAG, "Starting OTA: %s (%zu bytes)", downloadUrl.c_str(), size);
 
-                      // Perform OTA update (this will block)
-                      bool success = OTAUpdater::performUpdate(downloadUrl, size, [](int percent, size_t bytes) {
-                          ESP_LOGI(TAG, "Progress: %d%% (%zu bytes)", percent, bytes);
-                      });
-
-                      if (success) {
-                          ESP_LOGI(TAG, "OTA update successful, scheduling restart...");
-                          this->config.requestRestart(1000);
-                      } else {
-                          ESP_LOGE(TAG, "OTA update failed");
+                      // Run the (multi-minute, blocking) download on a dedicated
+                      // worker task so we don't stall the AsyncTCP event task.
+                      // The "starting" response was already queued in the request
+                      // handler above and flushes as soon as this callback returns.
+                      if (!OTAUpdater::startBackgroundUpdate(downloadUrl, size, this->config)) {
+                          ESP_LOGW(TAG, "OTA update not started (busy or task creation failed)");
                       }
                   }
               }

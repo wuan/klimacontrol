@@ -311,6 +311,60 @@ bool OTAUpdater::performUpdate(
     return true;
 }
 
+namespace {
+    // Heap-allocated payload handed to the OTA worker task. Owned by the worker,
+    // which deletes it before exiting.
+    struct OtaJob {
+        String url;
+        size_t size;
+        Config::ConfigManager *config;
+    };
+
+    void otaWorkerTask(void *arg) {
+        auto *job = static_cast<OtaJob *>(arg);
+
+        bool success = OTAUpdater::performUpdate(job->url, job->size,
+            [](int percent, size_t bytes) {
+                ESP_LOGI(TAG, "Progress: %d%% (%zu bytes)", percent, bytes);
+            });
+
+        if (success) {
+            ESP_LOGI(TAG, "OTA update successful, scheduling restart...");
+            job->config->requestRestart(1000);
+        } else {
+            ESP_LOGE(TAG, "OTA update failed");
+        }
+
+        delete job;
+        vTaskDelete(nullptr);
+    }
+}
+
+bool OTAUpdater::startBackgroundUpdate(const String &downloadUrl, size_t expectedSize,
+                                       Config::ConfigManager &config) {
+    // Claim the in-progress slot up front so a rapid second request can't spawn
+    // a concurrent worker in the window before performUpdate() sets the flag.
+    if (updateInProgress) {
+        ESP_LOGW(TAG, "Update already in progress - ignoring request");
+        return false;
+    }
+    updateInProgress = true;
+
+    auto *job = new OtaJob{downloadUrl, expectedSize, &config};
+
+    BaseType_t created = xTaskCreate(otaWorkerTask, "ota_update",
+                                     UPDATE_TASK_STACK, job, 1, nullptr);
+    if (created != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create OTA worker task");
+        updateInProgress = false;
+        delete job;
+        return false;
+    }
+
+    ESP_LOGI(TAG, "OTA worker task started");
+    return true;
+}
+
 bool OTAUpdater::confirmBoot() {
     esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
     if (err != ESP_OK) {
