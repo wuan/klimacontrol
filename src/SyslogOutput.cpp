@@ -8,7 +8,7 @@ WiFiUDP SyslogOutput::udp;
 SemaphoreHandle_t SyslogOutput::mutex = nullptr;
 Config::SyslogConfig SyslogOutput::currentConfig{};
 char SyslogOutput::hostname[32] = "";
-bool SyslogOutput::active = false;
+volatile bool SyslogOutput::active = false;
 
 void SyslogOutput::setHostname(const char* name) {
     strlcpy(hostname, name && name[0] ? name : "klima", sizeof(hostname));

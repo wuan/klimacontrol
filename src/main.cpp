@@ -26,6 +26,7 @@
 
 #ifdef ARDUINO
 #include <esp_task_wdt.h>
+#include <esp_idf_version.h>
 #endif
 
 static const char* TAG = "main";
@@ -136,8 +137,23 @@ void setup() {
         ESP_LOGE(TAG, "Unknown error starting sensor monitor task");
     }
 
-    // Configure task watchdog timer (30s timeout, panic on trigger)
+    // Configure task watchdog timer (30s timeout, panic on trigger).
+    // The init API changed between IDF 4.x (this toolchain: arduino-esp32 2.0.x)
+    // and IDF 5.x, where it takes a config struct and the core may have already
+    // initialized the TWDT (hence the reconfigure fallback). Guard by version so
+    // a toolchain bump doesn't silently fail to compile.
+#if ESP_IDF_VERSION_MAJOR >= 5
+    const esp_task_wdt_config_t wdtConfig = {
+        .timeout_ms = 30000,
+        .idle_core_mask = 0,
+        .trigger_panic = true,
+    };
+    if (esp_task_wdt_init(&wdtConfig) == ESP_ERR_INVALID_STATE) {
+        esp_task_wdt_reconfigure(&wdtConfig);
+    }
+#else
     esp_task_wdt_init(30, true);
+#endif
     ESP_LOGI(TAG, "Task watchdog configured (30s timeout)");
 }
 

@@ -65,6 +65,7 @@ private:
     volatile unsigned long lastWifiDisconnectMs = 0;
     unsigned long lastActiveReconnectMs = 0; // network-task-local
     uint8_t activeReconnectFailures = 0;     // network-task-local
+    bool wifiEventHandlerRegistered = false; // WiFi.onEvent registered only once
 
 #ifdef ARDUINO
     void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);

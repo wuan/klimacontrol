@@ -181,10 +181,14 @@ void Network::startSTA(const char *ssid, const char *password) {
     WiFi.setAutoReconnect(true);
 
     // Register WiFi event handler for diagnostic logging and reconnect tracking.
-    // Registered once; handler captures `this` for member access.
-    WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info) {
-        this->onWiFiEvent(event, info);
-    });
+    // Guarded so a re-entry of startSTA() can't stack duplicate handlers (Arduino
+    // appends, never replaces). Handler captures `this` for member access.
+    if (!wifiEventHandlerRegistered) {
+        WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info) {
+            this->onWiFiEvent(event, info);
+        });
+        wifiEventHandlerRegistered = true;
+    }
 
     // Apply WiFi energy config (TX power and sleep mode)
     Config::EnergyConfig energyConfig = config.loadEnergyConfig();
@@ -471,13 +475,25 @@ void Network::configureUsingAPMode() {
         //     touchController->update();
         // }
 
-        // Low heap check - restart cleanly before an OOM crash
-        // Skip during OTA: TLS buffers temporarily consume most internal SRAM
+        // Low heap check - restart cleanly before an OOM crash. Require the
+        // condition to persist across several ~1 s iterations so a transient dip
+        // (e.g. a burst of concurrent web requests each allocating a JsonDocument)
+        // doesn't reboot a device that would otherwise recover.
+        // Skip during OTA: TLS buffers temporarily consume most internal SRAM.
+        static constexpr uint8_t LOW_HEAP_RESTART_STREAK = 5;
+        static uint8_t lowHeapStreak = 0;
         uint32_t freeHeap = ESP.getFreeHeap();
         if (freeHeap < MIN_FREE_HEAP_BYTES && !OTAUpdater::isUpdateInProgress()) {
-            ESP_LOGE(TAG, "CRITICAL: Low heap %u bytes - restarting...", freeHeap);
-            vTaskDelay(500 / portTICK_PERIOD_MS);
-            ESP.restart();
+            lowHeapStreak++;
+            ESP_LOGW(TAG, "Low heap %u bytes (%u/%u consecutive)",
+                     freeHeap, lowHeapStreak, LOW_HEAP_RESTART_STREAK);
+            if (lowHeapStreak >= LOW_HEAP_RESTART_STREAK) {
+                ESP_LOGE(TAG, "CRITICAL: Low heap persisted - restarting...");
+                vTaskDelay(500 / portTICK_PERIOD_MS);
+                ESP.restart();
+            }
+        } else {
+            lowHeapStreak = 0;
         }
 
         if (now - lastSecond >= 1000) {

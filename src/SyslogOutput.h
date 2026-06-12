@@ -26,7 +26,9 @@ private:
     static SemaphoreHandle_t mutex;
     static Config::SyslogConfig currentConfig;
     static char hostname[32];
-    static bool active;
+    // Read unlocked in send() (called from any logging task) as a fast gate;
+    // volatile makes that read well-defined against begin()/end() writes.
+    static volatile bool active;
 };
 
 #endif // ARDUINO

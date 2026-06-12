@@ -156,9 +156,12 @@ namespace Config {
         // In-memory cache of device config — always read from here, never maintain separate copies
         DeviceConfig deviceConfig;
 
-        bool restartRequested = false;
+        // Written from web-request callbacks (AsyncTCP task) via requestRestart(),
+        // read from the main loop task via checkRestart(). 32-bit aligned scalars
+        // are atomic on ESP32, so volatile is sufficient for the cross-task handoff.
+        volatile bool restartRequested = false;
 #ifdef ARDUINO
-        uint32_t restartAt = 0;
+        volatile uint32_t restartAt = 0;
 #endif
 
     public:
