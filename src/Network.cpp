@@ -288,8 +288,12 @@ void Network::configureUsingAPMode() {
     webServer = std::make_unique<ConfigWebServerManager>(config, *this, sensorController, sensorMonitor);
     webServer->begin();
 
-    // Wait for configuration
+    // Wait for configuration. This task is subscribed to the task watchdog
+    // (esp_task_wdt_add in task()), so the wait loop must feed it — otherwise
+    // the 30s panic WDT reboots the device while the user is still entering
+    // credentials in the captive portal. Mirrors the AP-fallback loop below.
     while (!config.isConfigured()) {
+        esp_task_wdt_reset();
         captivePortal.handleClient(); // Handle DNS requests
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
@@ -306,8 +310,10 @@ void Network::configureUsingAPMode() {
     ESP_LOGI(TAG, "Scheduling restart");
     config.requestRestart(1000);
 
-    // Stay in loop until main loop restarts us
+    // Stay in loop until main loop restarts us. Keep feeding the watchdog so we
+    // don't trip a panic reset before the scheduled restart fires.
     while (true) {
+        esp_task_wdt_reset();
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
