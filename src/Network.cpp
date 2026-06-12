@@ -436,6 +436,17 @@ void Network::configureUsingAPMode() {
     unsigned long lastDiagnostics = millis();
     unsigned long lastNtpRetry = 0; // millis() of last NTP retry when unsynced
     bool wasConnected = true;  // Track WiFi state transitions for mDNS re-advertisement
+
+    // Flapping-immune restart backstop. The active-reconnect path below resets
+    // activeReconnectFailures to 0 on *any* brief reconnect, so a link that
+    // flickers connected-then-dropped repeatedly never trips the attempt-based
+    // restart and the device appears stuck offline. Track when WiFi last held a
+    // *stable* connection (continuously up for >= STABLE_CONNECT_MS); a momentary
+    // flicker does not advance it. If no stable connection occurs for
+    // FORCE_RESTART_NO_STABLE_MS, force a clean restart. We enter this loop
+    // connected, so both baselines start at "now".
+    unsigned long connectedSinceMs = millis();   // start of the current connected streak (0 = down)
+    unsigned long lastStableConnectMs = millis(); // last time the link was confirmed stable
     static constexpr uint32_t MIN_FREE_HEAP_BYTES = 16384; // 16 KB
     static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 300000; // 5 minutes
     static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
@@ -526,6 +537,28 @@ void Network::configureUsingAPMode() {
                         ESP.restart();
                     }
                 }
+            }
+
+            // Flapping-immune restart backstop (see declarations above). A
+            // connection only counts as "stable" after it has held continuously
+            // for STABLE_CONNECT_MS; brief flickers reset the streak and never
+            // advance lastStableConnectMs. If WiFi has not been stable for
+            // FORCE_RESTART_NO_STABLE_MS, only a clean boot tends to recover it.
+            static constexpr unsigned long STABLE_CONNECT_MS = 60000;            // 1 min up = "stable"
+            static constexpr unsigned long FORCE_RESTART_NO_STABLE_MS = 600000;  // 10 min without stability
+            if (isConnected) {
+                if (connectedSinceMs == 0) connectedSinceMs = now; // streak started
+                if (now - connectedSinceMs >= STABLE_CONNECT_MS) {
+                    lastStableConnectMs = now;
+                }
+            } else {
+                connectedSinceMs = 0; // streak broken
+            }
+            if (now - lastStableConnectMs >= FORCE_RESTART_NO_STABLE_MS) {
+                ESP_LOGE(TAG, "No stable WiFi for %lus (flapping or stuck) - restarting",
+                         (now - lastStableConnectMs) / 1000);
+                vTaskDelay(500 / portTICK_PERIOD_MS);
+                ESP.restart();
             }
 
             // NTP update — drives off the explicit ntpSynced flag, not getEpochTime() > 0.
