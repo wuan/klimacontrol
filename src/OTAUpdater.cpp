@@ -338,6 +338,84 @@ namespace {
     }
 }
 
+SemaphoreHandle_t OTAUpdater::checkResultMutex() {
+    static SemaphoreHandle_t m = xSemaphoreCreateMutex();
+    return m;
+}
+
+namespace {
+    // Heap-allocated payload for the check worker. Owner/repo are copied so the
+    // worker doesn't depend on the caller's string lifetimes.
+    struct CheckJob {
+        String owner;
+        String repo;
+    };
+}
+
+void OTAUpdater::otaCheckTask(void *arg) {
+    auto *job = static_cast<CheckJob *>(arg);
+
+    FirmwareInfo info;
+    bool ok = checkForUpdate(job->owner.c_str(), job->repo.c_str(), info);
+
+    SemaphoreHandle_t m = checkResultMutex();
+    if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
+        checkResult = info;
+        checkState = ok ? CheckState::Done : CheckState::Failed;
+        xSemaphoreGive(m);
+    }
+
+    delete job;
+    vTaskDelete(nullptr);
+}
+
+bool OTAUpdater::startBackgroundCheck(const char *owner, const char *repo) {
+    SemaphoreHandle_t m = checkResultMutex();
+    if (!m) return false;
+
+    if (xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
+        // Don't start if a check is already running or a real update is underway.
+        if (checkState == CheckState::InProgress || updateInProgress) {
+            xSemaphoreGive(m);
+            ESP_LOGW(TAG, "Check not started (busy)");
+            return false;
+        }
+        checkState = CheckState::InProgress;
+        checkResult = FirmwareInfo{};
+        xSemaphoreGive(m);
+    } else {
+        return false;
+    }
+
+    auto *job = new CheckJob{String(owner), String(repo)};
+    BaseType_t created = xTaskCreate(otaCheckTask, "ota_check",
+                                     CHECK_TASK_STACK, job, 1, nullptr);
+    if (created != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create OTA check task");
+        // Roll back to Failed so we don't get stuck in InProgress forever.
+        if (xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
+            checkState = CheckState::Failed;
+            xSemaphoreGive(m);
+        }
+        delete job;
+        return false;
+    }
+
+    ESP_LOGI(TAG, "OTA check task started");
+    return true;
+}
+
+OTAUpdater::CheckState OTAUpdater::getCheckResult(FirmwareInfo &infoOut) {
+    SemaphoreHandle_t m = checkResultMutex();
+    if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
+        CheckState state = checkState;
+        infoOut = checkResult;
+        xSemaphoreGive(m);
+        return state;
+    }
+    return CheckState::Idle;
+}
+
 bool OTAUpdater::startBackgroundUpdate(const String &downloadUrl, size_t expectedSize,
                                        Config::ConfigManager &config) {
     // Claim the in-progress slot up front so a rapid second request can't spawn

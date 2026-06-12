@@ -415,6 +415,21 @@
         }
     }
 
+    // Poll GET /api/ota/check until the background check finishes. The check
+    // runs on a worker task on the device so it doesn't block the web server.
+    async function pollOtaCheck() {
+        const maxAttempts = 30;   // ~45s at 1.5s spacing (device caps the check at 30s)
+        for (let i = 0; i < maxAttempts; i++) {
+            const response = await fetch('/api/ota/check');
+            const data = await response.json();
+            if (data.status === 'done' || data.status === 'error') {
+                return data;
+            }
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+        throw new Error('Update check timed out');
+    }
+
     async function checkForUpdates() {
         const btn = document.getElementById('checkUpdateBtn');
         const resultDiv = document.getElementById('checkResult');
@@ -424,8 +439,9 @@
         document.getElementById('updateAvailable').style.display = 'none';
 
         try {
-            const response = await fetch('/api/ota/check');
-            const data = await response.json();
+            // Start the background check, then poll for the result.
+            await fetch('/api/ota/check', {method: 'POST'});
+            const data = await pollOtaCheck();
 
             if (data.update_available) {
                 updateInfo = data;
@@ -434,9 +450,9 @@
                 document.getElementById('updateAvailable').style.display = 'block';
                 resultDiv.style.display = 'none';
                 btn.textContent = 'Update Available!';
-            } else if (data.error) {
+            } else if (data.status === 'error' || data.error) {
                 resultDiv.className = 'warning-box';
-                resultDiv.innerHTML = '<strong>Update check failed</strong><br>' + data.error;
+                resultDiv.innerHTML = '<strong>Update check failed</strong><br>' + (data.error || 'Unknown error');
                 resultDiv.style.display = 'block';
                 btn.textContent = 'Check for Updates';
                 btn.disabled = false;
@@ -450,7 +466,7 @@
         } catch (error) {
             console.error('Failed to check for updates:', error);
             resultDiv.className = 'warning-box';
-            resultDiv.innerHTML = '<strong>Update check failed</strong><br>Could not reach the device. Check your connection.';
+            resultDiv.innerHTML = '<strong>Update check failed</strong><br>Could not reach the device or the check timed out.';
             resultDiv.style.display = 'block';
             btn.textContent = 'Check for Updates';
             btn.disabled = false;

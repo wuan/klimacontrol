@@ -13,6 +13,8 @@
 #include <Update.h>
 #include <ArduinoJson.h>
 #include <esp_ota_ops.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #endif
 
 namespace Config {
@@ -43,7 +45,34 @@ struct FirmwareInfo {
  */
 class OTAUpdater {
 public:
+    // State of the most recent background update check (see startBackgroundCheck).
+    enum class CheckState : uint8_t {
+        Idle,        // no check has run yet
+        InProgress,  // a check is currently running on the worker task
+        Done,        // last check completed; result is valid
+        Failed       // last check failed; errorMessage is set
+    };
+
     static bool checkForUpdate(const char *owner, const char *repo, FirmwareInfo &info);
+
+    /**
+     * Run checkForUpdate() on a dedicated FreeRTOS task and return immediately.
+     *
+     * checkForUpdate() blocks for the GitHub TLS round-trip (seconds, up to
+     * TIMEOUT_MS); running it inline in an ESPAsyncWebServer callback would stall
+     * the single AsyncTCP event task. Callers start a check, then poll
+     * getCheckResult() for the outcome.
+     *
+     * @return true if a check was started; false if a check or update is already
+     *         in progress, or the task could not be created.
+     */
+    static bool startBackgroundCheck(const char *owner, const char *repo);
+
+    /**
+     * Read the background check state and (if Done/Failed) a copy of the result.
+     * Thread-safe snapshot of both values under one lock.
+     */
+    static CheckState getCheckResult(FirmwareInfo &infoOut);
 
     static bool performUpdate(
         const String &downloadUrl,
@@ -84,4 +113,14 @@ private:
     // Worker stack must hold the 4 KB chunk buffer plus the mbedTLS handshake
     // working set; sized to match the AsyncTCP task stack the update used to run on.
     static constexpr uint32_t UPDATE_TASK_STACK = 16384;
+    // Check worker needs the TLS handshake working set + JSON parse buffers.
+    static constexpr uint32_t CHECK_TASK_STACK = 16384;
+
+    // Background-check result, guarded by checkResultMutex().
+    static inline CheckState checkState = CheckState::Idle;
+    static inline FirmwareInfo checkResult{};
+#ifdef ARDUINO
+    static SemaphoreHandle_t checkResultMutex();
+    static void otaCheckTask(void *arg);  // FreeRTOS worker for startBackgroundCheck
+#endif
 };

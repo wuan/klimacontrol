@@ -15,25 +15,46 @@ static const char* TAG = "ota";
 
 void WebServerManager::setupOTARoutes() {
 #ifdef ARDUINO
-    // GET /api/ota/check - Check for firmware updates
+    // POST /api/ota/check - Start a background check for firmware updates.
+    // The TLS round-trip to GitHub blocks, so it runs on a worker task to keep
+    // the AsyncTCP event task free; clients poll GET /api/ota/check for the result.
+    server.on("/api/ota/check", HTTP_POST, [](AsyncWebServerRequest *request) {
+        bool started = OTAUpdater::startBackgroundCheck(OTA_GITHUB_OWNER, OTA_GITHUB_REPO);
+
+        JsonDocument doc;
+        doc["status"] = started ? "checking" : "busy";
+
+        String response;
+        serializeJson(doc, response);
+        request->send(started ? 202 : 409, CONTENT_TYPE_JSON, response);
+    });
+
+    // GET /api/ota/check - Poll the state of the background check.
     server.on("/api/ota/check", HTTP_GET, [](AsyncWebServerRequest *request) {
         JsonDocument doc;
+        doc["current_version"] = FIRMWARE_VERSION;
 
         FirmwareInfo info;
-        bool releaseFound = OTAUpdater::checkForUpdate(OTA_GITHUB_OWNER, OTA_GITHUB_REPO, info);
-        bool updateAvailable = releaseFound && (info.version != FIRMWARE_VERSION);
-
-        if (releaseFound) {
-            doc["update_available"] = updateAvailable;
-            doc["current_version"] = FIRMWARE_VERSION;
-            doc["latest_version"] = info.version;
-            doc["release_name"] = info.name;
-            doc["size_bytes"] = info.size;
-            doc["download_url"] = info.downloadUrl;
-        } else {
-            doc["update_available"] = false;
-            doc["current_version"] = FIRMWARE_VERSION;
-            doc["error"] = info.errorMessage.isEmpty() ? "Failed to check for updates" : info.errorMessage;
+        switch (OTAUpdater::getCheckResult(info)) {
+            case OTAUpdater::CheckState::Idle:
+                doc["status"] = "idle";
+                break;
+            case OTAUpdater::CheckState::InProgress:
+                doc["status"] = "checking";
+                break;
+            case OTAUpdater::CheckState::Done:
+                doc["status"] = "done";
+                doc["update_available"] = info.isValid && (info.version != FIRMWARE_VERSION);
+                doc["latest_version"] = info.version;
+                doc["release_name"] = info.name;
+                doc["size_bytes"] = info.size;
+                doc["download_url"] = info.downloadUrl;
+                break;
+            case OTAUpdater::CheckState::Failed:
+                doc["status"] = "error";
+                doc["update_available"] = false;
+                doc["error"] = info.errorMessage.isEmpty() ? "Failed to check for updates" : info.errorMessage;
+                break;
         }
 
         String response;
