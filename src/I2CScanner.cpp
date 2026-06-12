@@ -14,6 +14,7 @@
 #include <Wire.h>
 #include <Arduino.h>
 #include "Log.h"
+#include "I2CBus.h"
 #endif
 
 static const char* TAG = "i2c";
@@ -62,6 +63,15 @@ namespace I2CScanner {
 
 #ifdef ARDUINO
         ESP_LOGI(TAG, "Scanning Wire bus...");
+
+        // Serialize against the sensor task's reads (see I2CBus.h). A sensor read
+        // cycle is bounded (~hundreds of ms), so a 2 s wait is ample; bail out if
+        // the bus stays busy rather than hanging the HTTP request.
+        I2CBus::Lock bus(pdMS_TO_TICKS(2000));
+        if (!bus) {
+            ESP_LOGW(TAG, "I2C bus busy - scan skipped");
+            return devices;
+        }
 
         for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
             Wire1.beginTransmission(addr);

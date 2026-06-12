@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include <freertos/semphr.h>
 #include "Log.h"
+#include "I2CBus.h"
 #endif
 
 static const char* TAG = "sensor";
@@ -107,6 +108,18 @@ void SensorController::sortSensors() {
 
 void SensorController::readSensors() {
     uint32_t timestamp = millis();
+
+#ifdef ARDUINO
+    // Hold the I2C bus for the whole read cycle so the web /api/i2c/scan can't
+    // interleave transactions and corrupt a sensor reading (see I2CBus.h). Held
+    // until function exit; the trailing dataMutex section is cheap. If the bus is
+    // somehow held elsewhere, skip this cycle rather than block the sensor task.
+    I2CBus::Lock bus(pdMS_TO_TICKS(2000));
+    if (!bus) {
+        ESP_LOGW(TAG, "I2C bus busy - skipping read cycle");
+        return;
+    }
+#endif
 
     // Retry failed sensors periodically
     static constexpr uint32_t RETRY_INTERVAL_MS = 30000;

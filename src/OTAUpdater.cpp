@@ -7,7 +7,6 @@
 #include "Config.h"
 
 #ifdef ARDUINO
-#include <esp_task_wdt.h>
 #include <esp_http_client.h>
 #include <esp_heap_caps.h>
 #include "Log.h"
@@ -207,13 +206,12 @@ bool OTAUpdater::performUpdate(
 
     updateInProgress = true;
 
-    // ESP32-S2 is single-core: heavy TLS/network I/O can starve other tasks,
-    // preventing them from resetting the watchdog. Disable WDT for the duration.
-    esp_task_wdt_deinit();
-
+    // Runs on a dedicated worker task (startBackgroundUpdate) that is NOT
+    // watchdog-subscribed, and the per-chunk vTaskDelay(1) below lets the
+    // subscribed Network/SensorMonitor tasks keep feeding their own watchdogs.
+    // So there is nothing to disable here.
     auto cleanup = []() {
         updateInProgress = false;
-        esp_task_wdt_init(30, true);
     };
 
     if (!hasEnoughMemory()) {
