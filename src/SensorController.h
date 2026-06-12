@@ -45,9 +45,27 @@ public:
     SensorController(const SensorController &) = delete;
     SensorController &operator=(const SensorController &) = delete;
 
+    /**
+     * Consistent point-in-time view of the measurement data, read under a single
+     * lock. Use this instead of combining isDataValid()/getLastReadingTimestamp()/
+     * getMeasurements() calls, which each take the lock separately and can observe
+     * the SensorMonitor task swapping the data mid-read (TOCTOU).
+     */
+    struct Snapshot {
+        bool valid = false;
+        uint32_t timestamp = 0;
+        std::vector<Sensor::Measurement> measurements;
+    };
+
     void begin();
     void addSensor(std::unique_ptr<Sensor::Sensor> sensor);
     void readSensors();
+
+    /**
+     * Atomically capture {valid, timestamp, measurements} under one lock.
+     * Returns a default (invalid, empty) snapshot if the lock times out.
+     */
+    Snapshot getSnapshot() const;
 
     /**
      * Get all current measurements

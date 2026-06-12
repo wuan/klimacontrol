@@ -215,6 +215,23 @@ std::vector<Sensor::Measurement> SensorController::getMeasurements() const {
 #endif
 }
 
+SensorController::Snapshot SensorController::getSnapshot() const {
+    Snapshot snap;
+#ifdef ARDUINO
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        snap.valid = dataValid;
+        snap.timestamp = lastReadingTimestamp;
+        if (dataValid) snap.measurements = currentMeasurements;
+        xSemaphoreGive(dataMutex);
+    }
+#else
+    snap.valid = dataValid;
+    snap.timestamp = lastReadingTimestamp;
+    if (dataValid) snap.measurements = currentMeasurements;
+#endif
+    return snap;
+}
+
 std::vector<Sensor::Measurement> SensorController::getValidMeasurements() const {
 #ifdef ARDUINO
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {

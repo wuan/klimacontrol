@@ -126,29 +126,37 @@ void WebServerManager::setupSensorRoutes() {
             }
         }
 
-        // Add current sensor data
-        float currentTemp = sensorController.getTemperature();
-        float currentHum = sensorController.getRelativeHumidity();
-        doc["current_temperature"] = sensorController.isDataValid() ? currentTemp : static_cast<float>(NAN);
-        doc["current_humidity"] = sensorController.isDataValid() ? currentHum : static_cast<float>(NAN);
-        doc["data_valid"] = sensorController.isDataValid();
-        doc["data_timestamp"] = sensorController.getLastReadingTimestamp();
+        // Add current sensor data. One consistent snapshot under a single lock —
+        // avoids mixing validity/timestamp/values from different read cycles.
+        SensorController::Snapshot snap = sensorController.getSnapshot();
+
+        auto floatOf = [&snap](Sensor::MeasurementType type) -> float {
+            if (const auto* m = Sensor::findMeasurement(snap.measurements, type)) {
+                if (const float* f = std::get_if<float>(&m->value)) return *f;
+            }
+            return static_cast<float>(NAN);
+        };
+
+        doc["current_temperature"] = snap.valid ? floatOf(Sensor::MeasurementType::Temperature)
+                                                : static_cast<float>(NAN);
+        doc["current_humidity"] = snap.valid ? floatOf(Sensor::MeasurementType::RelativeHumidity)
+                                             : static_cast<float>(NAN);
+        doc["data_valid"] = snap.valid;
+        doc["data_timestamp"] = snap.timestamp;
 
         // Add measurements array
         JsonArray measurements = doc["measurements"].to<JsonArray>();
-        if (sensorController.isDataValid()) {
-            for (const auto &m : sensorController.getMeasurements()) {
-                auto mObj = measurements.add<JsonObject>();
-                mObj["type"] = Sensor::measurementTypeLabel(m.type);
-                if (auto* i = std::get_if<int32_t>(&m.value)) {
-                    mObj["value"] = *i;
-                } else {
-                    mObj["value"] = std::get<float>(m.value);
-                }
-                mObj["unit"] = Sensor::measurementTypeUnit(m.type);
-                mObj["sensor"] = m.sensor;
-                mObj["calculated"] = m.calculated;
+        for (const auto &m : snap.measurements) {
+            auto mObj = measurements.add<JsonObject>();
+            mObj["type"] = Sensor::measurementTypeLabel(m.type);
+            if (auto* i = std::get_if<int32_t>(&m.value)) {
+                mObj["value"] = *i;
+            } else {
+                mObj["value"] = std::get<float>(m.value);
             }
+            mObj["unit"] = Sensor::measurementTypeUnit(m.type);
+            mObj["sensor"] = m.sensor;
+            mObj["calculated"] = m.calculated;
         }
 
         String sensorResponse;
