@@ -429,10 +429,21 @@ float SensorController::updateControl() {
 }
 
 uint32_t SensorController::getTimeSinceLastReading() const {
-    if (lastReadingTime == 0) {
+    uint32_t readingTime;
+#ifdef ARDUINO
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        readingTime = lastReadingTime;
+        xSemaphoreGive(dataMutex);
+    } else {
         return 0;
     }
-    return millis() - lastReadingTime;
+#else
+    readingTime = lastReadingTime;
+#endif
+    if (readingTime == 0) {
+        return 0;
+    }
+    return millis() - readingTime;
 }
 
 bool SensorController::hasConnectedSensors() const {
