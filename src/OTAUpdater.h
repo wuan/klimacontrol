@@ -131,7 +131,14 @@ private:
     // working set; sized to match the AsyncTCP task stack the update used to run on.
     static constexpr uint32_t UPDATE_TASK_STACK = 16384;
     // Check worker needs the TLS handshake working set + JSON parse buffers.
-    static constexpr uint32_t CHECK_TASK_STACK = 16384;
+    // The large mbedTLS buffers are offloaded to PSRAM (esp_mbedtls_mem_calloc),
+    // so the stack itself stays modest - 8 KB matches Espressif's HTTPS-over-TLS
+    // task examples and halves the contiguous internal-SRAM block xTaskCreate must
+    // find. otaCheckTask logs its stack high-water mark so this can be re-tuned.
+    static constexpr uint32_t CHECK_TASK_STACK = 8192;
+    // Slack on top of the stack size for the TCB and allocator alignment, so the
+    // internal-SRAM pre-check leaves room for xTaskCreate's own bookkeeping.
+    static constexpr uint32_t TASK_CREATE_HEADROOM = 2048;
 
     // Background-check result, guarded by checkResultMutex().
     static inline CheckState checkState = CheckState::Idle;

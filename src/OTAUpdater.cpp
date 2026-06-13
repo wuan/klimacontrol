@@ -366,12 +366,33 @@ void OTAUpdater::otaCheckTask(void *arg) {
     }
 
     delete job;
+    // High-water mark = smallest free stack (in bytes) seen on this task. If this
+    // ever approaches 0, CHECK_TASK_STACK is too small and must be raised.
+    ESP_LOGD(TAG, "ota_check stack high-water mark: %u bytes free",
+             (unsigned)uxTaskGetStackHighWaterMark(nullptr));
     vTaskDelete(nullptr);
 }
 
 bool OTAUpdater::startBackgroundCheck(const char *owner, const char *repo) {
     SemaphoreHandle_t m = checkResultMutex();
     if (!m) return false;
+
+    // A FreeRTOS task stack must be allocated from internal SRAM (it can never
+    // live in PSRAM), and it must be one contiguous block. esp_get_free_heap_size()
+    // counts PSRAM too, so it can look healthy while internal SRAM is too
+    // fragmented to hand out CHECK_TASK_STACK bytes - that is exactly what makes
+    // xTaskCreate() fail here. Check the largest free *internal* block up front so
+    // we fail fast with an actionable number instead of an opaque create error.
+    size_t largestInternal =
+        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (largestInternal < CHECK_TASK_STACK + TASK_CREATE_HEADROOM) {
+        ESP_LOGW(TAG,
+                 "Check not started: largest free internal block %u < %u needed "
+                 "(internal SRAM fragmented)",
+                 (unsigned)largestInternal,
+                 (unsigned)(CHECK_TASK_STACK + TASK_CREATE_HEADROOM));
+        return false;
+    }
 
     if (xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
         // Don't start if a check is already running or a real update is underway.
@@ -391,7 +412,10 @@ bool OTAUpdater::startBackgroundCheck(const char *owner, const char *repo) {
     BaseType_t created = xTaskCreate(otaCheckTask, "ota_check",
                                      CHECK_TASK_STACK, job, 1, nullptr);
     if (created != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create OTA check task");
+        ESP_LOGE(TAG,
+                 "Failed to create OTA check task (largest free internal block %u)",
+                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL |
+                                                            MALLOC_CAP_8BIT));
         // Roll back to Failed so we don't get stuck in InProgress forever.
         if (xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
             checkState = CheckState::Failed;
