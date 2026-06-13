@@ -15,6 +15,7 @@
 #include <ArduinoJson.h>
 #include <esp_ota_ops.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <freertos/semphr.h>
 #endif
 
@@ -140,11 +141,40 @@ private:
     // internal-SRAM pre-check leaves room for xTaskCreate's own bookkeeping.
     static constexpr uint32_t TASK_CREATE_HEADROOM = 2048;
 
+#ifdef ARDUINO
+    // Statically-reserved stack + TCB for the single OTA worker task.
+    //
+    // A FreeRTOS task stack must come from one contiguous block of *internal*
+    // SRAM (never PSRAM). On the ESP32-S2 a 16 KB contiguous internal block is
+    // scarce once WiFi/lwIP/mbedTLS are running - and the background check task
+    // runs an HTTPS request immediately before the update, fragmenting internal
+    // heap with the TLS handshake working set. That made the runtime xTaskCreate()
+    // for the worker fail with errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY ("Failed to
+    // create OTA worker task"). Reserving the stack in BSS at link time sidesteps
+    // the fragmented runtime heap entirely: the block exists from boot, so
+    // xTaskCreateStatic() can never fail to allocate it.
+    static inline StaticTask_t otaWorkerTCB{};
+    static inline StackType_t otaWorkerStack[UPDATE_TASK_STACK]{};
+
+    // The stack/TCB above are a single shared buffer, so the previous worker must
+    // be fully terminated before the next update reuses them. A self-deleting task
+    // (vTaskDelete(NULL)) is reclaimed asynchronously by the idle task, so its
+    // handle can dangle - we can't tell when the buffers are free again. Instead
+    // the worker parks itself (vTaskSuspend, holding nothing) as its final act and
+    // sets workerParked; the next startBackgroundUpdate waits for that flag, then
+    // synchronously reaps the parked task with vTaskDelete(handle) before reusing
+    // the buffers. updateInProgress is cleared inside performUpdate (before the
+    // worker parks), so it can't gate reuse on its own - hence the separate flag.
+    static inline TaskHandle_t otaWorkerHandle = nullptr;
+    static inline std::atomic<bool> workerParked{false};
+#endif
+
     // Background-check result, guarded by checkResultMutex().
     static inline CheckState checkState = CheckState::Idle;
     static inline FirmwareInfo checkResult{};
 #ifdef ARDUINO
     static SemaphoreHandle_t checkResultMutex();
     static void otaCheckTask(void *arg);  // FreeRTOS worker for startBackgroundCheck
+    static void otaWorkerTask(void *arg); // FreeRTOS worker for startBackgroundUpdate
 #endif
 };

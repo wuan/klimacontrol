@@ -317,25 +317,40 @@ namespace {
         size_t size;
         Config::ConfigManager *config;
     };
+}
 
-    void otaWorkerTask(void *arg) {
-        auto *job = static_cast<OtaJob *>(arg);
+// Member (not a free function) so it can set the private workerParked flag.
+void OTAUpdater::otaWorkerTask(void *arg) {
+    auto *job = static_cast<OtaJob *>(arg);
 
-        bool success = OTAUpdater::performUpdate(job->url, job->size,
-            [](int percent, size_t bytes) {
-                ESP_LOGI(TAG, "Progress: %d%% (%zu bytes)", percent, bytes);
-            });
+    bool success = OTAUpdater::performUpdate(job->url, job->size,
+        [](int percent, size_t bytes) {
+            ESP_LOGI(TAG, "Progress: %d%% (%zu bytes)", percent, bytes);
+        });
 
-        if (success) {
-            ESP_LOGI(TAG, "OTA update successful, scheduling restart...");
-            job->config->requestRestart(1000);
-        } else {
-            ESP_LOGE(TAG, "OTA update failed");
-        }
-
-        delete job;
-        vTaskDelete(nullptr);
+    if (success) {
+        ESP_LOGI(TAG, "OTA update successful, scheduling restart...");
+        job->config->requestRestart(1000);
+    } else {
+        ESP_LOGE(TAG, "OTA update failed");
     }
+
+    delete job;
+    // High-water mark = smallest free stack (in bytes) seen on this task.
+    // If this ever approaches 0, UPDATE_TASK_STACK is too small; the worker
+    // runs the TLS download + flash-write loop so it needs more than the
+    // check task. Logged here so the static stack can be re-tuned.
+    ESP_LOGD(TAG, "ota_update stack high-water mark: %u bytes free",
+             (unsigned)uxTaskGetStackHighWaterMark(nullptr));
+
+    // Park instead of self-deleting: the next update reuses our shared static
+    // stack/TCB and must reap us deterministically (see otaWorkerStack). Set
+    // the flag as the very last action so that once startBackgroundUpdate sees
+    // it, we are holding no locks (no logging between here and the suspend) and
+    // are safe to vTaskDelete() from that task. Nothing ever resumes us; we sit
+    // suspended until reaped, or until the post-update restart reboots the chip.
+    workerParked.store(true);
+    vTaskSuspend(nullptr);
 }
 
 SemaphoreHandle_t OTAUpdater::checkResultMutex() {
@@ -474,11 +489,32 @@ bool OTAUpdater::startBackgroundUpdate(const String &downloadUrl, size_t expecte
         return false;
     }
 
+    // Reap the previous worker before reusing the shared static stack/TCB. We only
+    // get here after updateInProgress went false, i.e. the prior worker finished
+    // performUpdate(); it is now parking itself. Wait for the parked flag (set as
+    // its final, lock-free action) so the vTaskDelete() below can't tear it down
+    // mid-log, then delete it deterministically from this context. Bounded: the
+    // worker only has to run a couple of instructions after clearing the flag.
+    if (otaWorkerHandle != nullptr) {
+        while (!workerParked.load()) {
+            vTaskDelay(pdMS_TO_TICKS(2));
+        }
+        vTaskDelete(otaWorkerHandle);
+        otaWorkerHandle = nullptr;
+    }
+    workerParked.store(false);
+
     auto *job = new OtaJob{downloadUrl, expectedSize, &config};
 
-    BaseType_t created = xTaskCreate(otaWorkerTask, "ota_update",
-                                     UPDATE_TASK_STACK, job, 1, nullptr);
-    if (created != pdPASS) {
+    // Use the statically-reserved stack (see otaWorkerStack in the header): the
+    // worker's 16 KB contiguous internal-SRAM stack is impossible to allocate
+    // reliably at runtime once WiFi/TLS have fragmented internal heap, so we
+    // reserve it in BSS at boot instead. xTaskCreateStatic() returns NULL only if
+    // the buffers are null, so this no longer fails on a fragmented heap.
+    otaWorkerHandle = xTaskCreateStatic(otaWorkerTask, "ota_update",
+                                        UPDATE_TASK_STACK, job, 1,
+                                        otaWorkerStack, &otaWorkerTCB);
+    if (otaWorkerHandle == nullptr) {
         ESP_LOGE(TAG, "Failed to create OTA worker task");
         updateInProgress = false;
         delete job;
