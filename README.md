@@ -211,20 +211,20 @@ See [OTA Documentation](docs/OTA_FIRMWARE_UPDATES.md) for detailed setup.
 
 The project includes two types of specifications:
 
-1. **OpenSpec Documents** in `specs/` - Markdown-based system specifications
+1. **OpenSpec Documents** in `openspec/` - spec-driven capability specifications
 2. **OpenAPI Specifications** in `docs/api/` - API interface definitions
 
 #### OpenSpec Validation
 
-The OpenSpec documents in the `specs/` directory define the system architecture, requirements, and behavior. These are validated using the official OpenSpec CLI:
+The OpenSpec documents in the `openspec/` directory define the system architecture, requirements, and behavior, and the spec-driven change workflow used to evolve them. See [AGENTS.md](AGENTS.md#spec-driven-development-openspec) for the full workflow. These are validated using the official OpenSpec CLI:
 
 - GitHub Actions automatically validates all OpenSpec documents on push/pull request
 - HTML documentation is generated from the Markdown specs
 - Validation includes proper formatting, cross-references, and requirement syntax
 
-To validate locally:
+To validate locally (run from the repo root, where `openspec/` lives):
 ```bash
-openspec validate --specs
+openspec validate --all --strict   # or: scripts/validate-openspec.sh
 ```
 
 #### API Documentation

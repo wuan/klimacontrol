@@ -3,11 +3,11 @@ name: OpenSpec Validation
 on:
   push:
     paths:
-      - 'specs/**'
+      - 'openspec/**'
       - '.github/workflows/openspec.yml'
   pull_request:
     paths:
-      - 'specs/**'
+      - 'openspec/**'
       - '.github/workflows/openspec.yml'
 
 jobs:
@@ -24,4 +24,6 @@ jobs:
           node-version: '20'
 
       - name: Validate OpenSpec changes and specs
+        # Runs from the repo root, where openspec/ lives. The CLI silently
+        # validates nothing ("No items found") if run from a dir without it.
         run: npx -y @fission-ai/openspec@latest validate --all --strict --no-interactive

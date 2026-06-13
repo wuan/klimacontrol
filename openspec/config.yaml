@@ -1,0 +1,39 @@
+schema: spec-driven
+
+# Project context (shown to AI when creating artifacts).
+# This is the spec-driven schema's equivalent of classic OpenSpec's project.md.
+context: |
+  Klima-Control: an ESP32-S2 (Adafruit QT Py) temperature/humidity controller
+  with a web interface. C++17 firmware on PlatformIO + Arduino framework.
+
+  Architecture:
+  - Single-core ESP32-S2. FreeRTOS tasks: Network and SensorMonitor (both
+    priority 1). Shared sensor data is mutex-protected between tasks.
+  - Hardware-specific code (Serial, WiFi, FreeRTOS) is guarded by `#ifdef ARDUINO`
+    so the `native` PlatformIO env can build and run unit tests on the host.
+  - Sensors connect via the Stemma I2C port; readings are generic `Measurement`
+    structs (type/value/unit/sensor/calculated) held by `SensorController`.
+  - Persistent config via ESP32 Preferences (NVS). AP mode + captive portal for
+    first-time WiFi setup; mDNS discovery (e.g. `klima-zaabbcc.local`).
+  - HTTP API via ESPAsyncWebServer. The web UI lives in `data/*.html` and is
+    gzip-compressed into `src/generated/*_gz.h` by `scripts/compress_web.py`
+    (also a PlatformIO pre-build hook).
+
+  Conventions:
+  - Build/test: `pio run -e adafruit_qtpy_esp32s2` (firmware),
+    `pio test -e native` (tests). Route handlers only compile under `ARDUINO`.
+  - State-changing HTTP endpoints require the CSRF header
+    `X-Requested-With: KlimaControl` (see `verifyCsrfHeader()` in
+    `src/routes/RouteHelpers.h`); frontend POSTs must send it.
+  - Each capability has one spec under `openspec/specs/<capability>/spec.md`
+    using `### Requirement` + `#### Scenario` (WHEN/THEN) syntax.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours

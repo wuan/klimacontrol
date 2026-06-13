@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'docs/api/**'
-      - 'specs/**'
+      - 'openspec/**'
       - '.github/workflows/deploy-pages.yml'
 
 jobs:
@@ -59,14 +59,14 @@ jobs:
 
           {
             printf '%s\n' '<!DOCTYPE html>' '<html>' '<head><meta charset="utf-8"><title>Klima-Control Specifications</title>' '<style>' 'body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }' 'h1 { color: #2c3e50; }' 'ul { list-style-type: none; padding: 0; }' 'li { margin: 10px 0; padding: 10px; background: #f9f9f9; border-radius: 5px; }' 'a { text-decoration: none; color: #3498db; font-weight: bold; }' 'a:hover { text-decoration: underline; }' '</style></head>' '<body>' '<h1>Klima-Control Specifications</h1>' '<ul>'
-            for dir in specs/openspec/specs/*/; do
+            for dir in openspec/specs/*/; do
               capability=$(basename "$dir")
               printf '<li><a href="%s.html">%s</a></li>\n' "$capability" "$capability"
             done
             printf '%s\n' '</ul>' '</body>' '</html>'
           } > pages/specs/index.html
 
-          for dir in specs/openspec/specs/*/; do
+          for dir in openspec/specs/*/; do
             capability=$(basename "$dir")
             if [ -f "$dir/spec.md" ]; then
               marked -o "pages/specs/$capability.html" -i "$dir/spec.md"

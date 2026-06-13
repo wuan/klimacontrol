@@ -51,6 +51,41 @@ pio run -e adafruit_qtpy_esp32s2 -t upload
 pio device monitor
 ```
 
+## Spec-Driven Development (OpenSpec)
+
+This project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec) to keep a written specification alongside the firmware. The specs are the source of truth for *what* each capability must do; the code is the implementation.
+
+**Layout** (all under `openspec/` at the repo root):
+
+| Path | Purpose |
+|------|---------|
+| `openspec/config.yaml` | Schema (`spec-driven`) + project `context` shown to AI when generating artifacts |
+| `openspec/specs/<capability>/spec.md` | One living spec per capability (`### Requirement` + `#### Scenario` WHEN/THEN syntax) |
+| `openspec/changes/<name>/` | An in-flight change: `proposal.md`, `design.md`, `specs/` deltas, `tasks.md` |
+| `openspec/changes/archive/` | Completed, archived changes |
+
+There are 11 capability specs: `system-architecture`, `sensor-management`, `http-api`, `networking`, `network-wifi-resilience`, `ota-updates`, `mqtt-integration`, `web-interface`, `configuration`, `status-led`, `temperature-control`.
+
+**The CLI and all skills must run from the repo root** (where `openspec/` lives). Run from anywhere else and the CLI silently reports "No items found to validate."
+
+**When to use it:** any change that adds, removes, or alters observable behavior of a capability should ride alongside a spec update — propose the change, update the relevant `spec.md`, implement, then archive. Pure refactors, bug fixes that restore already-specified behavior, and build/tooling tweaks don't need a change.
+
+**Workflow** (Claude Code skills / `/opsx:*` commands drive each step):
+
+1. **Explore** (optional) — `/opsx:explore` to think through the problem before committing to a change.
+2. **Propose** — `/opsx:propose` scaffolds `openspec/changes/<name>/` and generates proposal, design, spec deltas, and tasks.
+3. **Apply** — `/opsx:apply` implements the tasks, checking them off as it goes.
+4. **Archive** — `/opsx:archive` folds the spec deltas into the main specs under `openspec/specs/` and moves the change to `archive/`.
+
+**Validate** (run from repo root):
+```bash
+openspec validate --all --strict     # or: scripts/validate-openspec.sh
+openspec list                          # active changes
+openspec list --specs                  # capability specs
+```
+
+CI runs the same validation on every push/PR that touches `openspec/**` (`.github/workflows/openspec.yml`). After upgrading the CLI or adding an AI tool, run `openspec update` from the repo root to refresh the generated tool-integration files under `.claude/`.
+
 ## Architecture
 
 ### Single-Core Task Model
@@ -258,6 +293,7 @@ Use `Serial.printf()` for formatted debug output. Key points to log:
 **Utilities**: `src/support/` (color utilities, data structures)
 **Tests**: `test/test_*/` (each subdirectory is independent test suite)
 **Documentation**: `docs/` (technical documentation)
+**Specifications**: `openspec/` (spec-driven capability specs + change workflow — see [Spec-Driven Development](#spec-driven-development-openspec))
 
 ## Platform-Specific Code
 
