@@ -223,6 +223,11 @@ namespace Sensor {
         [[nodiscard]] uint32_t getLastInitAttempt() const { return lastInitAttempt; }
         [[nodiscard]] uint8_t getConsecutiveReadFailures() const { return consecutiveReadFailures; }
 
+        // True if this sensor talks over the shared I2C bus. Used to decide when a
+        // run of failed reads warrants an I2C bus recovery; the DeviceSensor (heap,
+        // RSSI, uptime) never touches the bus and so always reports valid.
+        [[nodiscard]] virtual bool usesI2C() const { return false; }
+
         [[nodiscard]] virtual TypeSpan providesMeasurements() const { return {nullptr, 0}; }
         [[nodiscard]] virtual TypeSpan requiresMeasurements() const { return {nullptr, 0}; }
         [[nodiscard]] virtual size_t measurementCount() const { return providesMeasurements().count; }

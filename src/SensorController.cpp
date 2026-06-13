@@ -110,6 +110,8 @@ void SensorController::readSensors() {
     uint32_t timestamp = millis();
     std::vector<Sensor::Measurement> allMeasurements;
     bool anyValid = false;
+    bool anyI2CSensor = false;   // at least one I2C sensor is configured
+    bool anyI2CValid = false;    // at least one I2C sensor read valid this cycle
 
     // ===== PHASE 1: Sensor I2C reads (I2C bus locked) =====
     {
@@ -154,6 +156,8 @@ void SensorController::readSensors() {
         for (auto &sensor : sensors) {
             if (!sensor) continue;
 
+            if (sensor->usesI2C()) anyI2CSensor = true;
+
             // Only read sensors that are online
             if (sensor->getStatus() != Sensor::SensorStatus::Online) {
                 continue;
@@ -179,10 +183,33 @@ void SensorController::readSensors() {
 
                 allMeasurements.push_back({Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
                 anyValid = true;
+                if (sensor->usesI2C()) anyI2CValid = true;
             } else {
                 ESP_LOGW(TAG, "Sensor %s - invalid data", sensor->getType());
             }
         }
+
+#ifdef ARDUINO
+        // I2C bus recovery: if I2C sensors are configured but none produced a
+        // valid reading this cycle, the bus may be wedged (a slave stuck holding
+        // SDA low). After a short streak, attempt recovery while we still hold the
+        // bus lock so no scan can interleave. The DeviceSensor is not I2C, so it
+        // never masks this condition.
+        if (anyI2CSensor && !anyI2CValid) {
+            if (++consecutiveI2CFailures >= I2C_RECOVERY_FAILURE_STREAK) {
+                ESP_LOGW(TAG, "%u consecutive I2C read cycles failed - attempting bus recovery",
+                         consecutiveI2CFailures);
+                if (I2CBus::recover()) {
+                    ESP_LOGI(TAG, "I2C bus recovery succeeded (SDA released)");
+                } else {
+                    ESP_LOGE(TAG, "I2C bus recovery failed - SDA still held low");
+                }
+                consecutiveI2CFailures = 0;
+            }
+        } else if (anyI2CValid) {
+            consecutiveI2CFailures = 0;
+        }
+#endif
     }  // I2C bus lock released here
 
     // ===== PHASE 2: Data update (I2C bus NOT locked) =====

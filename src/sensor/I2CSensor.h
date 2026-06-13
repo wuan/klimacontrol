@@ -23,6 +23,8 @@ namespace Sensor {
 #else
         explicit I2CSensor(uint8_t address = 0x77);
 #endif
+
+        [[nodiscard]] bool usesI2C() const override { return true; }
     };
 
 } // namespace Sensor

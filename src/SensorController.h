@@ -38,6 +38,12 @@ private:
     // Temperature control state
     uint32_t lastReadingTime;
 
+    // Consecutive read cycles in which I2C sensors are present but none returned
+    // valid data. After I2C_RECOVERY_FAILURE_STREAK cycles the bus is assumed
+    // wedged and a recovery is attempted. Reset on any valid I2C reading.
+    uint8_t consecutiveI2CFailures = 0;
+    static constexpr uint8_t I2C_RECOVERY_FAILURE_STREAK = 3;
+
 public:
     explicit SensorController(Config::ConfigManager &config);
 

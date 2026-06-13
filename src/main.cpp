@@ -27,6 +27,7 @@
 #ifdef ARDUINO
 #include <esp_task_wdt.h>
 #include <esp_idf_version.h>
+#include "HardwareWatchdog.h"
 #endif
 
 static const char* TAG = "main";
@@ -155,10 +156,17 @@ void setup() {
     esp_task_wdt_init(30, true);
 #endif
     ESP_LOGI(TAG, "Task watchdog configured (30s timeout)");
+
+    // Independent hardware (RTC) watchdog backstop. Longer than the 30s TWDT so
+    // the TWDT fires first on an ordinary task stall; this only triggers on a
+    // total hang the TWDT can't catch. Fed from loop() below.
+    static constexpr uint32_t HW_WDT_TIMEOUT_MS = 60000;
+    HardwareWatchdog::begin(HW_WDT_TIMEOUT_MS);
 }
 
 void loop() {
 #ifdef ARDUINO
+    HardwareWatchdog::feed();
     config.checkRestart();
     vTaskDelay(2000 / portTICK_PERIOD_MS);
 #endif
