@@ -22,6 +22,10 @@ void WebServerManager::setupSettingsRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
+                      if (!verifyCsrfHeader(request)) {
+                          return;
+                      }
+
                       JsonDocument doc;
 
                       if (deserializeJson(doc, data, len)) {
@@ -67,6 +71,10 @@ void WebServerManager::setupSettingsRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
+                      if (!verifyCsrfHeader(request)) {
+                          return;
+                      }
+
                       JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -101,6 +109,10 @@ void WebServerManager::setupSettingsRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
+                      if (!verifyCsrfHeader(request)) {
+                          return;
+                      }
+
                       JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -128,6 +140,9 @@ void WebServerManager::setupSettingsRoutes() {
 
     // POST /api/settings/reboot - Reboot device
     server.on("/api/settings/reboot", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!verifyCsrfHeader(request)) {
+            return;
+        }
         ESP_LOGI(TAG, "Reboot requested");
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
         config.requestRestart(1000);
@@ -171,6 +186,9 @@ void WebServerManager::setupSettingsRoutes() {
 
     // POST /api/restart - Restart the device
     server.on("/api/restart", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!verifyCsrfHeader(request)) {
+            return;
+        }
         request->send(200, CONTENT_TYPE_JSON, R"({"success":true,"message":"Restarting..."})");
         config.requestRestart(1000);
     });
@@ -198,6 +216,10 @@ void WebServerManager::setupSettingsRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
+                      if (!verifyCsrfHeader(request)) {
+                          return;
+                      }
+
                       JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 

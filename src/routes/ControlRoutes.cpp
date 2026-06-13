@@ -17,6 +17,10 @@ void WebServerManager::setupControlRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
+                      if (!verifyCsrfHeader(request)) {
+                          return;
+                      }
+
                       JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -41,6 +45,9 @@ void WebServerManager::setupControlRoutes() {
 
     // POST /api/control/enable - Enable temperature control
     server.on("/api/control/enable", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!verifyCsrfHeader(request)) {
+            return;
+        }
         sensorController.setControlEnabled(true);
 
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
@@ -48,6 +55,9 @@ void WebServerManager::setupControlRoutes() {
 
     // POST /api/control/disable - Disable temperature control
     server.on("/api/control/disable", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!verifyCsrfHeader(request)) {
+            return;
+        }
         sensorController.setControlEnabled(false);
 
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);

@@ -107,6 +107,10 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
                                         [[maybe_unused]] size_t total) {
     // Only process the first chunk (index == 0)
     if (index == 0) {
+        if (!verifyCsrfHeader(request)) {
+            return;
+        }
+
         // Parse JSON body
         auto doc_ptr = std::make_unique<JsonDocument>();
         JsonDocument& doc = *doc_ptr;

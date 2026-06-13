@@ -19,6 +19,9 @@ void WebServerManager::setupOTARoutes() {
     // The TLS round-trip to GitHub blocks, so it runs on a worker task to keep
     // the AsyncTCP event task free; clients poll GET /api/ota/check for the result.
     server.on("/api/ota/check", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (!verifyCsrfHeader(request)) {
+            return;
+        }
         bool started = OTAUpdater::startBackgroundCheck(OTA_GITHUB_OWNER, OTA_GITHUB_REPO);
 
         JsonDocument doc;
@@ -75,6 +78,9 @@ void WebServerManager::setupOTARoutes() {
     // multi-minute download runs there), so it returns quickly and is safe to
     // call inline on the AsyncTCP event task.
     server.on("/api/ota/update", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!verifyCsrfHeader(request)) {
+            return;
+        }
         ESP_LOGI(TAG, "OTA update requested");
 
         if (OTAUpdater::startBackgroundUpdateFromLatestCheck(this->config)) {
@@ -120,6 +126,9 @@ void WebServerManager::setupOTARoutes() {
 
     // POST /api/ota/confirm - Confirm successful boot after OTA
     server.on("/api/ota/confirm", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (!verifyCsrfHeader(request)) {
+            return;
+        }
         bool success = OTAUpdater::confirmBoot();
 
         JsonDocument doc;

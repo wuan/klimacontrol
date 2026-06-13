@@ -321,7 +321,7 @@
         try {
             const response = await fetch('/api/settings/device-name', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
                 body: JSON.stringify({name: name.trim()})
             });
 
@@ -355,7 +355,7 @@
         try {
             const response = await fetch('/api/settings/wifi', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
                 body: JSON.stringify({ssid, password})
             });
 
@@ -445,7 +445,7 @@
 
         try {
             // Start the background check, then poll for the result.
-            await fetch('/api/ota/check', {method: 'POST'});
+            await fetch('/api/ota/check', {method: 'POST', headers: {'X-Requested-With': 'KlimaControl'}});
             const data = await pollOtaCheck();
 
             if (data.update_available) {
@@ -496,7 +496,7 @@
             // No download URL is sent: the device installs only the release it
             // found during its own update check, so it can't be pointed at an
             // arbitrary binary.
-            const response = await fetch('/api/ota/update', {method: 'POST'});
+            const response = await fetch('/api/ota/update', {method: 'POST', headers: {'X-Requested-With': 'KlimaControl'}});
 
             if (response.ok) {
                 setTimeout(() => {
@@ -571,7 +571,7 @@
         try {
             const response = await fetch('/api/mqtt', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
                 body: JSON.stringify(config)
             });
 
@@ -628,7 +628,7 @@
         try {
             const response = await fetch('/api/syslog', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
                 body: JSON.stringify(config)
             });
 
@@ -752,7 +752,7 @@
         try {
             const response = await fetch('/api/sensors/config', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
                 body: JSON.stringify({devices})
             });
 
@@ -821,7 +821,7 @@
         try {
             const response = await fetch('/api/settings/elevation', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
                 body: JSON.stringify({elevation})
             });
 
@@ -843,7 +843,7 @@
         if (!confirm('Reboot the device?')) return;
 
         try {
-            const response = await fetch('/api/settings/reboot', {method: 'POST'});
+            const response = await fetch('/api/settings/reboot', {method: 'POST', headers: {'X-Requested-With': 'KlimaControl'}});
             if (response.ok) {
                 alert('Device is rebooting. Please wait a few seconds, then refresh this page.');
             } else {
@@ -879,7 +879,7 @@
         try {
             const response = await fetch('/api/settings/energy', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
                 body: JSON.stringify({wifi_power: wifiPower, wifi_sleep_mode: wifiSleepMode})
             });
 

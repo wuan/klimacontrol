@@ -74,6 +74,10 @@ void WebServerManager::setupSensorRoutes() {
               nullptr,
               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
                   if (index == 0) {
+                      if (!verifyCsrfHeader(request)) {
+                          return;
+                      }
+
                       JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
