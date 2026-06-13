@@ -488,14 +488,10 @@
         document.getElementById('checkUpdateBtn').disabled = true;
 
         try {
-            const response = await fetch('/api/ota/update', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    download_url: updateInfo.download_url,
-                    size: updateInfo.size_bytes
-                })
-            });
+            // No download URL is sent: the device installs only the release it
+            // found during its own update check, so it can't be pointed at an
+            // arbitrary binary.
+            const response = await fetch('/api/ota/update', {method: 'POST'});
 
             if (response.ok) {
                 setTimeout(() => {

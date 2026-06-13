@@ -81,22 +81,24 @@ public:
     );
 
     /**
-     * Run performUpdate() on a dedicated FreeRTOS task and return immediately.
+     * Start an OTA update for the firmware identified by the most recent
+     * successful background check (see startBackgroundCheck / getCheckResult).
      *
-     * The firmware download blocks for minutes; running it inline in an
-     * ESPAsyncWebServer request callback would stall the single AsyncTCP event
-     * task (dropping connections / stalling the TCP stack). This spawns a
-     * worker so the HTTP handler can respond right away. On success the worker
-     * schedules a restart via the supplied ConfigManager.
+     * The download URL and size are taken from the device's own check result —
+     * a GitHub release for the compiled-in owner/repo — and never from the
+     * caller. This is deliberate: clients must not be able to point the device
+     * at an arbitrary binary. A check (CheckState::Done with a valid asset)
+     * must have completed first.
      *
-     * @return true if the worker was started; false if an update is already in
-     *         progress or the task could not be created.
+     * Like startBackgroundUpdate(), the multi-minute download runs on a
+     * dedicated worker task so the HTTP handler can respond right away; on
+     * success the worker schedules a restart via the supplied ConfigManager.
+     *
+     * @return true if the worker was started; false if no verified update is
+     *         available, an update is already in progress, or the task could
+     *         not be created.
      */
-    static bool startBackgroundUpdate(
-        const String &downloadUrl,
-        size_t expectedSize,
-        Config::ConfigManager &config
-    );
+    static bool startBackgroundUpdateFromLatestCheck(Config::ConfigManager &config);
 
     static bool confirmBoot();
     static bool hasUnconfirmedUpdate();
@@ -106,6 +108,15 @@ public:
     static bool isUpdateInProgress() { return updateInProgress; }
 
 private:
+    // Spawn the OTA worker for an already-validated download URL/size.
+    // Internal only: the URL must originate from a trusted source (the device's
+    // own GitHub check), never directly from a client request.
+    static bool startBackgroundUpdate(
+        const String &downloadUrl,
+        size_t expectedSize,
+        Config::ConfigManager &config
+    );
+
     static inline bool updateInProgress = false;
     static constexpr int TIMEOUT_MS = 30000;
     static constexpr int CHUNK_SIZE = 4096;

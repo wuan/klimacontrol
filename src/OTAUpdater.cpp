@@ -416,6 +416,28 @@ OTAUpdater::CheckState OTAUpdater::getCheckResult(FirmwareInfo &infoOut) {
     return CheckState::Idle;
 }
 
+bool OTAUpdater::startBackgroundUpdateFromLatestCheck(Config::ConfigManager &config) {
+    FirmwareInfo info;
+    CheckState state = getCheckResult(info);
+
+    if (state != CheckState::Done || !info.isValid ||
+        info.downloadUrl.isEmpty() || info.size == 0) {
+        ESP_LOGW(TAG, "Update refused: no verified update available (run a check first)");
+        return false;
+    }
+
+    // Defense in depth: the URL came from our own GitHub check, but reject
+    // anything that isn't a github.com release download before flashing it.
+    // GitHub serves release assets from github.com (which then 302-redirects to
+    // its CDN); esp_http_client follows that redirect internally.
+    if (!info.downloadUrl.startsWith("https://github.com/")) {
+        ESP_LOGE(TAG, "Update refused: unexpected download host in %s", info.downloadUrl.c_str());
+        return false;
+    }
+
+    return startBackgroundUpdate(info.downloadUrl, info.size, config);
+}
+
 bool OTAUpdater::startBackgroundUpdate(const String &downloadUrl, size_t expectedSize,
                                        Config::ConfigManager &config) {
     // Claim the in-progress slot up front so a rapid second request can't spawn

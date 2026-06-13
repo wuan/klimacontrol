@@ -48,7 +48,9 @@ void WebServerManager::setupOTARoutes() {
                 doc["latest_version"] = info.version;
                 doc["release_name"] = info.name;
                 doc["size_bytes"] = info.size;
-                doc["download_url"] = info.downloadUrl;
+                // The download URL is deliberately NOT exposed: the device
+                // updates only from its own checked result, so clients never
+                // need it and cannot supply one.
                 break;
             case OTAUpdater::CheckState::Failed:
                 doc["status"] = "error";
@@ -62,42 +64,28 @@ void WebServerManager::setupOTARoutes() {
         request->send(200, CONTENT_TYPE_JSON, response);
     });
 
-    // POST /api/ota/update - Perform OTA update
-    server.on("/api/ota/update", HTTP_POST,
-              [](AsyncWebServerRequest *request) {
-                  // Send immediate response before starting update
-                  request->send(200, CONTENT_TYPE_JSON,
-                                R"({"status":"starting","message":"OTA update started"})");
-              },
-              nullptr,
-              [this]([[maybe_unused]] AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-                  if (index == 0) {
-                      ESP_LOGI(TAG, "OTA update requested");
-                  }
+    // POST /api/ota/update - Install the update found by the last check.
+    //
+    // The request carries no download URL by design: the device flashes only
+    // the firmware identified by its own GitHub check (compiled-in owner/repo),
+    // so a client cannot point it at an arbitrary binary. A successful check
+    // must have run first.
+    //
+    // startBackgroundUpdateFromLatestCheck() only spawns a worker (the actual
+    // multi-minute download runs there), so it returns quickly and is safe to
+    // call inline on the AsyncTCP event task.
+    server.on("/api/ota/update", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        ESP_LOGI(TAG, "OTA update requested");
 
-                  if (index + len == total) {
-                      JsonDocument doc;
-                      deserializeJson(doc, data, len);
-
-                      String downloadUrl = doc["download_url"] | "";
-                      size_t size = doc["size"] | 0;
-
-                      if (downloadUrl.isEmpty() || size == 0) {
-                          return;
-                      }
-
-                      ESP_LOGI(TAG, "Starting OTA: %s (%zu bytes)", downloadUrl.c_str(), size);
-
-                      // Run the (multi-minute, blocking) download on a dedicated
-                      // worker task so we don't stall the AsyncTCP event task.
-                      // The "starting" response was already queued in the request
-                      // handler above and flushes as soon as this callback returns.
-                      if (!OTAUpdater::startBackgroundUpdate(downloadUrl, size, this->config)) {
-                          ESP_LOGW(TAG, "OTA update not started (busy or task creation failed)");
-                      }
-                  }
-              }
-    );
+        if (OTAUpdater::startBackgroundUpdateFromLatestCheck(this->config)) {
+            request->send(200, CONTENT_TYPE_JSON,
+                          R"({"status":"starting","message":"OTA update started"})");
+        } else {
+            ESP_LOGW(TAG, "OTA update not started (no verified update, busy, or task creation failed)");
+            request->send(409, CONTENT_TYPE_JSON,
+                          R"({"status":"error","message":"No verified update available or update already in progress"})");
+        }
+    });
 
     // GET /api/ota/status - Get OTA status
     server.on("/api/ota/status", HTTP_GET, [](AsyncWebServerRequest *request) {
