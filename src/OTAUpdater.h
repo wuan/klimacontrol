@@ -8,6 +8,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <atomic>
 
 #ifdef ARDUINO
 #include <Update.h>
@@ -105,7 +106,7 @@ public:
     static bool getRunningPartitionInfo(String &label, uint32_t &address);
     static void getMemoryInfo(uint32_t &freeHeap, uint32_t &minFreeHeap);
     static bool hasEnoughMemory();
-    static bool isUpdateInProgress() { return updateInProgress; }
+    static bool isUpdateInProgress() { return updateInProgress.load(); }
 
 private:
     // Spawn the OTA worker for an already-validated download URL/size.
@@ -117,7 +118,12 @@ private:
         Config::ConfigManager &config
     );
 
-    static inline bool updateInProgress = false;
+    // Guards against concurrent OTA workers and marks heap-heavy operations so
+    // the network task's low-heap guard won't reboot mid-update. Atomic because
+    // it is claimed/released across the AsyncTCP, check, and update tasks; the
+    // update slot is claimed with a single compare-exchange to close the
+    // check-then-set TOCTOU window in startBackgroundUpdate().
+    static inline std::atomic<bool> updateInProgress{false};
     static constexpr int TIMEOUT_MS = 30000;
     static constexpr int CHUNK_SIZE = 4096;
     static constexpr int MIN_FREE_HEAP = 65536;

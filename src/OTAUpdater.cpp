@@ -442,11 +442,13 @@ bool OTAUpdater::startBackgroundUpdate(const String &downloadUrl, size_t expecte
                                        Config::ConfigManager &config) {
     // Claim the in-progress slot up front so a rapid second request can't spawn
     // a concurrent worker in the window before performUpdate() sets the flag.
-    if (updateInProgress) {
+    // The test-and-set must be atomic: two callers racing on a plain read+write
+    // could both observe false and both spawn a worker (TOCTOU).
+    bool expected = false;
+    if (!updateInProgress.compare_exchange_strong(expected, true)) {
         ESP_LOGW(TAG, "Update already in progress - ignoring request");
         return false;
     }
-    updateInProgress = true;
 
     auto *job = new OtaJob{downloadUrl, expectedSize, &config};
 
