@@ -28,6 +28,15 @@ SensorController::SensorController(Config::ConfigManager &config)
       dataMutex(xSemaphoreCreateMutex()),
 #endif
       lastReadingTime(0) {
+#ifdef ARDUINO
+    // xSemaphoreCreateMutex() returns nullptr if the heap is exhausted at boot.
+    // The data accessors guard every take with `dataMutex && ...`, so a null
+    // handle degrades to "lock unavailable" (safe defaults) rather than UB, but
+    // log it so the condition is visible.
+    if (!dataMutex) {
+        ESP_LOGE(TAG, "Failed to create dataMutex (out of memory)");
+    }
+#endif
 }
 
 void SensorController::begin() {
@@ -214,7 +223,7 @@ void SensorController::readSensors() {
 
     // ===== PHASE 2: Data update (I2C bus NOT locked) =====
 #ifdef ARDUINO
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
 #endif
         if (anyValid) {
             currentMeasurements = std::move(allMeasurements);
@@ -233,7 +242,7 @@ void SensorController::readSensors() {
 
 std::vector<Sensor::Measurement> SensorController::getMeasurements() const {
 #ifdef ARDUINO
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         auto copy = currentMeasurements;
         xSemaphoreGive(dataMutex);
         return copy;
@@ -247,7 +256,7 @@ std::vector<Sensor::Measurement> SensorController::getMeasurements() const {
 SensorController::Snapshot SensorController::getSnapshot() const {
     Snapshot snap;
 #ifdef ARDUINO
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         snap.valid = dataValid;
         snap.timestamp = lastReadingTimestamp;
         if (dataValid) snap.measurements = currentMeasurements;
@@ -263,7 +272,7 @@ SensorController::Snapshot SensorController::getSnapshot() const {
 
 std::vector<Sensor::Measurement> SensorController::getValidMeasurements() const {
 #ifdef ARDUINO
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         std::vector<Sensor::Measurement> result;
         if (dataValid) result = currentMeasurements;
         xSemaphoreGive(dataMutex);
@@ -277,7 +286,7 @@ std::vector<Sensor::Measurement> SensorController::getValidMeasurements() const 
 
 float SensorController::getFloatMeasurement(Sensor::MeasurementType type) const {
 #ifdef ARDUINO
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         auto* m = Sensor::findMeasurement(currentMeasurements, type);
         float result = NAN;
         if (m) {
@@ -298,7 +307,7 @@ float SensorController::getFloatMeasurement(Sensor::MeasurementType type) const 
 
 int32_t SensorController::getIntMeasurement(Sensor::MeasurementType type) const {
 #ifdef ARDUINO
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         auto* m = Sensor::findMeasurement(currentMeasurements, type);
         int32_t result = -1;
         if (m) {
@@ -335,7 +344,7 @@ int32_t SensorController::getVocIndex() const {
 
 uint32_t SensorController::getLastReadingTimestamp() const {
 #ifdef ARDUINO
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         uint32_t val = lastReadingTimestamp;
         xSemaphoreGive(dataMutex);
         return val;
@@ -348,7 +357,7 @@ uint32_t SensorController::getLastReadingTimestamp() const {
 
 bool SensorController::isDataValid() const {
 #ifdef ARDUINO
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         bool val = dataValid;
         xSemaphoreGive(dataMutex);
         return val;
@@ -431,7 +440,7 @@ float SensorController::updateControl() {
 uint32_t SensorController::getTimeSinceLastReading() const {
     uint32_t readingTime;
 #ifdef ARDUINO
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         readingTime = lastReadingTime;
         xSemaphoreGive(dataMutex);
     } else {
