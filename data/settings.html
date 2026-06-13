@@ -385,7 +385,12 @@
 
         try {
             const response = await fetch('/api/settings/factory-reset', {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'KlimaControl',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: 'confirm=factory-reset'
             });
 
             if (response.ok) {

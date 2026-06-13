@@ -134,7 +134,26 @@ void WebServerManager::setupSettingsRoutes() {
     });
 
     // POST /api/settings/factory-reset - Factory reset device
+    //
+    // Destructive: wipes all stored configuration. Two independent checks ensure
+    // a single forged or accidental request cannot trigger it:
+    //   1. verifyCsrfHeader() blocks cross-origin forgery (see RouteHelpers.h).
+    //   2. An explicit "confirm=factory-reset" body parameter is the server-side
+    //      confirmation step - a bare POST is rejected.
     server.on("/api/settings/factory-reset", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!verifyCsrfHeader(request)) {
+            ESP_LOGW(TAG, "Factory reset rejected: missing/invalid CSRF header");
+            return;
+        }
+
+        const AsyncWebParameter *confirm = request->getParam("confirm", true);
+        if (confirm == nullptr || confirm->value() != "factory-reset") {
+            ESP_LOGW(TAG, "Factory reset rejected: missing confirmation");
+            request->send(400, CONTENT_TYPE_JSON,
+                          R"({"success":false,"error":"Missing confirmation"})");
+            return;
+        }
+
         ESP_LOGW(TAG, "Factory reset requested");
 
         // Send success response first
