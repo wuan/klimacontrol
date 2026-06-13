@@ -108,82 +108,84 @@ void SensorController::sortSensors() {
 
 void SensorController::readSensors() {
     uint32_t timestamp = millis();
-
-#ifdef ARDUINO
-    // Hold the I2C bus for the whole read cycle so the web /api/i2c/scan can't
-    // interleave transactions and corrupt a sensor reading (see I2CBus.h). Held
-    // until function exit; the trailing dataMutex section is cheap. If the bus is
-    // somehow held elsewhere, skip this cycle rather than block the sensor task.
-    I2CBus::Lock bus(pdMS_TO_TICKS(2000));
-    if (!bus) {
-        ESP_LOGW(TAG, "I2C bus busy - skipping read cycle");
-        return;
-    }
-#endif
-
-    // Retry failed sensors periodically
-    static constexpr uint32_t RETRY_INTERVAL_MS = 30000;
-    for (auto &sensor : sensors) {
-        if (!sensor) continue;
-        auto status = sensor->getStatus();
-        if (status == Sensor::SensorStatus::InitFailed ||
-            status == Sensor::SensorStatus::ReadFailing) {
-            if (timestamp - sensor->getLastInitAttempt() >= RETRY_INTERVAL_MS) {
-                ESP_LOGI(TAG, "Retrying init for %s...", sensor->getType());
-                if (sensor->tryBegin()) {
-                    ESP_LOGI(TAG, "%s now online", sensor->getType());
-                }
-            }
-        }
-    }
-
     std::vector<Sensor::Measurement> allMeasurements;
     bool anyValid = false;
 
-    Sensor::ReadConfig readConfig;
-    readConfig.elevation = config.getDeviceConfig().elevation;
+    // ===== PHASE 1: Sensor I2C reads (I2C bus locked) =====
+    {
+#ifdef ARDUINO
+        // Hold the I2C bus for the sensor read cycle so the web /api/i2c/scan can't
+        // interleave transactions and corrupt a sensor reading (see I2CBus.h).
+        // If the bus is held elsewhere, skip this cycle rather than block the sensor task.
+        I2CBus::Lock bus(pdMS_TO_TICKS(100));
+        if (!bus) {
+            ESP_LOGW(TAG, "I2C bus busy - skipping read cycle");
+            return;
+        }
+#endif
 
-    // Pre-reserve: each sensor contributes measurementCount() data measurements
-    // plus 1 Time measurement added per valid sensor by this function
-    size_t totalExpected = std::accumulate(sensors.begin(), sensors.end(), size_t(0),
-        [](size_t sum, const auto &sensor) {
-            return sum + (sensor ? sensor->measurementCount() + 1 : 0);
-        });
-    allMeasurements.reserve(totalExpected);
-
-    for (auto &sensor : sensors) {
-        if (!sensor) continue;
-
-        // Only read sensors that are online
-        if (sensor->getStatus() != Sensor::SensorStatus::Online) {
-            continue;
+        // Retry failed sensors periodically
+        static constexpr uint32_t RETRY_INTERVAL_MS = 30000;
+        for (auto &sensor : sensors) {
+            if (!sensor) continue;
+            auto status = sensor->getStatus();
+            if (status == Sensor::SensorStatus::InitFailed ||
+                status == Sensor::SensorStatus::ReadFailing) {
+                if (timestamp - sensor->getLastInitAttempt() >= RETRY_INTERVAL_MS) {
+                    ESP_LOGI(TAG, "Retrying init for %s...", sensor->getType());
+                    if (sensor->tryBegin()) {
+                        ESP_LOGI(TAG, "%s now online", sensor->getType());
+                    }
+                }
+            }
         }
 
-        uint32_t readStart = millis();
-        Sensor::SensorReading reading = sensor->read(readConfig, allMeasurements);
-        uint32_t readTime = millis() - readStart;
+        Sensor::ReadConfig readConfig;
+        readConfig.elevation = config.getDeviceConfig().elevation;
 
-        sensor->recordReadResult(reading.valid);
+        // Pre-reserve: each sensor contributes measurementCount() data measurements
+        // plus 1 Time measurement added per valid sensor by this function
+        size_t totalExpected = std::accumulate(sensors.begin(), sensors.end(), size_t(0),
+            [](size_t sum, const auto &sensor) {
+                return sum + (sensor ? sensor->measurementCount() + 1 : 0);
+            });
+        allMeasurements.reserve(totalExpected);
 
-        if (reading.valid) {
-            for (const auto &m : reading.measurements) {
-#if CORE_DEBUG_LEVEL >= 4
-                bool is_int = std::holds_alternative<int32_t>(m.value);
-#endif
-                ESP_LOGD(TAG, is_int ? "%s: %s=%d %s (%u ms)" : "%s: %s=%.1f %s (%u ms)",
-                         sensor->getType(), Sensor::measurementTypeLabel(m.type),
-                         is_int ? std::get<int32_t>(m.value) : std::get<float>(m.value),
-                         Sensor::measurementTypeUnit(m.type), readTime);
-                allMeasurements.push_back(m);
+        for (auto &sensor : sensors) {
+            if (!sensor) continue;
+
+            // Only read sensors that are online
+            if (sensor->getStatus() != Sensor::SensorStatus::Online) {
+                continue;
             }
 
-            allMeasurements.push_back({Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
-            anyValid = true;
-        } else {
-            ESP_LOGW(TAG, "Sensor %s - invalid data", sensor->getType());
-        }
-    }
+            uint32_t readStart = millis();
+            Sensor::SensorReading reading = sensor->read(readConfig, allMeasurements);
+            uint32_t readTime = millis() - readStart;
 
+            sensor->recordReadResult(reading.valid);
+
+            if (reading.valid) {
+                for (const auto &m : reading.measurements) {
+#if CORE_DEBUG_LEVEL >= 4
+                    bool is_int = std::holds_alternative<int32_t>(m.value);
+#endif
+                    ESP_LOGD(TAG, is_int ? "%s: %s=%d %s (%u ms)" : "%s: %s=%.1f %s (%u ms)",
+                             sensor->getType(), Sensor::measurementTypeLabel(m.type),
+                             is_int ? std::get<int32_t>(m.value) : std::get<float>(m.value),
+                             Sensor::measurementTypeUnit(m.type), readTime);
+                    allMeasurements.push_back(m);
+                }
+
+                allMeasurements.push_back({Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
+                anyValid = true;
+            } else {
+                ESP_LOGW(TAG, "Sensor %s - invalid data", sensor->getType());
+            }
+        }
+    }  // I2C bus lock released here
+
+    // ===== PHASE 2: Data update (I2C bus NOT locked) =====
 #ifdef ARDUINO
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
 #endif
