@@ -1,11 +1,13 @@
 #ifndef KLIMACONTROL_CONFIG_H
 #define KLIMACONTROL_CONFIG_H
 
+#include <atomic>
+#include <cstdint>
+
 #ifdef ARDUINO
 #include <Preferences.h>
 #include <Arduino.h>
 #else
-#include <cstdint>
 #include <cstring>
 #include <string>
 using String = std::string;
@@ -136,6 +138,26 @@ namespace Config {
     void validateMqttConfig(MqttConfig &config);
     void validateEnergyConfig(EnergyConfig &config);
 
+    // Deferred-restart state encoding helpers (pure C++, testable on native builds).
+    // The state is packed into a single 64-bit word: low bit = "requested" flag,
+    // upper 63 bits = unsigned deadline.
+    constexpr uint64_t packRestartState(bool requested, uint64_t deadline) {
+        return (deadline << 1) | (requested ? 1ULL : 0ULL);
+    }
+
+    constexpr void unpackRestartState(uint64_t state, bool& requested, uint64_t& deadline) {
+        requested = (state & 1ULL) != 0;
+        deadline  = state >> 1;
+    }
+
+    constexpr bool isRequestedOf(uint64_t state) {
+        return (state & 1ULL) != 0;
+    }
+
+    constexpr uint64_t deadlineOf(uint64_t state) {
+        return state >> 1;
+    }
+
     /**
      * Configuration Manager
      * Handles persistent storage using ESP32 Preferences (NVS)
@@ -156,13 +178,36 @@ namespace Config {
         // In-memory cache of device config — always read from here, never maintain separate copies
         DeviceConfig deviceConfig;
 
+        // Deferred-restart scheduling state.
+        //
         // Written from web-request callbacks (AsyncTCP task) via requestRestart(),
-        // read from the main loop task via checkRestart(). 32-bit aligned scalars
-        // are atomic on ESP32, so volatile is sufficient for the cross-task handoff.
-        volatile bool restartRequested = false;
-#ifdef ARDUINO
-        volatile uint32_t restartAt = 0;
-#endif
+        // read from the main loop task via checkRestart(). The state is packed into
+        // a single 64-bit word (flag in the low bit, deadline in the upper 63 bits)
+        // and guarded by a std::atomic_flag spinlock so the flag and the deadline
+        // are published/consumed as one indivisible pair — no torn reads, safe on a
+        // future dual-core target.
+        //
+        // The Xtensa toolchain reports std::atomic<uint64_t> as not lock-free, so
+        // a plain atomic word would silently fall back to a libgcc call. The
+        // spinlock is a few loads/stores in a critical section that's strictly
+        // shorter than the I/O surrounding the call sites.
+        //
+        // Bit layout: low bit = "requested" flag, upper 63 bits = unsigned deadline
+        // (millis()-derived, fits comfortably in 63 bits).
+        mutable std::atomic_flag restartLock = ATOMIC_FLAG_INIT;
+        uint64_t restartState = 0;
+
+        // Acquire the spinlock. Caller must already be prepared to busy-wait.
+        void lockRestart() const {
+            while (restartLock.test_and_set(std::memory_order_acquire)) {
+                // spin
+            }
+        }
+
+        // Release the spinlock.
+        void unlockRestart() const {
+            restartLock.clear(std::memory_order_release);
+        }
 
     public:
         ConfigManager();
@@ -177,13 +222,29 @@ namespace Config {
          * Check if a deferred restart is pending
          * @return true if restart is pending
          */
-        bool isRestartPending() const { return restartRequested; }
+        bool isRestartPending() const {
+            lockRestart();
+            bool r = isRequestedOf(restartState);
+            unlockRestart();
+            return r;
+        }
 
         /**
          * Request a deferred restart
          * @param delayMs Delay in milliseconds before restarting
          */
         void requestRestart(uint32_t delayMs = 1000);
+
+        /**
+         * Set the restart deadline directly. Public for native unit tests that
+         * have no `millis()` clock; production code should use requestRestart().
+         * @param deadline Absolute deadline in the same units as millis()
+         */
+        void setRestartDeadline(uint64_t deadline) {
+            lockRestart();
+            restartState = packRestartState(true, deadline);
+            unlockRestart();
+        }
 
         /**
          * Check and perform restart if scheduled and time has passed

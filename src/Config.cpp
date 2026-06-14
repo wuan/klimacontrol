@@ -14,19 +14,26 @@ namespace Config {
 
     void ConfigManager::requestRestart([[maybe_unused]] uint32_t delayMs) {
 #ifdef ARDUINO
-        restartAt = millis() + delayMs;
-        restartRequested = true;
+        const uint64_t deadline = static_cast<uint64_t>(millis()) + delayMs;
+        lockRestart();
+        restartState = packRestartState(true, deadline);
+        unlockRestart();
         ESP_LOGI(TAG, "Restart requested in %u ms", delayMs);
 #endif
     }
 
     void ConfigManager::checkRestart() {
 #ifdef ARDUINO
+        lockRestart();
+        const uint64_t state = restartState;
+        unlockRestart();
+        if (!isRequestedOf(state)) return;
+        const uint32_t deadline = static_cast<uint32_t>(deadlineOf(state));
         // Wrap-safe deadline comparison: signed difference handles the case where
-        // restartAt = millis() + delayMs has wrapped past UINT32_MAX while millis()
-        // has not yet. Plain `millis() >= restartAt` would fail to fire for ~49 days
+        // deadline = millis() + delayMs has wrapped past UINT32_MAX while millis()
+        // has not yet. Plain `millis() >= deadline` would fail to fire for ~49 days
         // after the wrap.
-        if (restartRequested && static_cast<int32_t>(millis() - restartAt) >= 0) {
+        if (static_cast<int32_t>(millis() - deadline) >= 0) {
             ESP_LOGI(TAG, "Performing scheduled restart...");
             ESP.restart();
         }
