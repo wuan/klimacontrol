@@ -67,6 +67,13 @@ private:
     uint8_t activeReconnectFailures = 0;     // network-task-local
     bool wifiEventHandlerRegistered = false; // WiFi.onEvent registered only once
 
+    // Internet connectivity tracking - shared with MQTT and OTA
+    // 32-bit aligned volatile for atomic access on ESP32
+    volatile uint32_t internetConnectFailures = 0;
+    uint32_t lastInternetFailureAction = 0;
+    static constexpr uint32_t INTERNET_FAILURE_THRESHOLD = 5;
+    static constexpr uint32_t INTERNET_FAILURE_WINDOW_MS = 60000;
+
 #ifdef ARDUINO
     void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
 #endif
@@ -151,6 +158,18 @@ public:
      * Update MQTT configuration at runtime
      */
     void updateMqttConfig(const Config::MqttConfig& mqttConfig);
+
+    /**
+     * Report an internet connectivity failure (called by MQTT, OTA, NTP)
+     * Increments failure counter and may trigger WiFi reconnection.
+     */
+    void reportInternetFailure();
+
+    /**
+     * Report successful internet connectivity (called by MQTT, OTA, NTP)
+     * Resets failure counter.
+     */
+    void reportInternetSuccess();
 
     /**
      * Get current NTP epoch time

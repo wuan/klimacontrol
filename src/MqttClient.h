@@ -62,7 +62,9 @@ public:
     uint32_t getFailedCount() const { return failedCount; }
     uint32_t getPublishCycles() const { return publishCycles; }
     uint32_t getFailedCycles() const { return failedCycles; }
+    uint32_t getConsecutiveConnectFailures() const { return consecutiveConnectFailures; }
     void recordPublishResult(uint32_t succeeded, uint32_t failed);
+    void resetConsecutiveConnectFailures() { consecutiveConnectFailures = 0; }
 };
 
 #endif // KLIMACONTROL_MQTT_CLIENT_H

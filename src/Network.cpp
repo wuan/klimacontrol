@@ -585,6 +585,7 @@ void Network::configureUsingAPMode() {
 
             // NTP update — drives off the explicit ntpSynced flag, not getEpochTime() > 0.
             static constexpr uint32_t NTP_UPDATE_INTERVAL_S = 3600;
+            static bool lastNtpUpdateFailed = false;
 
             if (ntpSynced) {
                 uint32_t currentEpoch = ntpClient.getEpochTime();
@@ -592,8 +593,14 @@ void Network::configureUsingAPMode() {
                     if (ntpClient.forceUpdate()) {
                         lastNtpUpdateEpoch = ntpClient.getEpochTime();
                         ESP_LOGI(TAG, "NTP update: %s", ntpClient.getFormattedTime().c_str());
+                        if (lastNtpUpdateFailed) {
+                            reportInternetSuccess();
+                            lastNtpUpdateFailed = false;
+                        }
                     } else {
                         ESP_LOGW(TAG, "NTP update failed");
+                        reportInternetFailure();
+                        lastNtpUpdateFailed = true;
                         // Stay synced — the previous epoch is still usable, just stale.
                     }
                 }
@@ -604,11 +611,34 @@ void Network::configureUsingAPMode() {
                     ntpSynced = true;
                     lastNtpUpdateEpoch = ntpClient.getEpochTime();
                     ESP_LOGI(TAG, "NTP initial sync: %s", ntpClient.getFormattedTime().c_str());
+                    if (lastNtpUpdateFailed) {
+                        reportInternetSuccess();
+                        lastNtpUpdateFailed = false;
+                    }
+                } else {
+                    reportInternetFailure();
+                    lastNtpUpdateFailed = true;
                 }
             }
 
             // MQTT: reconnect/keepalive + publish measurements
             if (mqttClient) {
+                // Check MQTT connect failures and report to internet monitoring
+                uint32_t mqttFailures = mqttClient->getConsecutiveConnectFailures();
+                static uint32_t lastReportedMqttFailures = 0;
+                
+                if (mqttFailures > lastReportedMqttFailures) {
+                    // New failures to report
+                    for (uint32_t i = lastReportedMqttFailures; i < mqttFailures; i++) {
+                        reportInternetFailure();
+                    }
+                    lastReportedMqttFailures = mqttFailures;
+                } else if (lastReportedMqttFailures > 0 && mqttFailures == 0) {
+                    // MQTT recovered - reset network's failure counter
+                    reportInternetSuccess();
+                    lastReportedMqttFailures = 0;
+                }
+
                 mqttClient->loop();
 
                 if (mqttClient->isConnected() && sensorController.isDataValid()) {
@@ -637,6 +667,20 @@ void Network::configureUsingAPMode() {
                     }
                 } else if (statusLed) {
                     statusLed->setProgress(0.0f);
+                }
+            }
+
+            // Internet connectivity failure monitoring. If we've had repeated
+            // failures from MQTT, OTA, or NTP that indicate internet is down
+            // (not just WiFi), trigger a WiFi reconnect to recover.
+            if (internetConnectFailures >= INTERNET_FAILURE_THRESHOLD) {
+                if (now - lastInternetFailureAction >= INTERNET_FAILURE_WINDOW_MS) {
+                    lastInternetFailureAction = now;
+                    ESP_LOGW(TAG, "Internet connectivity lost (%u failures) - forcing WiFi reconnect",
+                             internetConnectFailures);
+                    WiFi.disconnect(false);
+                    vTaskDelay(100 / portTICK_PERIOD_MS);
+                    WiFi.reconnect();
                 }
             }
 
@@ -713,6 +757,18 @@ void Network::updateMqttConfig(const Config::MqttConfig& mqttConfig) {
     if (mqttClient) {
         mqttClient->setConfig(mqttConfig);
     }
+}
+
+void Network::reportInternetFailure() {
+    // 32-bit aligned volatile is atomic on ESP32
+    internetConnectFailures++;
+    ESP_LOGW(TAG, "Internet connectivity failure #%u", internetConnectFailures);
+}
+
+void Network::reportInternetSuccess() {
+    // Reset failure counter on success
+    internetConnectFailures = 0;
+    ESP_LOGD(TAG, "Internet connectivity success - reset failure counter");
 }
 
 void Network::startTask() {
