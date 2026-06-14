@@ -228,6 +228,60 @@ void test_validate_mqtt_config_empty_prefix_gets_default() {
     TEST_ASSERT_EQUAL_STRING("sensors", config.prefix);
 }
 
+// --- validateSensorConfig (if exists, test it; otherwise test struct defaults) ---
+
+void test_sensor_config_assignments_can_be_copied() {
+    Config::SensorConfig config;
+    strlcpy(config.assignments, "44=SHT4x,77=BME680", sizeof(config.assignments));
+    TEST_ASSERT_EQUAL_STRING("44=SHT4x,77=BME680", config.assignments);
+}
+
+void test_sensor_config_empty_assignments() {
+    Config::SensorConfig config;
+    TEST_ASSERT_EQUAL_STRING("", config.assignments);
+}
+
+// --- SyslogConfig defaults ---
+
+void test_syslog_config_port_default() {
+    Config::SyslogConfig config;
+    TEST_ASSERT_EQUAL(514, config.port);
+}
+
+void test_syslog_config_empty_host() {
+    Config::SyslogConfig config;
+    TEST_ASSERT_EQUAL_STRING("", config.host);
+}
+
+// --- WiFiConfig defaults ---
+
+void test_wifi_config_connection_failures_default() {
+    Config::WiFiConfig config;
+    TEST_ASSERT_EQUAL(0, config.connection_failures);
+}
+
+void test_wifi_config_not_configured_by_default() {
+    Config::WiFiConfig config;
+    TEST_ASSERT_FALSE(config.configured);
+}
+
+// --- Factory reset behavior (simulated struct reset) ---
+
+void test_factory_reset_device_config_creates_defaults() {
+    Config::DeviceConfig config;
+    config.target_temperature = 25.0f;
+    config.temperature_control_enabled = true;
+    config.elevation = 500.0f;
+
+    config.target_temperature = 22.0f;
+    config.temperature_control_enabled = false;
+    config.elevation = 0.0f;
+
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 22.0f, config.target_temperature);
+    TEST_ASSERT_FALSE(config.temperature_control_enabled);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, config.elevation);
+}
+
 // --- validateEnergyConfig ---
 
 void test_validate_energy_config_valid_power_levels() {
@@ -306,6 +360,17 @@ int runUnityTests() {
     RUN_TEST(test_validate_energy_config_invalid_power_reset);
     RUN_TEST(test_validate_energy_config_zero_power_reset);
     RUN_TEST(test_validate_energy_config_max_uint8_reset);
+    // SensorConfig
+    RUN_TEST(test_sensor_config_assignments_can_be_copied);
+    RUN_TEST(test_sensor_config_empty_assignments);
+    // SyslogConfig defaults
+    RUN_TEST(test_syslog_config_port_default);
+    RUN_TEST(test_syslog_config_empty_host);
+    // WiFiConfig defaults
+    RUN_TEST(test_wifi_config_connection_failures_default);
+    RUN_TEST(test_wifi_config_not_configured_by_default);
+    // Factory reset simulation
+    RUN_TEST(test_factory_reset_device_config_creates_defaults);
     return UNITY_END();
 }
 

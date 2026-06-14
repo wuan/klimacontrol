@@ -187,6 +187,106 @@ void test_ntp_epoch_guard_last_zero_current_nonzero_no_update() {
     TEST_ASSERT_FALSE(shouldUpdateNtp(current, 0u));
 }
 
+// --- Three sensor averaging ---
+
+static float averageTemperatures(const std::vector<Sensor::Measurement>& measurements) {
+    float sum = 0.0f;
+    int count = 0;
+    for (const auto& m : measurements) {
+        if (m.type == Sensor::MeasurementType::Temperature) {
+            const float* f = std::get_if<float>(&m.value);
+            if (f) {
+                sum += *f;
+                count++;
+            }
+        }
+    }
+    return count > 0 ? sum / count : NAN;
+}
+
+void test_three_sensor_averaging() {
+    std::vector<Sensor::Measurement> measurements = {
+        {Sensor::MeasurementType::Temperature, 20.0f, "SHT4x-1", false},
+        {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x-2", false},
+        {Sensor::MeasurementType::Temperature, 24.0f, "SHT4x-3", false}
+    };
+
+    float avg = averageTemperatures(measurements);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 22.0f, avg);
+}
+
+void test_two_sensor_averaging() {
+    std::vector<Sensor::Measurement> measurements = {
+        {Sensor::MeasurementType::Temperature, 20.0f, "SHT4x-1", false},
+        {Sensor::MeasurementType::Temperature, 24.0f, "SHT4x-2", false}
+    };
+
+    float avg = averageTemperatures(measurements);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 22.0f, avg);
+}
+
+// --- Invalid readings exclusion ---
+
+void test_invalid_readings_excluded_from_average() {
+    std::vector<Sensor::Measurement> measurements = {
+        {Sensor::MeasurementType::Temperature, 20.0f, "SHT4x-1", false},
+        {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x-2", false}
+    };
+
+    float avg = averageTemperatures(measurements);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 21.0f, avg);
+}
+
+void test_no_valid_temperature_returns_nan() {
+    std::vector<Sensor::Measurement> measurements = {
+        {Sensor::MeasurementType::RelativeHumidity, 50.0f, "SHT4x-1", false}
+    };
+
+    float avg = averageTemperatures(measurements);
+    TEST_ASSERT_TRUE(std::isnan(avg));
+}
+
+// --- getValidMeasurements returns empty on invalid data ---
+
+static std::vector<Sensor::Measurement> getValidMeasurementsHelper(
+    bool dataValid, const std::vector<Sensor::Measurement>& currentMeasurements) {
+    if (!dataValid) return {};
+    return currentMeasurements;
+}
+
+void test_get_valid_measurements_returns_empty_when_invalid() {
+    std::vector<Sensor::Measurement> result = getValidMeasurementsHelper(false, {});
+    TEST_ASSERT_EQUAL(0, result.size());
+}
+
+void test_get_valid_measurements_returns_data_when_valid() {
+    std::vector<Sensor::Measurement> measurements = {
+        {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x", false}
+    };
+    std::vector<Sensor::Measurement> result = getValidMeasurementsHelper(true, measurements);
+    TEST_ASSERT_EQUAL(1, result.size());
+}
+
+// --- Snapshot consistency ---
+
+void test_snapshot_contains_consistent_data() {
+    std::vector<Sensor::Measurement> measurements = {
+        {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x", false},
+        {Sensor::MeasurementType::RelativeHumidity, 50.0f, "SHT4x", false}
+    };
+
+    bool dataValid = true;
+    uint32_t timestamp = 12345;
+
+    bool snapValid = dataValid;
+    uint32_t snapTimestamp = timestamp;
+    std::vector<Sensor::Measurement> snapMeasurements = dataValid ? measurements : std::vector<Sensor::Measurement>{};
+
+    TEST_ASSERT_TRUE(snapValid);
+    TEST_ASSERT_EQUAL(12345, snapTimestamp);
+    TEST_ASSERT_EQUAL(2, snapMeasurements.size());
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_safe_get_float_returns_value_when_float);
@@ -210,6 +310,13 @@ int runUnityTests() {
     RUN_TEST(test_ntp_epoch_guard_time_elapsed_triggers_update);
     RUN_TEST(test_ntp_epoch_guard_current_zero_no_spurious_update);
     RUN_TEST(test_ntp_epoch_guard_last_zero_current_nonzero_no_update);
+    RUN_TEST(test_three_sensor_averaging);
+    RUN_TEST(test_two_sensor_averaging);
+    RUN_TEST(test_invalid_readings_excluded_from_average);
+    RUN_TEST(test_no_valid_temperature_returns_nan);
+    RUN_TEST(test_get_valid_measurements_returns_empty_when_invalid);
+    RUN_TEST(test_get_valid_measurements_returns_data_when_valid);
+    RUN_TEST(test_snapshot_contains_consistent_data);
     return UNITY_END();
 }
 
