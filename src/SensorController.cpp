@@ -1,5 +1,6 @@
 #include "SensorController.h"
 #include "sensor/DeviceSensor.h"
+#include "Log.h"
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -7,11 +8,17 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <freertos/semphr.h>
-#include "Log.h"
 #include "I2CBus.h"
 #endif
 
+#ifdef ARDUINO
 static const char* TAG = "sensor";
+#else
+// On native, the ESP_LOG* macros are no-ops; their tag argument is
+// discarded. Define TAG as a macro so there is no unused-variable to
+// warn about.
+#define TAG "sensor"
+#endif
 
 namespace {
     // Simple PID controller parameters (will be configurable later)
@@ -22,20 +29,41 @@ namespace {
     constexpr float MinOutput = 0.0f; // Minimum control output
 }
 
-SensorController::SensorController(Config::ConfigManager &config)
+SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused]] StatusLed *statusLed)
     : config(config), lastReadingTimestamp(0), dataValid(false),
 #ifdef ARDUINO
       dataMutex(xSemaphoreCreateMutex()),
+      statusLed(statusLed),
 #endif
       lastReadingTime(0) {
 #ifdef ARDUINO
     // xSemaphoreCreateMutex() returns nullptr if the heap is exhausted at boot.
-    // The data accessors guard every take with `dataMutex && ...`, so a null
-    // handle degrades to "lock unavailable" (safe defaults) rather than UB, but
-    // log it so the condition is visible.
+    // Previously this just logged a warning and continued, which let the
+    // device appear healthy while producing no real sensor data (silent
+    // degradation). Now we fail hard: drive the LED to ERROR, hold briefly so
+    // a human can see it, then restart.
     if (!dataMutex) {
-        ESP_LOGE(TAG, "Failed to create dataMutex (out of memory)");
+        ESP_LOGE(TAG, "Failed to create dataMutex (out of memory) — restarting");
+        if (statusLed) {
+            statusLed->setState(LedState::ERROR);
+            statusLed->update();
+        }
+        delay(5000);
+        ESP.restart();
     }
+#endif
+}
+
+bool SensorController::didFailMutexInit() const {
+#ifdef ARDUINO
+    return dataMutex == nullptr;
+#else
+    // On native the mutex is not allocated at all (no FreeRTOS), so report
+    // "would have failed" only if a test explicitly simulated it. The native
+    // build never produces a real allocation to inspect, so this is always
+    // false in practice — the accessor exists so the failure path is
+    // observable as a single call site across both environments.
+    return false;
 #endif
 }
 
@@ -119,8 +147,10 @@ void SensorController::readSensors() {
     uint32_t timestamp = millis();
     std::vector<Sensor::Measurement> allMeasurements;
     bool anyValid = false;
+#ifdef ARDUINO
     bool anyI2CSensor = false;   // at least one I2C sensor is configured
     bool anyI2CValid = false;    // at least one I2C sensor read valid this cycle
+#endif
 
     // ===== PHASE 1: Sensor I2C reads (I2C bus locked) =====
     {
@@ -165,7 +195,9 @@ void SensorController::readSensors() {
         for (auto &sensor : sensors) {
             if (!sensor) continue;
 
+#ifdef ARDUINO
             if (sensor->usesI2C()) anyI2CSensor = true;
+#endif
 
             // Only read sensors that are online
             if (sensor->getStatus() != Sensor::SensorStatus::Online) {
@@ -192,7 +224,9 @@ void SensorController::readSensors() {
 
                 allMeasurements.push_back({Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
                 anyValid = true;
+#ifdef ARDUINO
                 if (sensor->usesI2C()) anyI2CValid = true;
+#endif
             } else {
                 ESP_LOGW(TAG, "Sensor %s - invalid data", sensor->getType());
             }

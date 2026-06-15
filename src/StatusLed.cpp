@@ -55,6 +55,10 @@ void StatusLed::update() {
         case LedState::TRANSMIT_DATA:
             showColor(0x020202);
             break;
+
+        case LedState::ERROR:
+            showColor(0x0F0000);
+            break;
     }
 }
 

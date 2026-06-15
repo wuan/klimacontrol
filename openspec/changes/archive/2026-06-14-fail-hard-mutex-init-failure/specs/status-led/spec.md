@@ -1,16 +1,4 @@
-# status-led Specification
-
-## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
-## Requirements
-### Requirement: Hardware target
-
-The firmware SHALL drive the single built-in NeoPixel on the Adafruit QT Py ESP32-S2 board, using the `NEO_GRB` color order.
-
-#### Scenario: Pixel write
-
-- **WHEN** `StatusLed::show()` is called
-- **THEN** exactly one NeoPixel SHALL be updated, with the current color expressed in GRB order
+## MODIFIED Requirements
 
 ### Requirement: State machine
 
@@ -48,13 +36,3 @@ The LED SHALL be controlled by a `LedState` enum with the values `OFF`, `ON`, `S
 
 - **WHEN** the firmware drives the LED to indicate a fatal init error
 - **THEN** the LED SHALL be in `ERROR` state and SHALL display solid red so a human looking at the device can see the cause
-
-### Requirement: Periodic update from the network task
-
-The network task SHALL call `statusLed->update()` on each 1-second iteration so blinking/flash timing remains accurate. The LED SHALL use `millis()` as its timing source.
-
-#### Scenario: Cadence guarantee
-
-- **WHEN** the network task is running normally
-- **THEN** `StatusLed::update()` SHALL be invoked at least once per second so animations advance correctly
-

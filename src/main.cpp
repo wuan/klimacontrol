@@ -22,6 +22,7 @@
 #include "sensor/DPS310.h"
 #include "sensor/BH1750.h"
 #include "SensorController.h"
+#include "StatusLed.h"
 #include "task/SensorMonitor.h"
 
 #ifdef ARDUINO
@@ -35,9 +36,12 @@ static const char* TAG = "main";
 TaskHandle_t networkTaskHandle = nullptr;
 
 Config::ConfigManager config;
-SensorController sensorController(config);
+// StatusLed is a top-level object so SensorController's failure path can drive
+// it even before Network is constructed.
+StatusLed statusLed;
+SensorController sensorController(config, &statusLed);
 Task::SensorMonitor sensorMonitor(sensorController);
-Network network(config, sensorController, sensorMonitor);
+Network network(config, sensorController, sensorMonitor, statusLed);
 
 void setup() {
     delay(1000);

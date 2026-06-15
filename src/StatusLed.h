@@ -18,7 +18,8 @@ enum class LedState {
     OFF,       // LED is off
     ON,        // LED is on
     STARTUP, // Slow blinking (1 Hz)
-    TRANSMIT_DATA  // Brief white flash during MQTT publish
+    TRANSMIT_DATA,  // Brief white flash during MQTT publish
+    ERROR      // Solid red — fatal init error (e.g. mutex allocation failure)
 };
 
 /**

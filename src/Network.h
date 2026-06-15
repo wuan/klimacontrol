@@ -44,7 +44,7 @@ private:
 #endif
 
     std::unique_ptr<WebServerManager> webServer;
-    std::unique_ptr<StatusLed> statusLed;
+    StatusLed &statusLed;
     std::unique_ptr<MqttClient> mqttClient;
     uint32_t lastMqttPublish;
     CaptivePortal captivePortal;
@@ -108,8 +108,11 @@ public:
      * Network constructor
      * @param config Configuration manager reference
      * @param sensorController Sensor controller reference
+     * @param statusLed Status LED (non-owning reference; the LED is created at
+     *                  namespace scope in main.cpp so it is available when
+     *                  SensorController's constructor runs)
      */
-    Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor);
+    Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, StatusLed &statusLed);
 
     // disable copy constructor
     Network(const Network &) = delete;

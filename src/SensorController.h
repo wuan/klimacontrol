@@ -5,6 +5,7 @@
 #include <vector>
 #include "sensor/Sensor.h"
 #include "Config.h"
+#include "StatusLed.h"
 
 #ifdef ARDUINO
 #include <freertos/semphr.h>
@@ -28,6 +29,12 @@ private:
 #ifdef ARDUINO
     mutable SemaphoreHandle_t dataMutex;
 #endif
+    // Non-owning pointer to the status LED; may be nullptr in native tests.
+    // Used on the mutex-creation failure path to surface the error visibly.
+    // ARDUINO-only: the failure path is the only consumer.
+#ifdef ARDUINO
+    StatusLed *statusLed;
+#endif
 
     void sortSensors();
 
@@ -41,11 +48,27 @@ private:
     // Consecutive read cycles in which I2C sensors are present but none returned
     // valid data. After I2C_RECOVERY_FAILURE_STREAK cycles the bus is assumed
     // wedged and a recovery is attempted. Reset on any valid I2C reading.
+    // ARDUINO-only: the I2C recovery path is the only consumer.
+#ifdef ARDUINO
     uint8_t consecutiveI2CFailures = 0;
+#endif
     static constexpr uint8_t I2C_RECOVERY_FAILURE_STREAK = 3;
 
 public:
-    explicit SensorController(Config::ConfigManager &config);
+    /**
+     * @param config Configuration manager reference.
+     * @param statusLed Optional pointer to the status LED; may be nullptr
+     *                  (e.g. in native unit tests). On the firmware, the
+     *                  failure path drives this LED to the ERROR state.
+     */
+    explicit SensorController(Config::ConfigManager &config, StatusLed *statusLed);
+
+    /**
+     * Test-only seam: returns true if the underlying mutex allocation failed
+     * (or would have failed under ARDUINO). Lets native tests assert on the
+     * failure path without having to call ESP.restart().
+     */
+    bool didFailMutexInit() const;
 
     // Delete copy constructor and assignment operator
     SensorController(const SensorController &) = delete;

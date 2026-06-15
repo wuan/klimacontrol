@@ -51,12 +51,12 @@ namespace {
 }
 #endif
 
-Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor)
+Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, StatusLed &statusLed)
     : config(config), sensorController(sensorController), sensorMonitor(sensorMonitor), mode(NetworkMode::NONE)
 #ifdef ARDUINO
       , ntpClient(wifiUdp)
 #endif
-      , webServer(nullptr), statusLed(nullptr), lastMqttPublish(0)
+      , webServer(nullptr), statusLed(statusLed), lastMqttPublish(0)
 {
 }
 
@@ -102,16 +102,11 @@ void Network::configureMDNS() {
 }
 
 void Network::setStatusLedState(LedState state) {
-    if (statusLed) {
-        statusLed->setState(state);
-    }
+    statusLed.setState(state);
 }
 
 LedState Network::getStatusLedState() const {
-    if (statusLed) {
-        return statusLed->getState();
-    }
-    return LedState::OFF;
+    return statusLed.getState();
 }
 
 void Network::startAP() {
@@ -328,11 +323,11 @@ void Network::configureUsingAPMode() {
 
     ESP_LOGI(TAG, "Network task started");
 
-    // Initialize status LED early (works without WiFi) - uses built-in NeoPixel
-    statusLed = std::make_unique<StatusLed>(); // Built-in NeoPixel, 1 pixel
-    statusLed->begin();
-    statusLed->setState(LedState::STARTUP); // Indicate booting
-    
+    // Status LED is owned by main.cpp (top-level object); the network task
+    // just drives it. begin() must be called once after construction.
+    statusLed.begin();
+    statusLed.setState(LedState::STARTUP); // Indicate booting
+
     if (!config.isConfigured()) {
         ESP_LOGI(TAG, "No WiFi configuration found - starting AP mode");
         
@@ -414,10 +409,8 @@ void Network::configureUsingAPMode() {
 
     // Connection successful - reset failure counter
     config.resetConnectionFailures();
-    
-    if (statusLed) {
-        statusLed->setState(LedState::ON); // Solid on for connected state
-    }
+
+    statusLed.setState(LedState::ON); // Solid on for connected state
 
     // Create and start operational webserver for STA mode
     ESP_LOGI(TAG, "Creating OperationalWebServerManager...");
@@ -467,9 +460,7 @@ void Network::configureUsingAPMode() {
 
         unsigned long now = millis();
 
-        if (statusLed) {
-            statusLed->update();
-        }
+        statusLed.update();
 
         // if (touchController) {
         //     touchController->update();
@@ -651,23 +642,23 @@ void Network::configureUsingAPMode() {
                         // Atomic snapshot: validity and data are read under the same lock,
                         // so we never publish stale measurements after a fresh read failed.
                         auto measurements = sensorController.getValidMeasurements();
-                        if (!measurements.empty()) {
-                            if (statusLed) statusLed->setState(LedState::TRANSMIT_DATA);
-                            lastMqttPublish = now;
-                            publishMeasurements(measurements);
+                            if (!measurements.empty()) {
+                                statusLed.setState(LedState::TRANSMIT_DATA);
+                                lastMqttPublish = now;
+                                publishMeasurements(measurements);
+                            }
                         }
-                    }
 
-                    // Update MQTT progress for green→red gradient on status LED
-                    if (statusLed && intervalMs > 0) {
-                        float prog = static_cast<float>(now - lastMqttPublish) / intervalMs;
-                        if (prog > 1.0f) prog = 1.0f;
-                        statusLed->setProgress(prog);
-                        statusLed->setState(LedState::ON);
+                        // Update MQTT progress for green→red gradient on status LED
+                        if (intervalMs > 0) {
+                            float prog = static_cast<float>(now - lastMqttPublish) / intervalMs;
+                            if (prog > 1.0f) prog = 1.0f;
+                            statusLed.setProgress(prog);
+                            statusLed.setState(LedState::ON);
+                        }
+                    } else {
+                        statusLed.setProgress(0.0f);
                     }
-                } else if (statusLed) {
-                    statusLed->setProgress(0.0f);
-                }
             }
 
             // Internet connectivity failure monitoring. If we've had repeated
