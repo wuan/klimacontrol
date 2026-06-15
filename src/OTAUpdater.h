@@ -129,54 +129,38 @@ private:
     static constexpr int CHUNK_SIZE = 4096;
     static constexpr int MIN_FREE_HEAP = 65536;
     // Worker stack must hold the 4 KB chunk buffer plus the mbedTLS handshake
-    // working set; sized to match the AsyncTCP task stack the update used to run on.
-    static constexpr uint32_t UPDATE_TASK_STACK = 16384;
+    // working set. Measured actual usage is ~9.3 KB; 12 KB gives ~32% headroom
+    // over the high-water mark. otaWorkerTask logs its stack high-water mark so
+    // this can be re-tuned.
+    static constexpr uint32_t UPDATE_TASK_STACK = 12288;
     // Check task needs the TLS handshake working set + JSON parse buffers.
     // The large mbedTLS buffers are offloaded to PSRAM (esp_mbedtls_mem_calloc),
-    // so the stack itself stays modest - 8 KB matches Espressif's HTTPS-over-TLS
-    // task examples. The check runs on the shared OTA task stack below (sized for
-    // the larger update worker), so it simply uses the first 8 KB of that buffer.
-    // otaCheckTask logs its stack high-water mark so this can be re-tuned.
-    static constexpr uint32_t CHECK_TASK_STACK = 8192;
+    // so the stack itself stays modest. Measured actual usage is ~5.5 KB;
+    // 7 KB gives ~27% headroom over the high-water mark.
+    static constexpr uint32_t CHECK_TASK_STACK = 7168;
 
 #ifdef ARDUINO
-    // Statically-reserved stack + TCB shared by BOTH OTA tasks (the background
-    // check and the update worker).
-    //
-    // A FreeRTOS task stack must come from one contiguous block of *internal*
-    // SRAM (never PSRAM). On the ESP32-S2 such a block is scarce once
-    // WiFi/lwIP/mbedTLS are running: the check task's own TLS handshake fragments
+    // Statically-reserved stack + TCB for the background check task. A FreeRTOS
+    // task stack must come from one contiguous block of *internal* SRAM (never
+    // PSRAM), and on the ESP32-S2 such a block is scarce once WiFi/lwIP/mbedTLS
+    // have fragmented the heap (the check task's own TLS handshake fragments
     // internal heap, which made a runtime xTaskCreate() fail with
-    // errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY - first for the 16 KB update worker,
-    // then (once that was made static) for the 8 KB check task itself
-    // ("largest free internal block 10228 < 10240 needed"). Reserving the stack in
-    // BSS at link time sidesteps the fragmented runtime heap entirely: the block
-    // exists from boot, so xTaskCreateStatic() can never fail to allocate it.
-    //
-    // One buffer serves both tasks because they are mutually exclusive - an update
-    // can only start after a check reaches CheckState::Done, and startBackgroundCheck
-    // refuses to run while updateInProgress - so they never need the stack at the
-    // same time. Sizing it for the larger worker (16 KB) and giving the check task a
-    // smaller stack depth lets the check use just the first 8 KB.
-    static inline StaticTask_t otaTaskTCB{};
-    static inline StackType_t otaTaskStack[UPDATE_TASK_STACK]{};
+    // errCOULD_NOT_ALLOCATE_REQUIRED_MEMORY - "largest free internal block
+    // 10228 < 10240 needed"). Reserving the stack in BSS at link time
+    // sidesteps the fragmented runtime heap entirely: the block exists from
+    // boot, so xTaskCreateStatic() can never fail to allocate it.
+    static inline StaticTask_t otaCheckTCB{};
+    static inline StackType_t otaCheckStack[CHECK_TASK_STACK]{};
 
-    // The stack/TCB above are a single shared buffer, so the previous OTA task must
-    // be fully terminated before the next one reuses them. A self-deleting task
-    // (vTaskDelete(NULL)) is reclaimed asynchronously by the idle task, so its
-    // handle can dangle - we can't tell when the buffers are free again. Instead
-    // each task parks itself (vTaskSuspend, holding nothing) as its final act and
-    // sets taskParked; the next start waits for that flag, then synchronously reaps
-    // the parked task with vTaskDelete(handle) before reusing the buffers (see
-    // reapParkedTask). updateInProgress is cleared inside performUpdate (before the
-    // worker parks), so it can't gate reuse on its own - hence the separate flag.
-    static inline TaskHandle_t otaTaskHandle = nullptr;
-    static inline std::atomic<bool> taskParked{false};
-
-    // Synchronously delete the previously-parked OTA task (if any) so its shared
-    // static stack/TCB can be reused. Called on the AsyncTCP event task from both
-    // startBackgroundCheck and startBackgroundUpdate, which are serialized there.
-    static void reapParkedTask();
+    // Statically-reserved stack + TCB for the update worker task. The worker's
+    // 16 KB contiguous internal-SRAM stack is impossible to allocate reliably
+    // at runtime once WiFi/TLS have fragmented internal heap, so we reserve
+    // it in BSS at boot. Each task owns its own buffer and self-deletes on
+    // exit (vTaskDelete(nullptr)); there is no shared stack/TCB to reuse, so
+    // no parking/reaping protocol is needed. The updateInProgress atomic flag
+    // still gates concurrent update workers.
+    static inline StaticTask_t otaUpdateTCB{};
+    static inline StackType_t otaUpdateStack[UPDATE_TASK_STACK]{};
 #endif
 
     // Background-check result, guarded by checkResultMutex().

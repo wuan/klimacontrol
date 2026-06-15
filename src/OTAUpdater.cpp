@@ -319,7 +319,6 @@ namespace {
     };
 }
 
-// Member (not a free function) so it can set the private taskParked flag.
 void OTAUpdater::otaWorkerTask(void *arg) {
     auto *job = static_cast<OtaJob *>(arg);
 
@@ -340,17 +339,15 @@ void OTAUpdater::otaWorkerTask(void *arg) {
     // If this ever approaches 0, UPDATE_TASK_STACK is too small; the worker
     // runs the TLS download + flash-write loop so it needs more than the
     // check task. Logged here so the static stack can be re-tuned.
-    ESP_LOGD(TAG, "ota_update stack high-water mark: %u bytes free",
+    ESP_LOGI(TAG, "ota_update stack high-water mark: %u bytes free",
              (unsigned)uxTaskGetStackHighWaterMark(nullptr));
 
-    // Park instead of self-deleting: the next OTA task reuses our shared static
-    // stack/TCB and must reap us deterministically (see otaTaskStack / reapParkedTask).
-    // Set the flag as the very last action so that once the reaper sees it, we are
-    // holding no locks (no logging between here and the suspend) and are safe to
-    // vTaskDelete() from that task. Nothing ever resumes us; we sit suspended until
-    // reaped, or until the post-update restart reboots the chip.
-    taskParked.store(true);
-    vTaskSuspend(nullptr);
+    // Self-delete: each OTA task owns its own static stack/TCB (see
+    // otaUpdateStack / otaUpdateTCB in the header), so there is nothing to
+    // share and no other task to reap us. FreeRTOS releases the buffers
+    // asynchronously via the idle task, which is fine because no one else
+    // holds a handle to this task.
+    vTaskDelete(nullptr);
 }
 
 SemaphoreHandle_t OTAUpdater::checkResultMutex() {
@@ -383,31 +380,13 @@ void OTAUpdater::otaCheckTask(void *arg) {
     delete job;
     // High-water mark = smallest free stack (in bytes) seen on this task. If this
     // ever approaches 0, CHECK_TASK_STACK is too small and must be raised.
-    ESP_LOGD(TAG, "ota_check stack high-water mark: %u bytes free",
+    ESP_LOGI(TAG, "ota_check stack high-water mark: %u bytes free",
              (unsigned)uxTaskGetStackHighWaterMark(nullptr));
 
-    // Park instead of self-deleting, for the same reason as otaWorkerTask: the next
-    // OTA task reuses our shared static stack/TCB and reaps us deterministically.
-    // Set the flag as the very last action so the reaper only sees it once we hold
-    // no locks and are safe to vTaskDelete() from that task.
-    taskParked.store(true);
-    vTaskSuspend(nullptr);
-}
-
-void OTAUpdater::reapParkedTask() {
-    // Wait for the previous OTA task to finish parking (it sets taskParked as its
-    // final, lock-free act), then delete it deterministically so its shared static
-    // stack/TCB can be reused. Bounded: the parked task only has to run a couple of
-    // instructions after clearing the flag. Both callers run on the AsyncTCP event
-    // task and are gated by the busy checks below, so no live task is ever reaped.
-    if (otaTaskHandle != nullptr) {
-        while (!taskParked.load()) {
-            vTaskDelay(pdMS_TO_TICKS(2));
-        }
-        vTaskDelete(otaTaskHandle);
-        otaTaskHandle = nullptr;
-    }
-    taskParked.store(false);
+    // Self-delete: each OTA task owns its own static stack/TCB (see
+    // otaCheckStack / otaCheckTCB in the header), so there is nothing to
+    // share and no other task to reap us.
+    vTaskDelete(nullptr);
 }
 
 bool OTAUpdater::startBackgroundCheck(const char *owner, const char *repo) {
@@ -428,20 +407,17 @@ bool OTAUpdater::startBackgroundCheck(const char *owner, const char *repo) {
         return false;
     }
 
-    // Reap the previously-parked OTA task before reusing the shared static stack.
-    reapParkedTask();
-
     auto *job = new CheckJob{String(owner), String(repo)};
-    // Use the statically-reserved stack (see otaTaskStack in the header): a FreeRTOS
-    // stack needs one contiguous block of internal SRAM, which is unreliable to
-    // allocate at runtime once WiFi/TLS have fragmented internal heap. The check task
-    // uses the first CHECK_TASK_STACK bytes of the shared 16 KB buffer.
-    // xTaskCreateStatic() returns NULL only if the buffers are null, so it no longer
-    // fails on a fragmented heap.
-    otaTaskHandle = xTaskCreateStatic(otaCheckTask, "ota_check",
-                                      CHECK_TASK_STACK, job, 1,
-                                      otaTaskStack, &otaTaskTCB);
-    if (otaTaskHandle == nullptr) {
+    // Use the statically-reserved stack (see otaCheckStack / otaCheckTCB in the
+    // header): a FreeRTOS stack needs one contiguous block of internal SRAM,
+    // which is unreliable to allocate at runtime once WiFi/TLS have fragmented
+    // internal heap. The check task owns this buffer for its lifetime and
+    // self-deletes on exit. xTaskCreateStatic() returns NULL only if the buffers
+    // are null, so it no longer fails on a fragmented heap.
+    TaskHandle_t handle = xTaskCreateStatic(otaCheckTask, "ota_check",
+                                            CHECK_TASK_STACK, job, 1,
+                                            otaCheckStack, &otaCheckTCB);
+    if (handle == nullptr) {
         ESP_LOGE(TAG, "Failed to create OTA check task");
         // Roll back to Failed so we don't get stuck in InProgress forever.
         if (xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
@@ -501,21 +477,19 @@ bool OTAUpdater::startBackgroundUpdate(const String &downloadUrl, size_t expecte
         return false;
     }
 
-    // Reap the previously-parked OTA task (the check that produced this update's
-    // result, or a prior worker) before reusing the shared static stack/TCB.
-    reapParkedTask();
-
     auto *job = new OtaJob{downloadUrl, expectedSize, &config};
 
-    // Use the statically-reserved stack (see otaTaskStack in the header): the
-    // worker's 16 KB contiguous internal-SRAM stack is impossible to allocate
-    // reliably at runtime once WiFi/TLS have fragmented internal heap, so we
-    // reserve it in BSS at boot instead. xTaskCreateStatic() returns NULL only if
-    // the buffers are null, so this no longer fails on a fragmented heap.
-    otaTaskHandle = xTaskCreateStatic(otaWorkerTask, "ota_update",
-                                      UPDATE_TASK_STACK, job, 1,
-                                      otaTaskStack, &otaTaskTCB);
-    if (otaTaskHandle == nullptr) {
+    // Use the statically-reserved stack (see otaUpdateStack / otaUpdateTCB in
+    // the header): the worker's 16 KB contiguous internal-SRAM stack is
+    // impossible to allocate reliably at runtime once WiFi/TLS have fragmented
+    // internal heap, so we reserve it in BSS at boot. The worker owns this
+    // buffer for its lifetime and self-deletes on exit. xTaskCreateStatic()
+    // returns NULL only if the buffers are null, so this no longer fails on a
+    // fragmented heap.
+    TaskHandle_t handle = xTaskCreateStatic(otaWorkerTask, "ota_update",
+                                            UPDATE_TASK_STACK, job, 1,
+                                            otaUpdateStack, &otaUpdateTCB);
+    if (handle == nullptr) {
         ESP_LOGE(TAG, "Failed to create OTA worker task");
         updateInProgress = false;
         delete job;
