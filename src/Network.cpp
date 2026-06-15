@@ -13,6 +13,8 @@
 #include "OTAUpdater.h"
 #include "WebServerManager.h"
 #include "SyslogOutput.h"
+#include "support/NetworkWatchdog.h"
+#include "support/WifiBackoff.h"
 
 #ifdef ARDUINO
 #include <esp_pm.h>
@@ -416,10 +418,17 @@ void Network::configureUsingAPMode() {
     if (WiFi.status() != WL_CONNECTED) {
         // incrementConnectionFailures() already persists wifi_failures to NVS.
         uint8_t newFailures = config.incrementConnectionFailures();
-        ESP_LOGW(TAG, "Failed to connect (failure %u/%u) - waiting before retry...",
-                 newFailures, AP_FALLBACK_THRESHOLD);
 
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+        // Use a doubling backoff (capped at 5 min) instead of a fixed 2 s
+        // delay so a transient AP outage has room to recover before the
+        // device tears down its association state. See the spec
+        // `network-wifi-resilience` → "Exponential backoff on boot-time
+        // STA failure" for the contract.
+        uint32_t backoffMs = Support::staFailureBackoffMs(newFailures);
+        ESP_LOGW(TAG, "Failed to connect (failure %u/%u) - waiting %u ms before retry...",
+                 newFailures, AP_FALLBACK_THRESHOLD, backoffMs);
+
+        vTaskDelay(backoffMs / portTICK_PERIOD_MS);
         ESP.restart();
     }
 
