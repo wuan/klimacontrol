@@ -27,6 +27,14 @@ namespace {
     constexpr float Kd = 0.5f;   // Derivative gain
     constexpr float MaxOutput = 1.0f; // Maximum control output
     constexpr float MinOutput = 0.0f; // Minimum control output
+
+    // Upper bound on measurements per sensor in a single read cycle. Used
+    // to pre-reserve `currentMeasurements` capacity at boot so the per-cycle
+    // assignment does not reallocate. Generous (8) so a sensor that adds
+    // extra derived measurements (dew point, sea-level pressure, etc.) still
+    // fits without growing the vector. See spec `memory-management` →
+    // "Vector capacities are reserved at boot" for the contract.
+    constexpr size_t MAX_MEASUREMENTS_PER_SENSOR = 8;
 }
 
 SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused]] StatusLed *statusLed)
@@ -94,6 +102,16 @@ void SensorController::addSensor(std::unique_ptr<Sensor::Sensor> sensor) {
     if (sensor) {
         sensors.push_back(std::move(sensor));
     }
+}
+
+void SensorController::reserveSensorSlots(size_t n) {
+    // Reserve the sensor list so the I2C scan loop's addSensor() calls never
+    // reallocate. The currentMeasurements vector is sized to hold the worst
+    // case (every sensor returning its full measurementCount() + the per-sensor
+    // Time entry added by readSensors()) so the per-cycle assignment in
+    // readSensors() also does not reallocate.
+    sensors.reserve(n);
+    currentMeasurements.reserve(n * MAX_MEASUREMENTS_PER_SENSOR);
 }
 
 void SensorController::sortSensors() {

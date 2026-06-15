@@ -53,13 +53,24 @@ namespace {
 }
 #endif
 
-Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, StatusLed &statusLed)
+Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, StatusLed &statusLed, WebServerManager *webServer)
     : config(config), sensorController(sensorController), sensorMonitor(sensorMonitor), mode(NetworkMode::NONE)
 #ifdef ARDUINO
       , ntpClient(wifiUdp)
 #endif
-      , webServer(nullptr), statusLed(statusLed), lastMqttPublish(0)
+      , webServer(webServer), statusLed(statusLed), lastMqttPublish(0)
 {
+}
+
+void Network::begin() {
+#ifdef ARDUINO
+    // Construct the long-lived MqttClient once. Subsequent (re)connects call
+    // `begin(mqttConfig)` on the same instance — that path is idempotent
+    // (see MqttClient::begin) and does not re-allocate the underlying
+    // PubSubClient. See spec `memory-management` → "Long-lived singletons
+    // are constructed once".
+    mqttClient = std::make_unique<MqttClient>();
+#endif
 }
 
 String Network::generateHostname() {
@@ -272,11 +283,14 @@ void Network::startSTA(const char *ssid, const char *password) {
             ESP_LOGW(TAG, "NTP initial sync failed; will retry");
         }
 
-        // Initialize MQTT client
+        // Initialize MQTT client (re-init the long-lived singleton; no re-allocation).
         ESP_LOGI(TAG, "Initializing MQTT...");
-        mqttClient = std::make_unique<MqttClient>();
         Config::MqttConfig mqttConfig = config.loadMqttConfig();
-        mqttClient->begin(mqttConfig);
+        if (mqttClient) {
+            mqttClient->begin(mqttConfig);
+        } else {
+            ESP_LOGE(TAG, "mqttClient not initialized — call Network::begin() first");
+        }
         ESP_LOGI(TAG, "MQTT initialized");
     } else {
         ESP_LOGE(TAG, "WiFi connection failed");
@@ -301,9 +315,13 @@ void Network::configureUsingAPMode() {
     // Start Access Point mode
     startAP();
 
-    // Create and start config webserver for AP mode
-    webServer = std::make_unique<ConfigWebServerManager>(config, *this, sensorController, sensorMonitor);
-    webServer->begin();
+    // Switch the long-lived web server to CONFIG mode (WiFi setup + captive
+    // portal routes). The same instance is reused; nothing is re-allocated.
+    if (webServer) {
+        webServer->setMode(WebServerMode::CONFIG);
+    } else {
+        ESP_LOGE(TAG, "webServer not wired up — bug in main.cpp ordering");
+    }
 
     // Wait for configuration. This task is subscribed to the task watchdog
     // (esp_task_wdt_add in task()), so the wait loop must feed it — otherwise
@@ -372,8 +390,11 @@ void Network::configureUsingAPMode() {
                  failures, AP_FALLBACK_TIMEOUT_MS / 1000);
 
         startAP();
-        webServer = std::make_unique<ConfigWebServerManager>(config, *this, sensorController, sensorMonitor);
-        webServer->begin();
+        if (webServer) {
+            webServer->setMode(WebServerMode::CONFIG);
+        } else {
+            ESP_LOGE(TAG, "webServer not wired up — bug in main.cpp ordering");
+        }
 
         unsigned long apStart = millis();
         while (!config.isConfigured() && (millis() - apStart < AP_FALLBACK_TIMEOUT_MS)) {
@@ -383,7 +404,14 @@ void Network::configureUsingAPMode() {
         }
 
         captivePortal.end();
-        webServer.reset();
+        // Drop the AP routes from the long-lived server so the device can be
+        // restarted cleanly. We do NOT destroy the server — the singleton stays
+        // alive for the next boot, see spec `memory-management` → "Long-lived
+        // singletons are constructed once". `end()` stops the listening socket
+        // so a request that arrives during the restart window is rejected.
+        if (webServer) {
+            webServer->end();
+        }
 
         if (config.isConfigured()) {
             ESP_LOGI(TAG, "New configuration received - resetting failure count and restarting...");
@@ -437,11 +465,16 @@ void Network::configureUsingAPMode() {
 
     statusLed.setState(LedState::ON); // Solid on for connected state
 
-    // Create and start operational webserver for STA mode
-    ESP_LOGI(TAG, "Creating OperationalWebServerManager...");
-    webServer = std::make_unique<OperationalWebServerManager>(config, *this, sensorController, sensorMonitor);
-    ESP_LOGI(TAG, "Starting webserver...");
-    webServer->begin();
+    // Switch the long-lived web server to OPERATIONAL mode. The same
+    // WebServerManager instance from boot is reused — no re-allocation, no
+    // heap fragmentation. See spec `memory-management` → "Long-lived
+    // singletons are constructed once".
+    ESP_LOGI(TAG, "Switching webserver to OPERATIONAL mode...");
+    if (webServer) {
+        webServer->setMode(WebServerMode::OPERATIONAL);
+    } else {
+        ESP_LOGE(TAG, "webServer not wired up — bug in main.cpp ordering");
+    }
     ESP_LOGI(TAG, "Webserver started");
 
     ESP_LOGI(TAG, "Webserver started - system ready, free heap: %u bytes", ESP.getFreeHeap());

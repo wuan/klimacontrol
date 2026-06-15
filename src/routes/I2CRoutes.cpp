@@ -13,7 +13,7 @@ void WebServerManager::setupI2CRoutes() {
     server.on("/api/i2c/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
         auto devices = I2CScanner::scan();
 
-        JsonDocument doc;
+        StaticJsonDocument<512> doc;
         JsonArray arr = doc["devices"].to<JsonArray>();
 
         for (const auto& dev : devices) {

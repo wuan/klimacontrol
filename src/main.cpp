@@ -33,6 +33,12 @@
 
 static const char* TAG = "main";
 
+// Maximum number of sensors the I2C scan loop is willing to add. Each branch
+// in the assignment-parser below (one per Sensor::* type) maps to one slot,
+// so the value must be kept in sync with that list. The native test
+// `test_memory/test_singleton_lifetimes` asserts the match.
+static constexpr size_t MAX_KNOWN_SENSORS = 10;
+
 TaskHandle_t networkTaskHandle = nullptr;
 
 Config::ConfigManager config;
@@ -41,7 +47,13 @@ Config::ConfigManager config;
 StatusLed statusLed;
 SensorController sensorController(config, &statusLed);
 Task::SensorMonitor sensorMonitor(sensorController);
-Network network(config, sensorController, sensorMonitor, statusLed);
+// Network is constructed first with a null webServer pointer; the
+// WebServerManager is constructed right after (it needs a Network& reference)
+// and wired in via setWebServer. This breaks the circular reference while
+// keeping both objects as long-lived singletons — see spec `memory-management`
+// → "Long-lived singletons are constructed once".
+Network network(config, sensorController, sensorMonitor, statusLed, nullptr);
+WebServerManager webServer(config, network, sensorController, sensorMonitor);
 
 void setup() {
     delay(1000);
@@ -49,6 +61,12 @@ void setup() {
     // config.reset();
     ESP_LOGI(TAG, "Started");
     config.begin();
+    // Wire the pre-constructed WebServerManager into the network task. Both
+    // objects exist at file scope (Network is constructed first with a null
+    // pointer to break the circular reference, WebServerManager is constructed
+    // next and given the Network& reference it needs); this call completes
+    // the long-lived wiring before the network task starts.
+    network.setWebServer(&webServer);
 
 #ifdef ARDUINO
     Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
@@ -113,6 +131,10 @@ void setup() {
 
     // Initialize sensor controller
     sensorController.begin();
+    // Reserve the sensor + measurement vector capacity so the I2C scan loop's
+    // addSensor() calls do not reallocate. Must happen before the scan loop —
+    // see spec `memory-management` → "Vector capacities are reserved at boot".
+    sensorController.reserveSensorSlots(MAX_KNOWN_SENSORS);
 
     // Apply sensor configuration from the already loaded deviceConfig
     sensorController.setTargetTemperature(deviceConfig.target_temperature);
@@ -126,6 +148,7 @@ void setup() {
 
     ESP_LOGI(TAG, "Starting network task");
     try {
+        network.begin();
         network.startTask();
     } catch (const std::exception &e) {
         ESP_LOGE(TAG, "Error starting network task: %s", e.what());

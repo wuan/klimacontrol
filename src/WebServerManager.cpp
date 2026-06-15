@@ -111,9 +111,10 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
             return;
         }
 
-        // Parse JSON body
-        auto doc_ptr = std::make_unique<JsonDocument>();
-        JsonDocument& doc = *doc_ptr;
+        // Parse JSON body on the stack — no heap allocation for the document.
+        // 512 bytes is the spec ceiling (see http-api → "Request handler
+        // allocation discipline") and is generous for an SSID + password pair.
+        StaticJsonDocument<512> doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -152,9 +153,9 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
         String hostname = Constants::HOSTNAME_PREFIX + deviceId;
         hostname.toLowerCase();
 
-        // Send success response with hostname
-        auto response_doc_ptr = std::make_unique<JsonDocument>();
-        JsonDocument& responseDoc = *response_doc_ptr;
+        // Build the success response on the stack — no heap allocation for the
+        // document. The serialized String is what we hand to AsyncWebServer.
+        StaticJsonDocument<128> responseDoc;
         responseDoc["success"] = true;
         responseDoc["hostname"] = hostname + ".local";
 
@@ -168,20 +169,11 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
 #endif
 
 void WebServerManager::begin() {
-#ifdef ARDUINO
-    ESP_LOGI(TAG, "Starting webserver...");
-
-    // Add access logging middleware for all requests
-    // server.addMiddleware(&logging);
-
-    // Setup routes (implemented by subclass)
-    setupRoutes();
-
-    // Start server
-    server.begin();
-
-    ESP_LOGI(TAG, "Webserver started on port 80");
-#endif
+    // No-op: the server is started by `setMode()` which is the canonical
+    // entry point in the new lifecycle (construct once, setMode to start,
+    // setMode again to switch, end to stop). Calling `begin()` after a
+    // `setMode()` would re-register the same routes on top of the existing
+    // route table, so we deliberately do nothing here.
 }
 
 void WebServerManager::end() {
@@ -191,41 +183,50 @@ void WebServerManager::end() {
 #endif
 }
 
-// ConfigWebServerManager implementation
-ConfigWebServerManager::ConfigWebServerManager(Config::ConfigManager &config, Network &network,
-                                               SensorController &sensorController, Task::SensorMonitor &sensorMonitor)
-    : WebServerManager(config, network, sensorController, sensorMonitor) {
-}
-
-void ConfigWebServerManager::setupRoutes() {
+void WebServerManager::setMode(WebServerMode mode) {
 #ifdef ARDUINO
-    // Setup config routes only (WiFi setup, OTA)
-    setupConfigRoutes();
+    if (mode == currentMode && currentMode != WebServerMode::NONE) {
+        // Idempotent: same mode is already active, don't disturb the route table.
+        return;
+    }
 
-    // Captive portal: redirect all unknown requests to root
-    // This makes the captive portal work on phones/tablets
-    server.onNotFound([](AsyncWebServerRequest *request) {
-        // Redirect to the root page for captive portal detection
-        request->redirect("/");
-    });
+    // Stop the server while we rebuild the route table so an incoming
+    // request cannot see a partial set of routes mid-swap.
+    server.end();
+
+    // Drop all previously-registered handlers and the not-found hook.
+    clearRoutes();
+
+    if (mode == WebServerMode::CONFIG) {
+        ESP_LOGI(TAG, "Switching webserver to CONFIG mode");
+        setupConfigRoutes();
+        // Captive portal: redirect all unknown requests to root so phones/tablets
+        // detect the configuration portal.
+        server.onNotFound([](AsyncWebServerRequest *request) {
+            request->redirect("/");
+        });
+    } else if (mode == WebServerMode::OPERATIONAL) {
+        ESP_LOGI(TAG, "Switching webserver to OPERATIONAL mode");
+        setupAPIRoutes();
+        server.onNotFound([](AsyncWebServerRequest *request) {
+            ESP_LOGD(TAG, "404 Not Found: %s", request->url().c_str());
+            request->send(404, "text/plain", "Not found");
+        });
+    }
+    // WebServerMode::NONE: leave the server stopped with no routes.
+
+    currentMode = mode;
+    server.begin();
+    ESP_LOGI(TAG, "Webserver started on port 80 (mode=%u)", static_cast<unsigned>(mode));
 #endif
 }
 
-// OperationalWebServerManager implementation
-OperationalWebServerManager::OperationalWebServerManager(Config::ConfigManager &config, Network &network,
-                                                         SensorController &sensorController, Task::SensorMonitor &sensorMonitor)
-    : WebServerManager(config, network, sensorController, sensorMonitor) {
-}
-
-void OperationalWebServerManager::setupRoutes() {
+void WebServerManager::clearRoutes() {
 #ifdef ARDUINO
-    // Setup API routes (LED control, status, etc.)
-    setupAPIRoutes();
-
-    // Add 404 handler
-    server.onNotFound([](AsyncWebServerRequest *request) {
-        ESP_LOGD(TAG, "404 Not Found: %s", request->url().c_str());
-        request->send(404, "text/plain", "Not found");
-    });
+    // AsyncWebServer's reset() drops the entire handler list and the
+    // not-found hook, returning the object to the same state as a
+    // freshly-constructed server. This is the only supported way to
+    // clear handlers — there is no per-handler remove API.
+    server.reset();
 #endif
 }

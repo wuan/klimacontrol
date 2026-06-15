@@ -9,6 +9,7 @@
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
+#include <esp_heap_caps.h>
 #include <esp_ota_ops.h>
 #endif
 
@@ -16,7 +17,7 @@ void WebServerManager::setupStatusRoutes() {
 #ifdef ARDUINO
     // GET /api/status - Get device status
     server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        JsonDocument doc;
+        StaticJsonDocument<512> doc;
 
         // Device info
         Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
@@ -58,6 +59,14 @@ void WebServerManager::setupStatusRoutes() {
             doc["wifi_ssid"] = WiFi.SSID();
         }
 
+#ifdef ARDUINO
+        // Heap *shape* — the size of the largest contiguous free block.
+        // Reported alongside `free_heap` so a fragmentation regression is
+        // visible from the web UI without serial-log access. See spec
+        // `memory-management` → "Heap fragmentation is observable".
+        doc["largest_free_block"] = static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+#endif
+
         String response;
         serializeJson(doc, response);
         request->send(200, CONTENT_TYPE_JSON, response);
@@ -65,7 +74,10 @@ void WebServerManager::setupStatusRoutes() {
 
     // GET /api/about - Device information
     server.on("/api/about", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        JsonDocument doc;
+        // Bumped to 1024: the about payload is fixed-size but large (chip,
+        // memory, flash, network, sensor stats). The 512-byte baseline is
+        // for the request hot path; /api/about is a one-shot diagnostic.
+        StaticJsonDocument<1024> doc;
 
         // Device info
         Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
@@ -97,6 +109,14 @@ void WebServerManager::setupStatusRoutes() {
         doc["free_heap"] = ESP.getFreeHeap();
         doc["heap_size"] = ESP.getHeapSize();
         doc["min_free_heap"] = ESP.getMinFreeHeap();
+#ifdef ARDUINO
+        // Heap shape — the size of the largest contiguous free block.
+        // Sourced from the same call as the /api/status field, so the two
+        // endpoints stay consistent. See spec `memory-management` →
+        // "Heap fragmentation is observable" and the http-api delta in
+        // change `largest-free-block-as-measurement`.
+        doc["largest_free_block"] = static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+#endif
         doc["psram_size"] = ESP.getPsramSize();
 
         // Flash info
@@ -125,8 +145,12 @@ void WebServerManager::setupStatusRoutes() {
     });
 
     // GET /api/measurements - Get detailed overview of most recent measurements as a table
+    // Sized for the worst case (10 sensors × ~5 measurements × ~80 bytes per
+    // row). 2048 is the documented cap for this route; the 512-byte baseline
+    // is for the request hot path, /api/measurements is the heaviest fixed
+    // route in the API.
     server.on("/api/measurements", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        JsonDocument doc;
+        StaticJsonDocument<2048> doc;
 
         doc["valid"] = sensorController.isDataValid();
         doc["timestamp"] = sensorController.getLastReadingTimestamp();

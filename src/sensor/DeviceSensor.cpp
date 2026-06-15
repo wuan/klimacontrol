@@ -3,6 +3,7 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <esp_system.h>
 #endif
 
@@ -36,6 +37,9 @@ namespace Sensor {
 
         // Free heap memory (in bytes)
         reading.measurements.push_back({MeasurementType::FreeHeap, static_cast<float>(ESP.getFreeHeap()/1024.0), getType(), false});
+
+        // Largest contiguous free block (fragmentation indicator, in kB)
+        reading.measurements.push_back({MeasurementType::LargestFreeBlock, static_cast<float>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT) / 1024.0f), getType(), false});
 
         // Uptime in seconds
         reading.measurements.push_back({MeasurementType::Uptime, (int32_t)(millis() / 1000), getType(), false});

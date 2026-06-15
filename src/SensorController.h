@@ -88,6 +88,19 @@ public:
 
     void begin();
     void addSensor(std::unique_ptr<Sensor::Sensor> sensor);
+
+    /**
+     * Reserve capacity for the sensor and measurement vectors so the
+     * I2C scan loop's `addSensor()` calls do not trigger a reallocation.
+     * Must be called from main.cpp (the only place that knows the upper
+     * bound) before the first `addSensor()`. After this call, adding
+     * up to `n` sensors will not reallocate `sensors`, and accumulating
+     * up to `n * MAX_MEASUREMENTS_PER_SENSOR` measurements will not
+     * reallocate `currentMeasurements`. See spec `memory-management` →
+     * "Vector capacities are reserved at boot" for the contract.
+     */
+    void reserveSensorSlots(size_t n);
+
     void readSensors();
 
     /**
@@ -141,6 +154,20 @@ public:
 
     size_t getSensorCount() const { return sensors.size(); }
     Sensor::Sensor *getSensor(size_t index);
+
+    /**
+     * Capacity of the internal sensor-list vector. Used by native tests to
+     * assert that `reserveSensorSlots(N)` actually prevents reallocation as
+     * sensors are added. Cheap (one inline accessor).
+     */
+    size_t getSensorsCapacity() const { return sensors.capacity(); }
+
+    /**
+     * Capacity of the internal measurement vector. Used by native tests to
+     * assert the post-`reserveSensorSlots(N)` capacity matches the documented
+     * ceiling (`N * MAX_MEASUREMENTS_PER_SENSOR`).
+     */
+    size_t getMeasurementsCapacity() const { return currentMeasurements.capacity(); }
 
     void setTargetTemperature(float temperature);
     float getTargetTemperature() const { return config.getDeviceConfig().target_temperature; }

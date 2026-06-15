@@ -7,7 +7,7 @@ namespace Sensor {
 
     /**
      * Virtual sensor that reports ESP32 device metrics:
-     * WiFi RSSI, chip temperature, free heap, uptime
+     * WiFi RSSI, chip temperature, free heap, largest free heap block, uptime
      */
     class DeviceSensor : public Sensor {
     public:
@@ -20,9 +20,10 @@ namespace Sensor {
         [[nodiscard]] TypeSpan providesMeasurements() const override {
             static constexpr MeasurementType types[] = {
                 MeasurementType::Rssi, MeasurementType::Channel,
-                MeasurementType::System, MeasurementType::FreeHeap, MeasurementType::Uptime
+                MeasurementType::System, MeasurementType::FreeHeap,
+                MeasurementType::LargestFreeBlock, MeasurementType::Uptime
             };
-            return {types, 5};
+            return {types, 6};
         }
     };
 

@@ -84,6 +84,9 @@
                     createRow('Total Heap', formatBytes(data.heap_size)) +
                     createRow('Heap Usage', heapUsage + '%') +
                     createRow('Min Free Heap', formatBytes(data.min_free_heap)) +
+                    (data.largest_free_block !== undefined
+                        ? createRow('Largest Free Block', formatBytes(data.largest_free_block))
+                        : '') +
                     createRow('Flash Size', formatBytes(data.flash_size));
 
                 let networkHTML = '';

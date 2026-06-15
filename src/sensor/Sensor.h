@@ -55,6 +55,7 @@ namespace Sensor {
         Channel,
         System,
         FreeHeap,
+        LargestFreeBlock,
         Uptime,
         Time
     };
@@ -83,6 +84,7 @@ namespace Sensor {
             case MeasurementType::Channel: return "channel";
             case MeasurementType::System: return "system";
             case MeasurementType::FreeHeap: return "free_heap";
+            case MeasurementType::LargestFreeBlock: return "largest_free_block";
             case MeasurementType::Uptime: return "uptime";
             case MeasurementType::Time: return "time";
         }
@@ -113,6 +115,7 @@ namespace Sensor {
             case MeasurementType::Rssi: return "dBm";
             case MeasurementType::Channel: return "";
             case MeasurementType::FreeHeap: return "kB";
+            case MeasurementType::LargestFreeBlock: return "kB";
             case MeasurementType::Uptime: return "s";
             case MeasurementType::Time: return "ms";
         }

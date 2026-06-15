@@ -44,7 +44,12 @@ private:
     NTPClient ntpClient;
 #endif
 
-    std::unique_ptr<WebServerManager> webServer;
+    // Long-lived singletons. The web server is constructed once in setup()
+    // and the same instance is reused across AP/STA/STA-fallback cycles by
+    // calling setMode(). MqttClient is constructed once in `Network::begin()`
+    // and re-initialized in place on each (re)connect. See spec
+    // `memory-management` → "Long-lived singletons are constructed once".
+    WebServerManager *webServer = nullptr;
     StatusLed &statusLed;
     std::unique_ptr<MqttClient> mqttClient;
     uint32_t lastMqttPublish;
@@ -120,11 +125,32 @@ public:
      * @param statusLed Status LED (non-owning reference; the LED is created at
      *                  namespace scope in main.cpp so it is available when
      *                  SensorController's constructor runs)
+     * @param webServer Pre-constructed WebServerManager (long-lived). The
+     *                  Network does not own it; ownership stays with the
+     *                  caller (main.cpp). Switched into CONFIG/OPERATIONAL
+     *                  mode via setMode() from the network task.
      */
-    Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, StatusLed &statusLed);
+    Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, StatusLed &statusLed, WebServerManager *webServer);
 
     // disable copy constructor
     Network(const Network &) = delete;
+
+    /**
+     * Wire the pre-constructed WebServerManager into the network task. Called
+     * from main.cpp after both objects exist (the WebServerManager constructor
+     * needs a Network& reference, so it can't be built first). The pointer is
+     * non-owning — main.cpp keeps the WebServerManager alive for the lifetime
+     * of the firmware.
+     */
+    void setWebServer(WebServerManager *webServer) { this->webServer = webServer; }
+
+    /**
+     * One-time initialization of long-lived singletons that the network task
+     * depends on. Currently constructs the MqttClient so the same instance is
+     * reused across every (re)connect (idempotent `begin()` re-init only).
+     * Must be called from setup() before the network task starts.
+     */
+    void begin();
 
     /**
      * Network task (runs on Core 1)

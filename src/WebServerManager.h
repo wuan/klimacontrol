@@ -27,8 +27,29 @@ public:
 };
 
 /**
- * Base WebServer Manager
- * Abstract base class for different webserver modes
+ * Webserver operating mode.
+ *
+ * The same `WebServerManager` instance is reused across mode flips
+ * (AP config vs. operational STA) by calling `setMode()`. Constructing
+ * a new server on every mode flip would carve a large hole in the heap
+ * each time and is the fragmentation source this class is designed
+ * to avoid — see spec `memory-management` → "Long-lived singletons are
+ * constructed once".
+ */
+enum class WebServerMode {
+    NONE,        // server not started
+    CONFIG,      // AP-mode: only serves the WiFi configuration page + /api/wifi
+    OPERATIONAL  // STA-mode: serves the full control UI and API surface
+};
+
+/**
+ * WebServerManager
+ *
+ * Single class for both AP (configuration) and STA (operational) modes.
+ * Mode is selected by `setMode()` which internally calls `clearRoutes()`
+ * followed by the appropriate route-setup helper. The instance is
+ * long-lived: construct once in `setup()` and switch modes by calling
+ * `setMode()` instead of destroying and reconstructing the server.
  */
 class WebServerManager {
 protected:
@@ -36,6 +57,7 @@ protected:
     Network &network;
     SensorController &sensorController;
     Task::SensorMonitor &sensorMonitor;
+    WebServerMode currentMode = WebServerMode::NONE;
 
 #ifdef ARDUINO
     AsyncWebServer server;
@@ -76,9 +98,12 @@ protected:
 #endif
 
     /**
-     * Setup routes - implemented by subclasses
+     * Drop all previously-registered handlers and the not-found hook
+     * so a `setMode()` call starts from a clean route table. Stops the
+     * server while the table is rebuilt so a request can't see a
+     * partial set of routes mid-swap.
      */
-    virtual void setupRoutes() = 0;
+    void clearRoutes();
 
 public:
     /**
@@ -104,30 +129,16 @@ public:
      * Stop the webserver
      */
     void end();
-};
 
-/**
- * Config WebServer Manager
- * Webserver for AP mode - only serves WiFi configuration pages
- */
-class ConfigWebServerManager : public WebServerManager {
-protected:
-    void setupRoutes() override;
-
-public:
-    ConfigWebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController, Task::SensorMonitor &sensorMonitor);
-};
-
-/**
- * Operational WebServer Manager
- * Webserver for STA mode - serves full LED control interface
- */
-class OperationalWebServerManager : public WebServerManager {
-protected:
-    void setupRoutes() override;
-
-public:
-    OperationalWebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController, Task::SensorMonitor &sensorMonitor);
+    /**
+     * Switch the active route set to the given mode. Stops the server,
+     * clears all previously-registered handlers, registers the routes
+     * for the new mode, and re-starts the server. Calling with the
+     * current mode is a no-op (returns immediately).
+     *
+     * @param mode One of WebServerMode::CONFIG or WebServerMode::OPERATIONAL
+     */
+    void setMode(WebServerMode mode);
 };
 
 #endif //KLIMACONTROL_WEBSERVERMANAGER_H
