@@ -259,7 +259,10 @@ void Network::startSTA(const char *ssid, const char *password) {
         // which would not actually exchange any packets.
         ESP_LOGI(TAG, "Starting NTP...");
         ntpClient.begin();
-        if (ntpClient.forceUpdate()) {
+        // Use the guarded wrapper so a hung UDP call cannot starve the
+        // 30 s TWDT — see Network::safeNtpUpdate() and the
+        // "Network task blocking-call safety" spec requirement.
+        if (safeNtpUpdate()) {
             ntpSynced = true;
             lastNtpUpdateEpoch = ntpClient.getEpochTime();
             ESP_LOGI(TAG, "NTP time: %s", ntpClient.getFormattedTime().c_str());
@@ -277,6 +280,19 @@ void Network::startSTA(const char *ssid, const char *password) {
         ESP_LOGE(TAG, "WiFi connection failed");
     }
 #endif
+}
+
+bool Network::safeNtpUpdate() {
+    // Wrap ntpClient.forceUpdate() in a guardedCall so the task watchdog
+    // is fed on both sides. forceUpdate() is bounded by NTPClient's
+    // 1 s internal timeout, but the underlying WiFiUDP::parsePacket()
+    // can stall for tens of seconds on a degraded link (lwIP
+    // retransmits, ARP retries) before that timeout even gets a chance
+    // to fire. Without the guard a single hung call can exceed the 30 s
+    // TWDT and panic-reboot the device mid-NVS-write. See
+    // `src/support/NetworkWatchdog.h` and the spec requirement
+    // "Network task blocking-call safety".
+    return Support::guardedCall([this] { return ntpClient.forceUpdate(); });
 }
 
 void Network::configureUsingAPMode() {
@@ -575,13 +591,16 @@ void Network::configureUsingAPMode() {
             }
 
             // NTP update — drives off the explicit ntpSynced flag, not getEpochTime() > 0.
+            // Each forceUpdate() goes through Network::safeNtpUpdate() so the
+            // task watchdog is fed on both sides of the call — a hung UDP
+            // exchange on a degraded link cannot starve the 30 s TWDT.
             static constexpr uint32_t NTP_UPDATE_INTERVAL_S = 3600;
             static bool lastNtpUpdateFailed = false;
 
             if (ntpSynced) {
                 uint32_t currentEpoch = ntpClient.getEpochTime();
                 if (currentEpoch - lastNtpUpdateEpoch >= NTP_UPDATE_INTERVAL_S) {
-                    if (ntpClient.forceUpdate()) {
+                    if (safeNtpUpdate()) {
                         lastNtpUpdateEpoch = ntpClient.getEpochTime();
                         ESP_LOGI(TAG, "NTP update: %s", ntpClient.getFormattedTime().c_str());
                         if (lastNtpUpdateFailed) {
@@ -598,7 +617,7 @@ void Network::configureUsingAPMode() {
             } else if (now - lastNtpRetry >= NTP_UNSYNCED_RETRY_MS) {
                 // NTP not yet synced - retry at most once per minute
                 lastNtpRetry = now;
-                if (ntpClient.forceUpdate()) {
+                if (safeNtpUpdate()) {
                     ntpSynced = true;
                     lastNtpUpdateEpoch = ntpClient.getEpochTime();
                     ESP_LOGI(TAG, "NTP initial sync: %s", ntpClient.getFormattedTime().c_str());

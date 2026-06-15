@@ -14,6 +14,7 @@
 #include "sensor/Sensor.h"
 #include "SensorController.h"
 #include "task/SensorMonitor.h"
+#include "support/NetworkWatchdog.h"
 
 // Forward declarations
 namespace Config {
@@ -102,6 +103,14 @@ private:
      * Configure mDNS responder with hostname and HTTP service advertisement
      */
     void configureMDNS();
+
+    /**
+     * Run ntpClient.forceUpdate() with the task watchdog fed immediately
+     * before and after. See `src/support/NetworkWatchdog.h` for the helper
+     * and the spec `networking` → "Network task blocking-call safety" for
+     * the contract.
+     */
+    bool safeNtpUpdate();
 
 public:
     /**
