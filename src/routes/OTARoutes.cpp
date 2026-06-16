@@ -24,7 +24,7 @@ void WebServerManager::setupOTARoutes() {
         }
         bool started = OTAUpdater::startBackgroundCheck(OTA_GITHUB_OWNER, OTA_GITHUB_REPO);
 
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         doc["status"] = started ? "checking" : "busy";
 
         String response;
@@ -34,7 +34,7 @@ void WebServerManager::setupOTARoutes() {
 
     // GET /api/ota/check - Poll the state of the background check.
     server.on("/api/ota/check", HTTP_GET, [](AsyncWebServerRequest *request) {
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         doc["current_version"] = FIRMWARE_VERSION;
 
         FirmwareInfo info;
@@ -95,7 +95,7 @@ void WebServerManager::setupOTARoutes() {
 
     // GET /api/ota/status - Get OTA status
     server.on("/api/ota/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
 
         doc["firmware_version"] = FIRMWARE_VERSION;
         doc["build_date"] = FIRMWARE_BUILD_DATE;
@@ -131,7 +131,7 @@ void WebServerManager::setupOTARoutes() {
         }
         bool success = OTAUpdater::confirmBoot();
 
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         doc[JSON_KEY_SUCCESS] = success;
         doc["message"] = success ? "Boot confirmed, rollback disabled" : "Failed to confirm boot";
 

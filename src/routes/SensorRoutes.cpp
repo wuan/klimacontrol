@@ -19,7 +19,7 @@ void WebServerManager::setupSensorRoutes() {
     server.on("/api/sensors/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
         Config::SensorConfig sensorConfig = config.loadSensorConfig();
 
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         JsonArray arr = doc["devices"].to<JsonArray>();
 
         // Parse assignment string "44=SHT4x,77=BME680" into JSON array
@@ -49,7 +49,7 @@ void WebServerManager::setupSensorRoutes() {
     // GET /api/sensors/registry - Get known sensor types and their I2C addresses
     // NOTE: Must be registered before /api/sensors to avoid prefix matching
     server.on("/api/sensors/registry", HTTP_GET, [](AsyncWebServerRequest *request) {
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
 
         size_t registryCount;
         const SensorInfo* registry = I2CScanner::getRegistry(registryCount);
@@ -78,7 +78,7 @@ void WebServerManager::setupSensorRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<512> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -119,7 +119,7 @@ void WebServerManager::setupSensorRoutes() {
     // larger than the 512-byte baseline because the sensor list is the largest
     // fixed-cost output of the API.
     server.on("/api/sensors", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        StaticJsonDocument<1024> doc;
+        JsonDocument doc;
         JsonArray sensors = doc["sensors"].to<JsonArray>();
 
         for (size_t i = 0; i < sensorController.getSensorCount(); i++) {

@@ -26,7 +26,7 @@ void WebServerManager::setupSettingsRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<512> doc;
+                      JsonDocument doc;
 
                       if (deserializeJson(doc, data, len)) {
                           request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
@@ -75,7 +75,7 @@ void WebServerManager::setupSettingsRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<512> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -113,7 +113,7 @@ void WebServerManager::setupSettingsRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<512> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
@@ -200,7 +200,7 @@ void WebServerManager::setupSettingsRoutes() {
         ESP_LOGD(TAG, "Loaded energy config: wifi_power=%u, wifi_sleep_mode=%u",
                  energyConfig.wifi_power, energyConfig.wifi_sleep_mode);
 
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         doc["wifi_power"] = energyConfig.wifi_power;
         doc["wifi_sleep_mode"] = energyConfig.wifi_sleep_mode;
 
@@ -220,7 +220,7 @@ void WebServerManager::setupSettingsRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<512> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {

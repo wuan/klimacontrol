@@ -41,29 +41,6 @@ reconnect, or sensor re-scan.
 - **THEN** the `MqttClient` instance is reused; only the
   reconnection handshake runs, not a re-construction
 
-### Requirement: HTTP route handlers do not allocate from the heap
-
-The firmware SHALL serialize every HTTP route handler's response
-under `src/routes/*.cpp` and `WebServerManager::handleWiFiConfig`
-using a `StaticJsonDocument` placed on the stack frame. The
-firmware MUST NOT call `std::make_unique<JsonDocument>()`,
-`new JsonDocument`, or any other heap allocator in a request
-handler that is freed before the handler returns.
-
-#### Scenario: Status handler serves `/api/status`
-
-- **WHEN** a client GETs `/api/status`
-- **THEN** the handler builds the response with a stack-allocated
-  `StaticJsonDocument` and no heap allocation occurs for the
-  document itself
-
-#### Scenario: WiFi config handler accepts a POST
-
-- **WHEN** a client POSTs to `/api/wifi` with a valid CSRF header
-- **THEN** the handler parses the body and serializes the response
-  using stack-allocated `StaticJsonDocument` instances; no
-  per-request heap allocation for JSON document objects occurs
-
 ### Requirement: Vector capacities are reserved at boot
 
 The firmware SHALL call `SensorController::reserveSensorSlots(n)`
@@ -121,3 +98,18 @@ possible to observe the heap's shape without serial-log access.
 - **THEN** the displayed status includes the current value of
   `largest_free_block` so the operator can see whether the
   largest contiguous free block has shrunk unexpectedly
+
+### Requirement: HTTP route handlers place the JsonDocument on the stack
+
+The firmware SHALL serialize every HTTP route handler's response under `src/routes/*.cpp` and `WebServerManager::handleWiFiConfig` using a `JsonDocument` placed on the handler's stack frame. The `JsonDocument` object itself MUST be stack-allocated; variable-length data the document holds is allocated via the ArduinoJson default allocator (`heap_caps_malloc` / `free` on ESP32, `malloc` / `free` on the host) and is freed when the document is destroyed at handler return. The firmware MUST NOT call `std::make_unique<JsonDocument>()`, `new JsonDocument`, `DynamicJsonDocument`, or any other heap allocator for the document object itself in a request handler.
+
+#### Scenario: Status handler serves `/api/status`
+
+- **WHEN** a client GETs `/api/status`
+- **THEN** the handler builds the response with a stack-allocated `JsonDocument`; the `JsonDocument` object is on the handler's stack frame and any data it holds is allocated via the default allocator and freed at handler return
+
+#### Scenario: WiFi config handler accepts a POST
+
+- **WHEN** a client POSTs to `/api/wifi` with a valid CSRF header
+- **THEN** the handler parses the body and serializes the response using stack-allocated `JsonDocument` instances; the `JsonDocument` objects are on the handler's stack frame and any data they hold is allocated via the default allocator and freed at handler return
+

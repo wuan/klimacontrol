@@ -21,7 +21,7 @@ void WebServerManager::setupControlRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<512> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {

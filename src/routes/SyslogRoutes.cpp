@@ -17,7 +17,7 @@ void WebServerManager::setupSyslogRoutes() {
     server.on("/api/syslog", HTTP_GET, [this](AsyncWebServerRequest *request) {
         Config::SyslogConfig syslogConfig = config.loadSyslogConfig();
 
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         doc["enabled"] = syslogConfig.enabled;
         doc["host"] = syslogConfig.host;
         doc["port"] = syslogConfig.port;
@@ -39,7 +39,7 @@ void WebServerManager::setupSyslogRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<512> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {

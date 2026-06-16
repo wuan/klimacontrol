@@ -17,7 +17,7 @@ void WebServerManager::setupStatusRoutes() {
 #ifdef ARDUINO
     // GET /api/status - Get device status
     server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
 
         // Device info
         Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
@@ -77,7 +77,7 @@ void WebServerManager::setupStatusRoutes() {
         // Bumped to 1024: the about payload is fixed-size but large (chip,
         // memory, flash, network, sensor stats). The 512-byte baseline is
         // for the request hot path; /api/about is a one-shot diagnostic.
-        StaticJsonDocument<1024> doc;
+        JsonDocument doc;
 
         // Device info
         Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
@@ -150,7 +150,7 @@ void WebServerManager::setupStatusRoutes() {
     // is for the request hot path, /api/measurements is the heaviest fixed
     // route in the API.
     server.on("/api/measurements", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        StaticJsonDocument<2048> doc;
+        JsonDocument doc;
 
         doc["valid"] = sensorController.isDataValid();
         doc["timestamp"] = sensorController.getLastReadingTimestamp();

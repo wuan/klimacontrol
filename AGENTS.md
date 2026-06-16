@@ -461,7 +461,7 @@ Complete documentation in `docs/` directory:
 - **Flash budget**: 4MB available, current usage ~1MB (25%)
 - **Stack size**: Sensor Monitor task has 8KB stack, Network task has 10KB stack
 - **Single-core**: ESP32-S2 has only one core (unlike dual-core ESP32)
-- **JSON buffer**: 512 bytes for API responses (StaticJsonDocument<512>)
+- **JSON document**: `JsonDocument` on the handler's stack frame; variable-length data via the ArduinoJson default allocator (`heap_caps_malloc` / `free` on ESP32), freed at handler return. The document object itself MUST NOT be heap-allocated (`make_unique<JsonDocument>` / `new JsonDocument` are forbidden in route handlers).
 - **Sensor data**: Temperature range -40°C to +125°C, humidity 0-100% RH
 
 ## Device Naming

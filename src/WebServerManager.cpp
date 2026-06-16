@@ -114,7 +114,7 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
         // Parse JSON body on the stack — no heap allocation for the document.
         // 512 bytes is the spec ceiling (see http-api → "Request handler
         // allocation discipline") and is generous for an SSID + password pair.
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         DeserializationError error = deserializeJson(doc, data, len);
 
         if (error) {
@@ -155,7 +155,7 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
 
         // Build the success response on the stack — no heap allocation for the
         // document. The serialized String is what we hand to AsyncWebServer.
-        StaticJsonDocument<128> responseDoc;
+        JsonDocument responseDoc;
         responseDoc["success"] = true;
         responseDoc["hostname"] = hostname + ".local";
 

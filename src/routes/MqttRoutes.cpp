@@ -15,7 +15,7 @@ void WebServerManager::setupMqttRoutes() {
     server.on("/api/mqtt", HTTP_GET, [this](AsyncWebServerRequest *request) {
         Config::MqttConfig mqttConfig = config.loadMqttConfig();
 
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         doc["enabled"] = mqttConfig.enabled;
         doc["host"] = mqttConfig.host;
         doc["port"] = mqttConfig.port;
@@ -50,7 +50,7 @@ void WebServerManager::setupMqttRoutes() {
                           return;
                       }
 
-                      StaticJsonDocument<512> doc;
+                      JsonDocument doc;
                       DeserializationError error = deserializeJson(doc, data, len);
 
                       if (error) {
