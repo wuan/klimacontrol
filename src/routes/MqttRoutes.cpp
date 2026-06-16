@@ -34,6 +34,12 @@ void WebServerManager::setupMqttRoutes() {
             stats["failedCycles"] = mqtt->getFailedCycles();
         }
 
+        if (mqtt) {
+            doc["buffer_size"] = mqtt->getBufferSize();
+            doc["buffer_degraded"] = mqtt->isBufferDegraded();
+            doc["truncated_publishes"] = mqtt->getTruncatedPublishes();
+        }
+
         String response;
         serializeJson(doc, response);
         request->send(200, CONTENT_TYPE_JSON, response);

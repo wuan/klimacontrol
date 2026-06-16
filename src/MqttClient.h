@@ -43,6 +43,11 @@ private:
     uint32_t failedCount = 0;       // failed individual publishes
     uint32_t publishCycles = 0;     // total publish cycles (calls to publishAll)
     uint32_t failedCycles = 0;      // cycles with at least one failure
+    uint32_t truncatedPublishes = 0; // publishes that failed while buffer was degraded
+
+    // TX buffer state — see spec mqtt-integration → "MQTT TX buffer state is observable"
+    uint16_t bufferSize = 0;        // actual buffer size PubSubClient is using
+    bool bufferDegraded = false;    // true when bufferSize < MQTT_BUFFER_SIZE
 
     void applyServer();
 
@@ -62,6 +67,11 @@ public:
     uint32_t getFailedCount() const { return failedCount; }
     uint32_t getPublishCycles() const { return publishCycles; }
     uint32_t getFailedCycles() const { return failedCycles; }
+    uint32_t getTruncatedPublishes() const { return truncatedPublishes; }
+
+    // TX buffer state (see mqtt-integration spec)
+    uint16_t getBufferSize() const { return bufferSize; }
+    bool isBufferDegraded() const { return bufferDegraded; }
     uint32_t getConsecutiveConnectFailures() const { return consecutiveConnectFailures; }
     void recordPublishResult(uint32_t succeeded, uint32_t failed);
     void resetConsecutiveConnectFailures() { consecutiveConnectFailures = 0; }

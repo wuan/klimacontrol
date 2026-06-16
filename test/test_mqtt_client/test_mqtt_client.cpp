@@ -146,6 +146,23 @@ void test_prefix_custom() {
     TEST_ASSERT_EQUAL_STRING("home/living", client.getPrefix());
 }
 
+// --- MqttClient::buffer state accessors ---
+
+void test_buffer_size_default_zero() {
+    MqttClient client;
+    TEST_ASSERT_EQUAL(0, client.getBufferSize());
+}
+
+void test_buffer_degraded_default_false() {
+    MqttClient client;
+    TEST_ASSERT_FALSE(client.isBufferDegraded());
+}
+
+void test_truncated_publishes_default_zero() {
+    MqttClient client;
+    TEST_ASSERT_EQUAL(0, client.getTruncatedPublishes());
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     // isIpAddress
@@ -174,6 +191,10 @@ int runUnityTests() {
     // getPrefix
     RUN_TEST(test_prefix_default);
     RUN_TEST(test_prefix_custom);
+    // buffer state accessors
+    RUN_TEST(test_buffer_size_default_zero);
+    RUN_TEST(test_buffer_degraded_default_false);
+    RUN_TEST(test_truncated_publishes_default_zero);
     return UNITY_END();
 }
 

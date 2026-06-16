@@ -48,10 +48,15 @@ void MqttClient::begin(const Config::MqttConfig& mqttConfig) {
 
     // Override PubSubClient's compile-time default of MQTT_MAX_PACKET_SIZE = 256.
     // Returns false if heap allocation for the larger buffer fails — log but proceed
-    // (the smaller default still works for most payloads).
+    // (the smaller default still works for most payloads). Track the actual size
+    // PubSubClient ended up with so publish failures can be distinguished from
+    // "buffer too small" (see mqtt-integration spec → "MQTT TX buffer state is observable").
     if (!mqttClient.setBufferSize(MQTT_BUFFER_SIZE)) {
-        ESP_LOGW(TAG, "setBufferSize(%u) failed — continuing with default", MQTT_BUFFER_SIZE);
+        ESP_LOGW(TAG, "setBufferSize(%u) failed — running with %u bytes (degraded)",
+                 MQTT_BUFFER_SIZE, mqttClient.getBufferSize());
     }
+    bufferSize = mqttClient.getBufferSize();
+    bufferDegraded = (bufferSize < MQTT_BUFFER_SIZE);
 #endif
 
 #ifdef ARDUINO
@@ -126,6 +131,17 @@ void MqttClient::loop() {
     if (connected) {
         consecutiveConnectFailures = 0;
         ESP_LOGI(TAG, "Connected to %s:%u", config.host, config.port);
+
+        // Opportunistic buffer recovery: a transient allocation failure at
+        // boot may resolve now that the heap is slightly less fragmented.
+        // Only log on the false→healthy transition to avoid log spam.
+        bool wasDegraded = bufferDegraded;
+        mqttClient.setBufferSize(MQTT_BUFFER_SIZE);
+        bufferSize = mqttClient.getBufferSize();
+        bufferDegraded = (bufferSize < MQTT_BUFFER_SIZE);
+        if (wasDegraded && !bufferDegraded) {
+            ESP_LOGI(TAG, "MQTT buffer recovered: %u bytes", bufferSize);
+        }
     } else {
         consecutiveConnectFailures++;
         ESP_LOGW(TAG, "MQTT handshake failed, rc=%d (failures=%u)",
@@ -138,7 +154,13 @@ void MqttClient::loop() {
 bool MqttClient::publish([[maybe_unused]] const char* topic, [[maybe_unused]] const char* payload) {
 #ifdef ARDUINO
     if (!mqttClient.connected()) return false;
-    return mqttClient.publish(topic, payload);
+    bool ok = mqttClient.publish(topic, payload);
+    if (!ok && bufferDegraded) {
+        truncatedPublishes++;
+        ESP_LOGE(TAG, "MQTT publish likely truncated: topic=%s (buffer_size=%u, requested=%u)",
+                 topic, bufferSize, MQTT_BUFFER_SIZE);
+    }
+    return ok;
 #else
     return false;
 #endif
