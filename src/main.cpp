@@ -28,10 +28,33 @@
 #ifdef ARDUINO
 #include <esp_task_wdt.h>
 #include <esp_idf_version.h>
+#include <esp_system.h>
 #include "HardwareWatchdog.h"
 #endif
 
 static const char* TAG = "main";
+
+#ifdef ARDUINO
+// Map esp_reset_reason() to a short string for boot diagnostics. A
+// ESP_RST_BROWNOUT here means the 3.3V rail sagged below the brownout
+// threshold (typically the WiFi radio's TX inrush) and the chip reset
+// instantly, which looks like a silent crash with no backtrace.
+static const char *resetReasonStr(esp_reset_reason_t reason) {
+    switch (reason) {
+        case ESP_RST_POWERON:   return "POWERON";
+        case ESP_RST_EXT:       return "EXT";
+        case ESP_RST_SW:        return "SW";
+        case ESP_RST_PANIC:     return "PANIC";
+        case ESP_RST_INT_WDT:   return "INT_WDT";
+        case ESP_RST_TASK_WDT:  return "TASK_WDT";
+        case ESP_RST_WDT:       return "WDT";
+        case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+        case ESP_RST_BROWNOUT:  return "BROWNOUT";
+        case ESP_RST_SDIO:      return "SDIO";
+        default:                return "UNKNOWN";
+    }
+}
+#endif
 
 // Maximum number of sensors the I2C scan loop is willing to add. Each branch
 // in the assignment-parser below (one per Sensor::* type) maps to one slot,
@@ -60,6 +83,10 @@ void setup() {
     // Serial.setDebugOutput(true);
     // config.reset();
     ESP_LOGI(TAG, "Started");
+#ifdef ARDUINO
+    esp_reset_reason_t resetReason = esp_reset_reason();
+    ESP_LOGI(TAG, "Reset reason: %s (%d)", resetReasonStr(resetReason), resetReason);
+#endif
     config.begin();
     // Wire the pre-constructed WebServerManager into the network task. Both
     // objects exist at file scope (Network is constructed first with a null
