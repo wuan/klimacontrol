@@ -8,6 +8,7 @@
 #endif
 
 #include "Network.h"
+#include "support/NtpEpoch.h"
 #include "Config.h"
 #include "DeviceId.h"
 #include "OTAUpdater.h"
@@ -276,9 +277,17 @@ void Network::startSTA(const char *ssid, const char *password) {
         // 30 s TWDT — see Network::safeNtpUpdate() and the
         // "Network task blocking-call safety" spec requirement.
         if (safeNtpUpdate()) {
-            ntpSynced = true;
-            lastNtpUpdateEpoch = ntpClient.getEpochTime();
-            ESP_LOGI(TAG, "NTP time: %s", ntpClient.getFormattedTime().c_str());
+            uint32_t epoch = ntpClient.getEpochTime();
+            if (isNtpEpochPlausible(epoch)) {
+                ntpSynced = true;
+                lastNtpUpdateEpoch = epoch;
+                ESP_LOGI(TAG, "NTP time: %s", ntpClient.getFormattedTime().c_str());
+            } else {
+                ntpBogusSyncCount++;
+                ESP_LOGE(TAG, "NTP initial sync returned implausible epoch: %u (expected between %u and %u)",
+                         epoch, NtpEpoch::MIN_VALID, NtpEpoch::MAX_VALID);
+                // Stay unsynced; the 1-minute retry loop in Network::loop() will fire.
+            }
         } else {
             ESP_LOGW(TAG, "NTP initial sync failed; will retry");
         }
@@ -643,11 +652,22 @@ void Network::configureUsingAPMode() {
                 uint32_t currentEpoch = ntpClient.getEpochTime();
                 if (currentEpoch - lastNtpUpdateEpoch >= NTP_UPDATE_INTERVAL_S) {
                     if (safeNtpUpdate()) {
-                        lastNtpUpdateEpoch = ntpClient.getEpochTime();
-                        ESP_LOGI(TAG, "NTP update: %s", ntpClient.getFormattedTime().c_str());
-                        if (lastNtpUpdateFailed) {
-                            reportInternetSuccess();
-                            lastNtpUpdateFailed = false;
+                        uint32_t epoch = ntpClient.getEpochTime();
+                        if (isNtpEpochPlausible(epoch)) {
+                            lastNtpUpdateEpoch = epoch;
+                            ESP_LOGI(TAG, "NTP update: %s", ntpClient.getFormattedTime().c_str());
+                            if (lastNtpUpdateFailed) {
+                                reportInternetSuccess();
+                                lastNtpUpdateFailed = false;
+                            }
+                        } else {
+                            ntpBogusSyncCount++;
+                            ESP_LOGE(TAG, "NTP update returned implausible epoch: %u (expected between %u and %u)",
+                                     epoch, NtpEpoch::MIN_VALID, NtpEpoch::MAX_VALID);
+                            // Keep the previous epoch and stay synced — do not flap into
+                            // the unsynced state on a one-off bad refresh. The next 1-hour
+                            // interval will retry.
+                            reportInternetFailure();
                         }
                     } else {
                         ESP_LOGW(TAG, "NTP update failed");
@@ -660,12 +680,20 @@ void Network::configureUsingAPMode() {
                 // NTP not yet synced - retry at most once per minute
                 lastNtpRetry = now;
                 if (safeNtpUpdate()) {
-                    ntpSynced = true;
-                    lastNtpUpdateEpoch = ntpClient.getEpochTime();
-                    ESP_LOGI(TAG, "NTP initial sync: %s", ntpClient.getFormattedTime().c_str());
-                    if (lastNtpUpdateFailed) {
-                        reportInternetSuccess();
-                        lastNtpUpdateFailed = false;
+                    uint32_t epoch = ntpClient.getEpochTime();
+                    if (isNtpEpochPlausible(epoch)) {
+                        ntpSynced = true;
+                        lastNtpUpdateEpoch = epoch;
+                        ESP_LOGI(TAG, "NTP initial sync: %s", ntpClient.getFormattedTime().c_str());
+                        if (lastNtpUpdateFailed) {
+                            reportInternetSuccess();
+                            lastNtpUpdateFailed = false;
+                        }
+                    } else {
+                        ntpBogusSyncCount++;
+                        ESP_LOGE(TAG, "NTP retry returned implausible epoch: %u (expected between %u and %u)",
+                                 epoch, NtpEpoch::MIN_VALID, NtpEpoch::MAX_VALID);
+                        // Stay unsynced; the 1-minute timer will fire again.
                     }
                 } else {
                     reportInternetFailure();

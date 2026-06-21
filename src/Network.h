@@ -63,6 +63,7 @@ private:
     // so "epoch > 0" is not a reliable synced indicator. Track it explicitly instead.
     bool ntpSynced = false;
     uint32_t lastNtpUpdateEpoch = 0; // epoch seconds at last successful sync
+    uint32_t ntpBogusSyncCount = 0;  // syncs that passed the boolean check but failed the epoch sanity check
 
     // WiFi connection state — written from the WiFi event task, read from the network task.
     // 32-bit aligned scalars are atomic on ESP32, so volatile is sufficient.
