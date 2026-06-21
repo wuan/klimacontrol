@@ -83,6 +83,15 @@ struct HttpClient {
             esp_http_client_fetch_headers(handle);
             int status = esp_http_client_get_status_code(handle);
 
+            if (status <= 0) {
+                // open() succeeded (TLS connected) but no valid response line was
+                // parsed — typically the server dropped the connection after we
+                // sent a malformed/truncated request (e.g. TX buffer too small for
+                // a long redirect URL). status_code keeps its -1 init value.
+                ESP_LOGE(TAG, "No HTTP response (status %d) — connection dropped", status);
+                return -1;
+            }
+
             if (status == 301 || status == 302 || status == 307 || status == 308) {
                 esp_http_client_close(handle);
                 if (esp_http_client_set_redirection(handle) != ESP_OK) {
@@ -231,7 +240,15 @@ bool OTAUpdater::performUpdate(
     config.timeout_ms = TIMEOUT_MS;
     config.crt_bundle_attach = esp_crt_bundle_attach;
     config.buffer_size = CHUNK_SIZE;
-    config.buffer_size_tx = 1024;  // GitHub CDN redirect URLs exceed the 512-byte default
+    // github.com 302-redirects release downloads to a signed CDN URL
+    // (release-assets.githubusercontent.com) whose query string carries the full
+    // AWS/JWT signature — ~900 bytes and growing. esp_http_client must build the
+    // entire redirect request (request line + headers) inside this TX buffer in
+    // one shot; if it overflows, the request sent to the CDN is truncated, the
+    // server drops the connection, and fetch_headers() leaves status_code at its
+    // -1 init value (openWithRedirects then returns -1 with no log). 512 (default)
+    // and 1024 are both too small now; 2048 leaves comfortable headroom.
+    config.buffer_size_tx = 2048;
 
     HttpClient client(config);
     if (!client) {
