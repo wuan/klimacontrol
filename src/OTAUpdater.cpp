@@ -239,15 +239,17 @@ bool OTAUpdater::performUpdate(
     config.url = downloadUrl.c_str();
     config.timeout_ms = TIMEOUT_MS;
     config.crt_bundle_attach = esp_crt_bundle_attach;
-    config.buffer_size = CHUNK_SIZE;
+    // RX buffer must hold GitHub's whole 302 redirect header block (~5 KB, with a
+    // ~3.6 KB Content-Security-Policy line) in one read, or fetch_headers() stalls
+    // and openWithRedirects() returns -1 ("No HTTP response") without ever
+    // following the redirect — see HTTP_RX_BUFFER. The default 512 and the old
+    // CHUNK_SIZE (4096) are both smaller than that block.
+    config.buffer_size = HTTP_RX_BUFFER;
     // github.com 302-redirects release downloads to a signed CDN URL
-    // (release-assets.githubusercontent.com) whose query string carries the full
-    // AWS/JWT signature — ~900 bytes and growing. esp_http_client must build the
-    // entire redirect request (request line + headers) inside this TX buffer in
-    // one shot; if it overflows, the request sent to the CDN is truncated, the
-    // server drops the connection, and fetch_headers() leaves status_code at its
-    // -1 init value (openWithRedirects then returns -1 with no log). 512 (default)
-    // and 1024 are both too small now; 2048 leaves comfortable headroom.
+    // (release-assets.githubusercontent.com) whose path+query carries the full
+    // AWS/JWT signature (~860 bytes). esp_http_client builds the entire redirect
+    // request line into this TX buffer in one shot; 2048 leaves comfortable
+    // headroom over the default 512.
     config.buffer_size_tx = 2048;
 
     HttpClient client(config);

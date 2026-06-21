@@ -127,6 +127,18 @@ private:
     static inline std::atomic<bool> updateInProgress{false};
     static constexpr int TIMEOUT_MS = 30000;
     static constexpr int CHUNK_SIZE = 4096;
+    // esp_http_client response (RX) buffer. Must be large enough to hold a
+    // whole HTTP response header block in a SINGLE esp_tls_conn_read(): GitHub's
+    // github.com 302 release-download redirect carries a ~3.6 KB
+    // Content-Security-Policy header (total header block ~5 KB) with a 0-byte
+    // body, sent as one small TLS record. mbedTLS decrypts the full record into
+    // its internal buffer on the first read; if our buffer is smaller than the
+    // record, the leftover plaintext stays buffered inside mbedTLS and is
+    // invisible to the socket poll() that esp_http_client's next read performs,
+    // so esp_http_client_fetch_headers() never reaches on_headers_complete and
+    // get_status_code() keeps its -1 init value ("No HTTP response"). 8 KB holds
+    // the current ~5 KB block with headroom for CSP growth.
+    static constexpr int HTTP_RX_BUFFER = 8192;
     static constexpr int MIN_FREE_HEAP = 65536;
     // Worker stack must hold the 4 KB chunk buffer plus the mbedTLS handshake
     // working set. Measured actual usage is ~9.3 KB; 12 KB gives ~32% headroom
