@@ -237,8 +237,8 @@ private:
     // both numbers, so these can be re-tuned from a real device.
     //
     // The values must describe what OTA *actually* allocates internally, not a
-    // round-number safety margin: the earlier 32 KB / 8 KB pair sat above this
-    // firmware's steady-state internal free (~24 KB free, ~7.6 KB largest
+    // round-number safety margin: the earlier 32 KB / 8 KB pair sat above the
+    // then-current steady-state internal free (~24 KB free, ~7.6 KB largest
     // block), so every update was refused with "Insufficient internal heap"
     // before a single byte was fetched. Note Network's own low-heap watchdog
     // only restarts below 16 KB — a gate above that describes a device state
@@ -256,6 +256,13 @@ private:
     // Hence a 4 KB largest-block requirement, and a total that keeps ~4 KB of
     // slack above Network's 16 KB restart threshold for WiFi RX during the
     // download.
+    //
+    // The ~24 KB steady state quoted above no longer holds: the Network and
+    // SensorMonitor task stacks were later cut to their measured high-water
+    // marks (20480 -> 8192 and 16000 -> 6144), returning ~22 KB to the internal
+    // pool. These two constants are a floor rather than a target, so they were
+    // left as they are; re-measure from the "Internal heap with TLS session up"
+    // line in performUpdate() before tightening them again.
     static constexpr uint32_t MIN_FREE_INTERNAL = 20480;
     static constexpr uint32_t MIN_LARGEST_INTERNAL_BLOCK = 4096;
 

@@ -540,12 +540,17 @@ void Network::configureUsingAPMode() {
     // connected, so both baselines start at "now".
     unsigned long connectedSinceMs = millis();   // start of the current connected streak (0 = down)
     unsigned long lastStableConnectMs = millis(); // last time the link was confirmed stable
-    // Measured against *internal* SRAM only. ESP.getFreeHeap() sums internal
-    // and PSRAM on this board (CONFIG_SPIRAM_USE_MALLOC=y with
-    // CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0), so with 2 MB of PSRAM free this
-    // guard could essentially never trip — and the allocations that actually
-    // fail under pressure (task stacks, lwIP/WiFi structures, DMA buffers) are
-    // internal-only anyway.
+    // Measured against *internal* SRAM only, via heap_caps_get_free_size(), and
+    // deliberately not via ESP.getFreeHeap(). Not for the reason previously
+    // documented here ("getFreeHeap() sums internal and PSRAM") — that is wrong:
+    // the Arduino core implements getFreeHeap() as
+    // heap_caps_get_free_size(MALLOC_CAP_INTERNAL) (cores/esp32/Esp.cpp), so it
+    // is already internal-only. The real reason is explicitness: the allocations
+    // that fail under pressure on this board (task stacks, lwIP/WiFi structures,
+    // DMA buffers) are internal-only, PSRAM is healthy and holds ~2 MB, and
+    // naming the capability at the call site keeps that distinction from being
+    // re-litigated. Verified on the device: psram_size 2094735, ESP.getHeapSize()
+    // 166076 (internal total).
     static constexpr uint32_t MIN_FREE_INTERNAL_BYTES = 16384; // 16 KB
     static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 300000; // 5 minutes
     static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
@@ -933,10 +938,24 @@ void Network::reportInternetSuccess() {
 }
 
 void Network::startTask() {
+    // Stack size is measured, not guessed. Like SensorMonitor's, this stack is
+    // carved out of *internal* SRAM, the pool that OTA downloads, lwIP and
+    // AsyncTCP contend for; 20480 B was reserved on a "for stability" hunch while
+    // 17.3% of it was ever touched.
+    //
+    // Measured peak: 3544 B used (HWM reported 16936 B free of 20480) after a run
+    // covering the deepest paths this task takes — startSTA() with WiFi init and
+    // association, NTP sync, MQTT connect + publish, and the syslog formatting
+    // buffer inside the logging macro. 8192 keeps ~2.3x headroom rather than the
+    // 3x used for SensorMonitor, because two paths had not been exercised when
+    // the mark was taken: the AP/captive-portal fallback (startAP) and
+    // configureMDNS() re-advertising on reconnect. The periodic "Network task
+    // stack HWM" diagnostic re-measures this; raise it if the number ever
+    // approaches 0.
     xTaskCreate(
         taskWrapper, // Task Function
         "Network", // Task Name
-        20480, // Stack Size (increased from 18000 for stability)
+        8192, // Stack Size (measured peak 3544 B, ~2.3x headroom)
         this, // Parameters
         1, // Priority
         &taskHandle // Task Handle
