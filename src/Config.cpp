@@ -442,11 +442,9 @@ namespace Config {
         displayConfig.enabled = guard.get().getBool(PrefsKeys::DISPLAY_ENABLED, false);
         displayConfig.rotation = guard.get().getUChar(PrefsKeys::DISPLAY_ROTATION, 0);
         displayConfig.interval = guard.get().getUShort(PrefsKeys::DISPLAY_INTERVAL, DEFAULT_DISPLAY_INTERVAL);
-        displayConfig.clear_pending = guard.get().getBool(PrefsKeys::DISPLAY_CLEAR_PENDING, false);
 
-        ESP_LOGD(TAG, "Loaded display config from NVS: enabled=%d rotation=%u interval=%u clear_pending=%d",
-                 displayConfig.enabled, displayConfig.rotation,
-                 displayConfig.interval, displayConfig.clear_pending);
+        ESP_LOGD(TAG, "Loaded display config from NVS: enabled=%d rotation=%u interval=%u",
+                 displayConfig.enabled, displayConfig.rotation, displayConfig.interval);
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
@@ -466,10 +464,9 @@ namespace Config {
         guard.get().putBool(PrefsKeys::DISPLAY_ENABLED, validated.enabled);
         guard.get().putUChar(PrefsKeys::DISPLAY_ROTATION, validated.rotation);
         guard.get().putUShort(PrefsKeys::DISPLAY_INTERVAL, validated.interval);
-        guard.get().putBool(PrefsKeys::DISPLAY_CLEAR_PENDING, validated.clear_pending);
 
-        ESP_LOGD(TAG, "Saved display configuration: enabled=%d rotation=%u interval=%u clear_pending=%d",
-                 validated.enabled, validated.rotation, validated.interval, validated.clear_pending);
+        ESP_LOGD(TAG, "Saved display configuration: enabled=%d rotation=%u interval=%u",
+                 validated.enabled, validated.rotation, validated.interval);
 #endif
     }
 } // namespace Config

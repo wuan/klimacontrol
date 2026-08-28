@@ -25,7 +25,7 @@ namespace Display {
     // A reading must move by at least this much before a refresh is considered.
     // Sensor noise dithering the last displayed digit would otherwise refresh
     // the panel forever with no visible difference.
-    constexpr float TEMP_HYSTERESIS_C = 0.2f;
+    constexpr float TEMP_HYSTERESIS_C = 0.1f;
     constexpr float HUMIDITY_HYSTERESIS_PCT = 1.0f;
 
     // Partial refreshes accumulate ghosting; every Nth one is promoted to a
@@ -51,9 +51,16 @@ namespace Display {
          * @param humidity    Current relative humidity; NAN is treated as unavailable
          * @param valid       Whether the sensor snapshot itself is valid
          * @param nowMs       Monotonic millisecond clock (millis() on the firmware)
+         * @param clockMinute Displayed wall-clock minute, i.e. epoch / 60; pass
+         *                    0 when the clock is unknown (NTP unsynced). A
+         *                    change here is treated as a change worth showing,
+         *                    so the footer timestamp advances on its own.
+         *                    Defaults to 0 so callers with no clock — and the
+         *                    value-only unit tests — are unaffected.
          * @return What kind of refresh to perform, if any
          */
-        RefreshKind evaluate(float temperature, float humidity, bool valid, uint32_t nowMs);
+        RefreshKind evaluate(float temperature, float humidity, bool valid, uint32_t nowMs,
+                             uint32_t clockMinute = 0);
 
         /**
          * Forget all history, as if the device had just booted. The next
@@ -80,13 +87,14 @@ namespace Display {
         float lastTemperature = 0.0f;
         float lastHumidity = 0.0f;
         uint32_t lastRefreshMs = 0;
+        uint32_t lastClockMinute = 0; // wall-clock minute at the last refresh
         uint8_t partialsSinceFull = 0;
 
         // Records the values a refresh is about to render and returns `kind`.
         // Only called when a refresh actually happens, so a change suppressed
         // by the interval floor stays outstanding and fires on a later tick.
         RefreshKind commit(RefreshKind kind, float temperature, float humidity,
-                           bool valid, uint32_t nowMs);
+                           bool valid, uint32_t nowMs, uint32_t clockMinute);
     };
 
     /**

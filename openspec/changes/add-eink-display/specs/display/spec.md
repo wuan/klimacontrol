@@ -32,6 +32,20 @@ attaches MISO unconditionally — passing `-1` resolves to GPIO37 and executes
 `pinMode(37, INPUT)` — which would silently reconfigure a chip-select placed
 there and leave the panel unresponsive.
 
+The module SHALL be powered from the 3.3 V rail. Where the module ships on a
+Waveshare e-Paper Driver HAT carrier, the carrier's voltage jumper SHALL be set
+to 3.3 V and its SPI jumper to 4-wire mode.
+
+#### Scenario: SPI bus does not contend with the sensor bus
+
+- **WHEN** the display is enabled and sensors are attached to the STEMMA QT connector
+- **THEN** display SPI traffic and sensor I2C traffic SHALL use disjoint pins, and no I2C bus lock SHALL be required for a display refresh
+
+#### Scenario: Panel is write-only
+
+- **WHEN** the display is initialised
+- **THEN** the firmware SHALL NOT read from the panel, and the `MI` pad SHALL carry no panel signal
+
 #### Scenario: Chip select survives SPI bus initialisation
 
 - **WHEN** the SPI bus is initialised and the display's chip-select pin is configured as an output, in either order
@@ -66,19 +80,6 @@ physical position, and SHALL stay consistent with `src/display/DisplayPins.h`.
 - **WHEN** a pin constant in `src/display/DisplayPins.h` is changed
 - **THEN** the wiring table in `docs/EINK_DISPLAY_WIRING.md` SHALL be updated in the same change
 
-The module SHALL be powered from the 3.3 V rail. Where the module ships on a
-Waveshare e-Paper Driver HAT carrier, the carrier's voltage jumper SHALL be set
-to 3.3 V and its SPI jumper to 4-wire mode.
-
-#### Scenario: SPI bus does not contend with the sensor bus
-
-- **WHEN** the display is enabled and sensors are attached to the STEMMA QT connector
-- **THEN** display SPI traffic and sensor I2C traffic SHALL use disjoint pins, and no I2C bus lock SHALL be required for a display refresh
-
-#### Scenario: Panel is write-only
-
-- **WHEN** the display is initialised
-- **THEN** the firmware SHALL NOT read from the panel, and the `MI` pad SHALL carry no panel signal
 
 ### Requirement: Paged rendering with a bounded page buffer
 
@@ -116,8 +117,7 @@ device restart, matching the save-then-`requestRestart()` convention used by
 every other settings route.
 
 When the display is disabled, the firmware SHALL NOT call `display.init()` and
-SHALL NOT claim the SPI or control pins, except for the one-shot blanking
-described in the *Clear on disable* requirement.
+SHALL NOT claim the SPI or control pins.
 
 #### Scenario: Default state on a device that has never been configured
 
@@ -169,9 +169,10 @@ a validity flag and the current millisecond clock, and returns one of
 The policy SHALL apply, in order:
 
 1. **First paint** — the first evaluation after boot SHALL return `Full`.
-2. **Hysteresis** — a refresh SHALL be considered only when the temperature has
-   moved at least 0.2 °C, or the humidity at least 1.0 %RH, since the last
-   rendered values, or when the validity flag has changed in either direction.
+2. **Change detection** — a refresh SHALL be considered when any of the
+   following differs from what is currently rendered: the temperature has moved
+   at least 0.1 °C; the humidity has moved at least 1.0 %RH; the validity flag
+   has changed in either direction; or the wall-clock minute has rolled over.
 3. **Minimum interval** — a refresh SHALL NOT occur within
    `DisplayConfig::interval` seconds of the previous refresh. A change
    suppressed by this floor SHALL be re-evaluated on subsequent ticks rather
@@ -187,8 +188,23 @@ SHALL be compiled and unit-tested in the `native` PlatformIO environment.
 
 #### Scenario: Noise below the hysteresis threshold
 
-- **WHEN** the temperature moves from 21.44 °C to 21.46 °C and the humidity is unchanged
+- **WHEN** the temperature moves by less than 0.1 °C, the humidity is unchanged, and the clock minute is unchanged
 - **THEN** the policy SHALL return `None` and the panel SHALL NOT be refreshed
+
+#### Scenario: The clock advances on its own
+
+- **WHEN** the wall-clock minute rolls over and no measured value has changed
+- **THEN** the policy SHALL return a refresh, so the footer shows a live clock rather than the timestamp of the last reading
+
+#### Scenario: The clock cannot outrun the refresh budget
+
+- **WHEN** the configured minimum interval is longer than 60 seconds
+- **THEN** clock-driven refreshes SHALL still be subject to that floor, so the displayed time may lag by up to one interval
+
+#### Scenario: Clock-driven refreshes count toward the ghosting budget
+
+- **WHEN** a refresh is triggered solely by the clock advancing
+- **THEN** it SHALL advance the partial counter exactly as a value-driven refresh does, so the periodic full refresh still clears ghosting
 
 #### Scenario: Change inside the minimum interval
 
@@ -216,30 +232,25 @@ A `Partial` refresh SHALL update the region `(0, 30)` 200×160 via
 `setPartialWindow()`. This window SHALL contain every element that can change
 between refreshes: both value lines and the footer.
 
-The footer's right-hand field SHALL be understood as the **timestamp of the
-reading displayed above it**, not as a wall clock. It SHALL therefore be
-redrawn on every refresh, partial included, so that it can never be older than
-the values it accompanies.
-
-The firmware SHALL NOT schedule a refresh solely to advance the clock. On a
-panel whose refresh budget is deliberately constrained, a per-minute repaint
-would defeat the entire refresh policy; the timestamp advances only when the
-reading it describes does.
+The footer's right-hand field SHALL be a **live wall clock**. It SHALL be
+redrawn on every refresh, partial included, and the minute rolling over SHALL
+itself trigger a refresh (see *Refresh policy*), so the displayed time tracks
+real time rather than only the moment of the last reading.
 
 #### Scenario: Partial refresh does not flash
 
 - **WHEN** the policy returns `Partial`
 - **THEN** the region SHALL be rewritten without the black/white inversion flash of a full refresh
 
-#### Scenario: Timestamp stays in step with the reading
+#### Scenario: Clock stays in step with the reading
 
 - **WHEN** a partial refresh repaints the temperature and humidity
-- **THEN** the footer timestamp SHALL be repainted in the same operation, showing the time at which those values were rendered
+- **THEN** the footer clock SHALL be repainted in the same operation
 
-#### Scenario: A stable sensor does not repaint the panel
+#### Scenario: A stable sensor still advances the clock
 
-- **WHEN** the measured values remain inside the hysteresis band for an extended period, so no refresh is due
-- **THEN** the panel SHALL NOT be refreshed, and the displayed timestamp SHALL continue to show when the visible reading was taken
+- **WHEN** the measured values remain inside the hysteresis band for an extended period
+- **THEN** the panel SHALL still refresh as the minute rolls over, subject to the configured minimum interval
 
 ### Requirement: Boot splash
 
@@ -255,30 +266,33 @@ starting, before any sensor reading is available.
 ### Requirement: Clear on disable
 
 Because e-paper retains its image without power, disabling the display SHALL
-result in the panel being blanked to white exactly once.
+result in the panel being blanked to white before the device restarts.
 
-The firmware SHALL persist a `clear_pending` one-shot flag when the display is
-disabled. On boot, when the display is disabled and `clear_pending` is set, the
-firmware SHALL initialise the panel, clear it to white, hibernate it, and then
-clear the flag. When the display is enabled on boot, the flag SHALL be cleared
-without action.
+The blanking SHALL be performed synchronously in the `POST /api/display`
+handler, on the disable transition, while the panel is still initialised. The
+firmware SHALL NOT persist a deferred "clear pending" flag, and SHALL NOT blank
+the panel during boot.
 
-The blanking SHALL NOT be performed inside the HTTP request handler.
+Because the handler runs on the AsyncTCP task while the periodic refresh runs on
+the Network task, panel access SHALL be serialised by a mutex owned by the
+display manager, so the two cannot drive GxEPD2 and the SPI bus concurrently.
+Once disabled, the manager SHALL NOT repaint even if a refresh was already
+pending.
 
 #### Scenario: Disabling the display blanks the panel
 
 - **WHEN** an operator disables the display via the settings UI
-- **THEN** the configuration SHALL be saved with `clear_pending` set, a restart SHALL be scheduled, and after the restart the panel SHALL be blank and the flag SHALL be cleared
+- **THEN** the panel SHALL be blanked to white within the request handler, the configuration SHALL be saved, and a restart SHALL be scheduled
 
-#### Scenario: Power loss between the save and the blanking
+#### Scenario: Concurrent refresh does not corrupt the clear
 
-- **WHEN** power is lost after the disable is persisted but before the panel is blanked
-- **THEN** `clear_pending` SHALL still be set in NVS, and the next successful boot SHALL complete the blanking
+- **WHEN** the disable request arrives while the Network task is mid-repaint
+- **THEN** the handler SHALL wait for that repaint to complete before clearing, and the Network task SHALL NOT repaint afterwards
 
-#### Scenario: Handler is not blocked by the refresh
+#### Scenario: No deferred state is persisted
 
-- **WHEN** `POST /api/display` disables the display
-- **THEN** the request handler SHALL return without performing an e-paper refresh
+- **WHEN** the display is disabled
+- **THEN** no "clear pending" key SHALL be written to NVS, and the next boot SHALL NOT initialise the panel
 
 ### Requirement: Refresh runs on the Network task and is suppressed during OTA
 

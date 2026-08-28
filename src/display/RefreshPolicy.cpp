@@ -25,16 +25,18 @@ namespace Display {
         lastTemperature = 0.0f;
         lastHumidity = 0.0f;
         lastRefreshMs = 0;
+        lastClockMinute = 0;
         partialsSinceFull = 0;
     }
 
     RefreshKind RefreshPolicy::commit(RefreshKind kind, float temperature, float humidity,
-                                      bool valid, uint32_t nowMs) {
+                                      bool valid, uint32_t nowMs, uint32_t clockMinute) {
         everPainted = true;
         lastValid = valid;
         lastTemperature = temperature;
         lastHumidity = humidity;
         lastRefreshMs = nowMs;
+        lastClockMinute = clockMinute;
 
         if (kind == RefreshKind::Full) {
             partialsSinceFull = 0;
@@ -46,14 +48,14 @@ namespace Display {
     }
 
     RefreshKind RefreshPolicy::evaluate(float temperature, float humidity, bool valid,
-                                        uint32_t nowMs) {
+                                        uint32_t nowMs, uint32_t clockMinute) {
         const bool available = readingAvailable(temperature, humidity, valid);
 
         // 1. First paint after boot is always a full refresh: the panel may be
         //    holding an arbitrary image from a previous run, since e-paper
         //    retains its contents unpowered.
         if (!everPainted) {
-            return commit(RefreshKind::Full, temperature, humidity, available, nowMs);
+            return commit(RefreshKind::Full, temperature, humidity, available, nowMs, clockMinute);
         }
 
         // 2. Hysteresis. A validity transition in either direction bypasses the
@@ -68,6 +70,16 @@ namespace Display {
         } else {
             changed = std::fabs(temperature - lastTemperature) >= TEMP_HYSTERESIS_C ||
                       std::fabs(humidity - lastHumidity) >= HUMIDITY_HYSTERESIS_PCT;
+        }
+
+        // The footer timestamp is part of what the panel shows, so the minute
+        // rolling over is a change in its own right — the display keeps a live
+        // clock rather than only a timestamp of the last reading. Also covers
+        // the unsynced-to-synced transition, where the blank footer gains a
+        // time. The minimum-interval floor below still applies, so this cannot
+        // refresh faster than the configured budget allows.
+        if (clockMinute != lastClockMinute) {
+            changed = true;
         }
 
         if (!changed) {
@@ -89,7 +101,7 @@ namespace Display {
                                      ? RefreshKind::Full
                                      : RefreshKind::Partial;
 
-        return commit(kind, temperature, humidity, available, nowMs);
+        return commit(kind, temperature, humidity, available, nowMs, clockMinute);
     }
 
     size_t formatTemperature(char *out, size_t n, float value, bool valid) {

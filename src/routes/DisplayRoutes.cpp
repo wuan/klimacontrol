@@ -2,6 +2,8 @@
 #include "routes/RouteHelpers.h"
 
 #include "Config.h"
+#include "Network.h"
+#include "display/DisplayManager.h"
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
@@ -20,8 +22,6 @@ void WebServerManager::setupDisplayRoutes() {
         doc["enabled"] = displayConfig.enabled;
         doc["rotation"] = displayConfig.rotation;
         doc["interval"] = displayConfig.interval;
-        // clear_pending is deliberately absent: it is a firmware-internal
-        // one-shot, not user-facing configuration.
 
         String response;
         serializeJson(doc, response);
@@ -54,24 +54,30 @@ void WebServerManager::setupDisplayRoutes() {
                       if (doc["rotation"].is<int>()) displayConfig.rotation = doc["rotation"];
                       if (doc["interval"].is<int>()) displayConfig.interval = doc["interval"];
 
-                      // Turning the display off arms a one-shot blanking for the
-                      // next boot. e-paper retains its image without power, so
-                      // without this the panel would keep showing the last
-                      // reading indefinitely. Not done inline here: a full
-                      // refresh blocks ~2.6 s, which does not belong in an
-                      // AsyncTCP callback, and a persisted flag also survives a
-                      // power cut between the save and the clear.
+                      // Turning the display off blanks the panel here and now,
+                      // before the restart. e-paper retains its image without
+                      // power, so a disabled display has to be actively cleared
+                      // or it keeps showing the last reading indefinitely.
+                      //
+                      // This blocks the AsyncTCP callback for a full refresh
+                      // (~2.6 s), plus up to another if the Network task is
+                      // mid-repaint — DisplayManager serialises the two. That
+                      // is acceptable for a deliberate settings change that is
+                      // about to reboot the device anyway.
                       if (wasEnabled && !displayConfig.enabled) {
-                          displayConfig.clear_pending = true;
+                          Display::DisplayManager *display = network.getDisplay();
+                          if (display != nullptr) {
+                              display->disableAndClear();
+                          }
                       }
 
                       // saveDisplayConfig() validates (rotation 0..3,
                       // interval 10..3600) before writing.
                       config.saveDisplayConfig(displayConfig);
 
-                      ESP_LOGI(TAG, "Display config updated: enabled=%d rotation=%u interval=%u clear_pending=%d",
+                      ESP_LOGI(TAG, "Display config updated: enabled=%d rotation=%u interval=%u",
                                displayConfig.enabled, displayConfig.rotation,
-                               displayConfig.interval, displayConfig.clear_pending);
+                               displayConfig.interval);
 
                       // The display is brought up during setup() from the
                       // persisted config, so the change takes effect on restart

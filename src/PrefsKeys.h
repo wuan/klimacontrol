@@ -49,7 +49,6 @@ namespace PrefsKeys {
     constexpr const char* DISPLAY_ENABLED = "disp_enabled";
     constexpr const char* DISPLAY_ROTATION = "disp_rot";
     constexpr const char* DISPLAY_INTERVAL = "disp_intv";
-    constexpr const char* DISPLAY_CLEAR_PENDING = "disp_clear";
 
     // Syslog configuration
     constexpr const char* SYSLOG_ENABLED = "syslog_enabled";

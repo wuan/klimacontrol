@@ -161,6 +161,11 @@ public:
     void setDisplay(Display::DisplayManager *display) { this->display = display; }
 
     /**
+     * The wired-in display, or nullptr when none is enabled. Non-owning.
+     */
+    Display::DisplayManager *getDisplay() const { return display; }
+
+    /**
      * One-time initialization of long-lived singletons that the network task
      * depends on. Currently constructs the MqttClient so the same instance is
      * reused across every (re)connect (idempotent `begin()` re-init only).

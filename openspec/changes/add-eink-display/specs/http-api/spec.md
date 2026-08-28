@@ -13,33 +13,31 @@ and updating the e-paper display configuration, implemented in
 {"enabled": false, "rotation": 0, "interval": 60}
 ```
 
-The firmware-internal `clear_pending` flag SHALL NOT appear in the response and
-SHALL NOT be settable through the request body.
-
 `POST /api/display` SHALL require the CSRF header
 `X-Requested-With: KlimaControl` via `verifyCsrfHeader()`, SHALL validate the
 body through `Config::validateDisplayConfig()`, SHALL persist the result, and
 SHALL then call `config.requestRestart(1000)` — matching the save-then-restart
 convention of the other settings routes.
 
-When the request disables a display that was previously enabled, the firmware
-SHALL additionally persist `clear_pending = true` so the panel is blanked on the
-next boot.
+When the request disables a display that was previously enabled, the handler
+SHALL blank the panel synchronously before saving and scheduling the restart.
+This blocks the callback for the duration of a full refresh (~2.6 s), and up to
+a further refresh if the Network task is mid-repaint.
 
 #### Scenario: Reading the display configuration
 
 - **WHEN** a client GETs `/api/display` on a device that has never configured the display
-- **THEN** the response SHALL be `200` with `enabled: false`, `rotation: 0`, `interval: 60`, and SHALL NOT contain a `clear_pending` key
+- **THEN** the response SHALL be `200` with `enabled: false`, `rotation: 0`, and `interval: 60`
 
 #### Scenario: Enabling the display
 
 - **WHEN** a client POSTs `/api/display` with `{"enabled": true, "rotation": 2, "interval": 120}` and the CSRF header
 - **THEN** the configuration SHALL be persisted and a restart SHALL be scheduled
 
-#### Scenario: Disabling the display arms the blanking
+#### Scenario: Disabling the display blanks the panel inline
 
 - **WHEN** a client POSTs `/api/display` with `{"enabled": false}` while the display was previously enabled
-- **THEN** the persisted configuration SHALL have `enabled = false` and `clear_pending = true`, and a restart SHALL be scheduled
+- **THEN** the panel SHALL be blanked before the response is sent, the persisted configuration SHALL have `enabled = false`, and a restart SHALL be scheduled
 
 #### Scenario: Missing CSRF header
 
@@ -51,7 +49,7 @@ next boot.
 - **WHEN** a client POSTs `/api/display` with `{"enabled": true, "rotation": 9, "interval": 1}`
 - **THEN** the persisted configuration SHALL contain a `rotation` in 0..3 and an `interval` in 10..3600
 
-#### Scenario: The handler does not perform an e-paper refresh
+#### Scenario: Enabling or reconfiguring does not drive the panel
 
-- **WHEN** any `POST /api/display` request is handled
-- **THEN** the handler SHALL return without driving the panel, so the AsyncTCP callback is not blocked for the duration of a refresh
+- **WHEN** a `POST /api/display` request enables the display or changes only rotation or interval
+- **THEN** the handler SHALL return without driving the panel; only the disable transition performs a blanking refresh

@@ -145,29 +145,17 @@ Display::DisplayManager displayManager(sensorController);
 #ifdef ARDUINO
 // Bring up the e-paper display according to the persisted configuration.
 //
-// Three cases, driven by the `enabled` flag and the `clear_pending` one-shot:
+// Only two cases: enabled -> init, splash, wire into the Network task; disabled
+// -> do nothing at all, and the SPI and control pins are never claimed.
 //
-//   enabled                  -> init, splash, wire into the Network task.
-//   disabled + clear_pending -> init, blank the panel, drop the flag. e-paper
-//                               retains its image with no power, so a display
-//                               that was just turned off has to be actively
-//                               cleared or it shows a stale reading forever.
-//   disabled                 -> do nothing at all; the SPI and control pins are
-//                               never claimed.
-//
-// The flag is persisted rather than blanked inline in the HTTP handler so that
-// losing power between the save and the clear still leaves the blanking queued
-// for the next boot.
+// There is deliberately no "blank the panel on boot" path. e-paper retains its
+// image with no power, so a disabled display does have to be actively cleared —
+// but that happens synchronously in the POST /api/display handler, before the
+// restart, rather than being deferred to the next boot via a persisted flag.
 static void setupDisplay(const Config::DeviceConfig &deviceConfig) {
     Config::DisplayConfig displayConfig = config.loadDisplayConfig();
 
     if (!displayConfig.enabled) {
-        if (displayConfig.clear_pending) {
-            ESP_LOGI(TAG, "Display disabled with a pending clear - blanking panel");
-            displayManager.clearAndPark(displayConfig);
-            displayConfig.clear_pending = false;
-            config.saveDisplayConfig(displayConfig);
-        }
         return;
     }
 
@@ -185,15 +173,9 @@ static void setupDisplay(const Config::DeviceConfig &deviceConfig) {
     } else {
         ESP_LOGE(TAG, "Display enabled in config but failed to initialize");
     }
-
-    // A stale clear_pending alongside an enabled display just means the user
-    // re-enabled it before the blanking ran; drop it.
-    if (displayConfig.clear_pending) {
-        displayConfig.clear_pending = false;
-        config.saveDisplayConfig(displayConfig);
-    }
 }
 #endif
+
 
 
 void setup() {

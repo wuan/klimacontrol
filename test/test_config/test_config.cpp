@@ -67,7 +67,6 @@ void test_display_config_defaults() {
     TEST_ASSERT_FALSE(config.enabled);
     TEST_ASSERT_EQUAL(0, config.rotation);
     TEST_ASSERT_EQUAL(60, config.interval);
-    TEST_ASSERT_FALSE(config.clear_pending);
 }
 
 void test_device_config_timezone_default() {
@@ -104,7 +103,6 @@ void test_validate_display_config_defaults_unchanged() {
     TEST_ASSERT_FALSE(config.enabled);
     TEST_ASSERT_EQUAL(0, config.rotation);
     TEST_ASSERT_EQUAL(60, config.interval);
-    TEST_ASSERT_FALSE(config.clear_pending);
 }
 
 void test_validate_display_config_rotation_valid_unchanged() {
@@ -164,17 +162,14 @@ void test_validate_display_config_interval_above_ceiling_clamped() {
     TEST_ASSERT_EQUAL(Config::MAX_DISPLAY_INTERVAL, config.interval);
 }
 
-void test_validate_display_config_preserves_enabled_and_clear_pending() {
-    // Validation clamps ranges only; it must never flip the enable flag or
-    // drop the pending-clear one-shot, which would lose a queued blanking.
+void test_validate_display_config_preserves_enabled() {
+    // Validation clamps ranges only; it must never flip the enable flag.
     Config::DisplayConfig config;
     config.enabled = true;
-    config.clear_pending = true;
     config.rotation = 200;
     config.interval = 1;
     Config::validateDisplayConfig(config);
     TEST_ASSERT_TRUE(config.enabled);
-    TEST_ASSERT_TRUE(config.clear_pending);
 }
 
 // --- validateDeviceConfig ---
@@ -461,7 +456,7 @@ int runUnityTests() {
     RUN_TEST(test_validate_display_config_interval_below_floor_clamped);
     RUN_TEST(test_validate_display_config_interval_at_bounds_unchanged);
     RUN_TEST(test_validate_display_config_interval_above_ceiling_clamped);
-    RUN_TEST(test_validate_display_config_preserves_enabled_and_clear_pending);
+    RUN_TEST(test_validate_display_config_preserves_enabled);
     // DeviceConfig validation
     RUN_TEST(test_validate_device_config_valid_values_unchanged);
     RUN_TEST(test_validate_device_config_nan_temperature_reset);

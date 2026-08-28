@@ -218,7 +218,6 @@ struct DisplayConfig {
     bool     enabled       = false;  // default off
     uint8_t  rotation      = 0;      // 0..3, mounting orientation
     uint16_t interval      = 60;     // minimum seconds between refreshes, 10..3600
-    bool     clear_pending = false;  // internal one-shot, not user-facing (D5)
 };
 ```
 
@@ -233,7 +232,6 @@ documents:
 disp_enabled   12 chars
 disp_rot        8
 disp_intv       9    <- NOT "disp_interval" (13 chars, exceeds the limit)
-disp_clear     10
 ```
 
 `disp_interval` at 13 characters is exactly the trap that produced the existing
@@ -243,11 +241,6 @@ disp_clear     10
 `validateDisplayConfig()` clamps `rotation` to 0..3 and `interval` to
 10..3600 s, and lives next to the other validators in `Config.cpp` so the
 existing native `test_config` suite can cover it.
-
-**On `clear_pending` living in a user-config struct.** It is persisted state
-that must survive a reboot and is therefore stored alongside the rest, but it is
-firmware-internal: it is never emitted by `GET /api/display` and never read from
-`POST /api/display`.
 
 ### D4. Refresh policy: hysteresis, an interval floor, and periodic full refresh
 
@@ -281,7 +274,7 @@ firmware-internal: it is never emitted by `GET /api/display` and never read from
              Partial
 ```
 
-Constants: `TEMP_HYSTERESIS_C = 0.2f`, `HUMIDITY_HYSTERESIS_PCT = 1.0f`,
+Constants: `TEMP_HYSTERESIS_C = 0.1f`, `HUMIDITY_HYSTERESIS_PCT = 1.0f`,
 `FULL_REFRESH_EVERY_N_PARTIALS = 12`, minimum interval from
 `DisplayConfig::interval` (default 60 s).
 
@@ -314,44 +307,45 @@ already use.
   brake, so a sensor oscillating between 21.44 °C and 21.46 °C refreshes every
   minute forever with no visible difference on a one-decimal display.
 
-### D5. Clear-on-disable via a persistent one-shot flag
+### D5. Clear-on-disable inline in the request handler
 
-E-paper retains its image with no power. Disabling the display and rebooting
-would otherwise leave the panel showing a frozen, increasingly stale reading
-with no indication anything had changed.
+E-paper retains its image with no power. Disabling the display without blanking
+it leaves the panel showing a frozen, increasingly stale reading.
+
+The `POST /api/display` handler therefore blanks the panel synchronously on the
+disable transition, while it is still initialised, before saving and scheduling
+the restart. No state is persisted to defer the work, and boot has no blanking
+path at all.
+
+**Superseded design.** An earlier revision persisted a `disp_clear` one-shot and
+blanked on the next boot, to keep a ~2.6 s refresh out of the AsyncTCP callback
+and to stay correct if power dropped between the save and the clear. That was
+reversed deliberately: it added a fourth NVS key and a three-way boot branch to
+protect against a power cut in a one-second window during a deliberate user
+action, and the recovery from losing that race is simply toggling the setting
+again. The inline version is materially simpler for a negligible loss.
+
+**What the reversal does require.** The handler runs on the AsyncTCP task while
+`DisplayManager::update()` runs on the Network task. Clearing inline puts two
+tasks on the same GxEPD2 object and SPI bus, so `DisplayManager` now owns a
+mutex:
 
 ```
-POST /api/display {"enabled": false}
-        │
-        ├─ save { enabled=false, clear_pending=true }
-        └─ requestRestart(1000)
-                     │
-                     ▼
-   boot: loadDisplayConfig()
-        │
-        ├─ enabled == true  ──► clear_pending := false (save); normal init
-        │
-        └─ enabled == false
-              │
-              ├─ clear_pending == false ──► do nothing; panel never initialised
-              │
-              └─ clear_pending == true  ──► init → clear to white → hibernate
-                                            → clear_pending := false (save)
+AsyncTCP task                     Network task
+─────────────                     ────────────
+disableAndClear()                 update()
+  enabled = false  ──────────────►  (early-out on !enabled)
+  take(portMAX_DELAY) ····waits···  [holding lock, mid-repaint]
+  panel.clear()                     give()
+  give()
 ```
 
-**Rationale for the flag rather than clearing inline in the route handler.**
-Clearing inline would block the AsyncTCP callback for ~2 s on a full refresh,
-which is exactly the kind of long blocking work the `http-api` *Request handler
-allocation discipline* requirement exists to discourage. More importantly, the
-flag is the only variant that is correct if power drops between the save and
-the clear: the flag persists, and the next boot completes the blanking.
-
-**Alternatives considered**
-
-- *Leave the stale image and document it.* Zero code, and a frozen last reading
-  is a recognised e-paper idiom. Rejected because "I turned it off and it is
-  still showing something" is a support question the project would field
-  repeatedly, and the flag costs about ten lines.
+`update()` holds the lock across its whole body rather than only the repaint:
+otherwise it could pass the `enabled` check, block on the lock while the handler
+clears, then acquire it and immediately paint over the blanked panel. It uses a
+100 ms timeout — if the handler holds the lock we are being disabled anyway —
+while `disableAndClear()` waits indefinitely, since the holder is a bounded
+panel operation already capped by the fault guard (D8).
 
 ### D6. Layout and the partial-refresh window
 

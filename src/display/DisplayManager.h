@@ -3,6 +3,9 @@
 
 #ifdef ARDUINO
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 #include "Config.h"
 #include "display/EPaperDisplay.h"
 #include "display/RefreshPolicy.h"
@@ -38,10 +41,18 @@ namespace Display {
         bool begin(const Config::DisplayConfig &config, const char *deviceName);
 
         /**
-         * Blank the panel and put it to sleep. Used on the disable path, where
-         * the panel would otherwise keep showing a stale reading forever.
+         * Stop refreshing, blank the panel, and put it to sleep.
+         *
+         * Called from the web request handler when the display is switched off:
+         * e-paper retains its image with no power, so a display that has been
+         * disabled has to be actively cleared or it keeps showing a stale
+         * reading forever.
+         *
+         * Blocks for the duration of a full refresh (~2.6 s), plus up to
+         * another full refresh if the Network task happens to be mid-repaint
+         * when this is called.
          */
-        void clearAndPark(const Config::DisplayConfig &config);
+        void disableAndClear();
 
         /**
          * Evaluate the current measurements and repaint if the policy says so.
@@ -67,6 +78,12 @@ namespace Display {
 
         bool enabled = false;
         char deviceName[32] = "";
+
+        // Serialises panel access between the Network task (periodic update())
+        // and the AsyncTCP task (disableAndClear() from the web handler).
+        // Without it the two can drive GxEPD2 and the SPI bus concurrently,
+        // corrupting the transfer or leaving a BUSY wait hanging.
+        SemaphoreHandle_t panelMutex = nullptr;
 
         // Renders the current time as HH:MM into `out`, or an empty string when
         // NTP has not synced (or no Network is wired in).

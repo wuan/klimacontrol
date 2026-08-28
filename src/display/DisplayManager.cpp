@@ -36,6 +36,10 @@ namespace Display {
     DisplayManager::DisplayManager(SensorController &controller)
         : controller(controller),
           policy(Config::DEFAULT_DISPLAY_INTERVAL) {
+        // Created here rather than lazily: this object is a file-scope
+        // singleton, and on this core FreeRTOS is already running by the time
+        // static constructors execute (SensorController does the same).
+        panelMutex = xSemaphoreCreateMutex();
     }
 
     bool DisplayManager::begin(const Config::DisplayConfig &config, const char *deviceNameIn) {
@@ -56,17 +60,28 @@ namespace Display {
         return true;
     }
 
-    void DisplayManager::clearAndPark(const Config::DisplayConfig &config) {
+    void DisplayManager::disableAndClear() {
+        // Stop the Network task repainting first, so that once we hold the lock
+        // there is no further work queued behind us.
+        enabled = false;
+
+        // Wait for any refresh already in flight. portMAX_DELAY is safe: the
+        // holder is a bounded panel operation, itself capped by EPaperDisplay's
+        // fault guard.
+        if (panelMutex != nullptr && xSemaphoreTake(panelMutex, portMAX_DELAY) != pdTRUE) {
+            ESP_LOGW(TAG, "Could not acquire panel lock to clear the display");
+            return;
+        }
+
         // e-paper retains its image with no power, so a display that has been
         // turned off has to be actively blanked or it keeps showing a stale
         // reading forever.
-        if (!panel.begin(config.rotation)) {
-            ESP_LOGW(TAG, "Could not initialise display to clear it");
-            return;
-        }
         panel.clear();
-        enabled = false;
         ESP_LOGI(TAG, "Display disabled and blanked");
+
+        if (panelMutex != nullptr) {
+            xSemaphoreGive(panelMutex);
+        }
     }
 
     void DisplayManager::formatClock(char *out, size_t n) const {
@@ -84,33 +99,60 @@ namespace Display {
     }
 
     void DisplayManager::update() {
+        // Cheap pre-checks before touching the lock at all.
         if (!enabled || panel.hasFaulted()) {
             return;
         }
 
-        const SensorController::Snapshot snapshot = controller.getSnapshot();
-        const float temperature = floatFrom(snapshot.measurements, Sensor::MeasurementType::Temperature);
-        const float humidity = floatFrom(snapshot.measurements, Sensor::MeasurementType::RelativeHumidity);
-
-        const RefreshKind kind = policy.evaluate(temperature, humidity, snapshot.valid, millis());
-        if (kind == RefreshKind::None) {
+        // Held for the whole body. An uncontended take is on the order of a
+        // microsecond, and holding it throughout means `enabled` cannot flip
+        // under us between the policy decision and the repaint — otherwise a
+        // concurrent disableAndClear() could blank the panel and we would
+        // immediately paint over it.
+        //
+        // Short timeout, not a block: if the web handler holds the lock we are
+        // being disabled anyway, and any genuine change repaints on a later
+        // tick because the policy only commits when a refresh actually happens.
+        if (panelMutex != nullptr && xSemaphoreTake(panelMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
             return;
         }
 
-        const bool available = snapshot.valid && !std::isnan(temperature) && !std::isnan(humidity);
+        if (enabled) {
+            const SensorController::Snapshot snapshot = controller.getSnapshot();
+            const float temperature = floatFrom(snapshot.measurements, Sensor::MeasurementType::Temperature);
+            const float humidity = floatFrom(snapshot.measurements, Sensor::MeasurementType::RelativeHumidity);
 
-        char tempStr[16];
-        char humStr[16];
-        formatTemperature(tempStr, sizeof(tempStr), temperature, available);
-        formatHumidity(humStr, sizeof(humStr), humidity, available);
+            // Wall-clock minute drives the footer, so the panel keeps a live
+            // clock. epoch/60 ticks at the same instant in every timezone (all
+            // real offsets are whole minutes), so this needs no TZ awareness.
+            // 0 while NTP is unsynced, matching getCurrentEpoch()'s sentinel.
+            const uint32_t epoch = network != nullptr ? network->getCurrentEpoch() : 0;
+            const uint32_t clockMinute = epoch / 60u;
 
-        char clock[8];
-        formatClock(clock, sizeof(clock));
+            const RefreshKind kind =
+                policy.evaluate(temperature, humidity, snapshot.valid, millis(), clockMinute);
+            if (kind != RefreshKind::None) {
+                const bool available =
+                    snapshot.valid && !std::isnan(temperature) && !std::isnan(humidity);
 
-        // Bare numbers: EPaperDisplay owns the unit decoration, because the
-        // degree mark has to be drawn geometrically (the GFX fonts only carry
-        // glyphs 0x20-0x7E) rather than printed as a character.
-        panel.render(tempStr, humStr, deviceName, clock, kind);
+                char tempStr[16];
+                char humStr[16];
+                formatTemperature(tempStr, sizeof(tempStr), temperature, available);
+                formatHumidity(humStr, sizeof(humStr), humidity, available);
+
+                char clock[8];
+                formatClock(clock, sizeof(clock));
+
+                // Bare numbers: EPaperDisplay owns the unit decoration, because
+                // the degree mark has to be drawn geometrically (the GFX fonts
+                // only carry glyphs 0x20-0x7E) rather than printed.
+                panel.render(tempStr, humStr, deviceName, clock, kind);
+            }
+        }
+
+        if (panelMutex != nullptr) {
+            xSemaphoreGive(panelMutex);
+        }
     }
 
 } // namespace Display

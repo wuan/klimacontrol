@@ -156,11 +156,6 @@ namespace Config {
         uint8_t rotation = 0; // 0..3, mounting orientation
         uint16_t interval = DEFAULT_DISPLAY_INTERVAL; // Minimum seconds between refreshes
 
-        // Firmware-internal one-shot: set when the display is disabled so the
-        // next boot can blank the panel (e-paper retains its image unpowered).
-        // Never emitted by GET /api/display and never read from a request body.
-        bool clear_pending = false;
-
         DisplayConfig() = default;
     };
 

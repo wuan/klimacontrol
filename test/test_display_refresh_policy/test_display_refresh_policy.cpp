@@ -75,8 +75,17 @@ void test_sub_hysteresis_humidity_noise_returns_none() {
 void test_temperature_change_at_threshold_refreshes() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
+    // Exactly at the 0.1 C threshold.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.2f, 47.0f, true, t + INTERVAL_MS)));
+                      static_cast<int>(policy.evaluate(21.1f, 47.0f, true, t + INTERVAL_MS)));
+}
+
+void test_temperature_change_below_threshold_suppressed() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    uint32_t t = primeAt(policy, 21.00f, 47.0f, 1000);
+    // 0.05 C is under the 0.1 C threshold and invisible at one decimal place.
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(21.05f, 47.0f, true, t + 10 * INTERVAL_MS)));
 }
 
 void test_humidity_change_at_threshold_refreshes() {
@@ -285,6 +294,62 @@ void test_format_handles_null_and_zero_length() {
     TEST_ASSERT_EQUAL_STRING("untouched", buf);
 }
 
+// --- wall-clock trigger ---
+
+void test_minute_rollover_triggers_refresh() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    // Prime with a known clock minute.
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000, 1000)));
+    // Values unchanged, but the minute has rolled over: the footer must repaint.
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 1001)));
+}
+
+void test_same_minute_does_not_trigger_refresh() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 1000);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + 10 * INTERVAL_MS, 1000)));
+}
+
+void test_clock_refresh_still_respects_the_interval_floor() {
+    // The minute trigger must not be able to outrun the panel-protection
+    // budget: with a 300 s interval the clock updates every 5 minutes, not
+    // every one.
+    RefreshPolicy policy(300);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 1000);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + 60000, 1001)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + 300000, 1005)));
+}
+
+void test_ntp_sync_populates_the_clock() {
+    // 0 -> non-zero is the unsynced-to-synced transition; the footer gains a
+    // time and must repaint to show it.
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 29000000)));
+}
+
+void test_clock_trigger_advances_the_ghosting_counter() {
+    // Clock-driven refreshes are real refreshes, so they must count toward the
+    // periodic full refresh that clears ghosting.
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 1000);
+    uint32_t t = 1000;
+    for (int i = 1; i <= Display::FULL_REFRESH_EVERY_N_PARTIALS; i++) {
+        t += INTERVAL_MS;
+        TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                          static_cast<int>(policy.evaluate(21.0f, 47.0f, true, t, 1000 + i)));
+    }
+    t += INTERVAL_MS;
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, t, 1013)));
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     // First paint
@@ -296,6 +361,7 @@ int runUnityTests() {
     RUN_TEST(test_sub_hysteresis_temperature_noise_returns_none);
     RUN_TEST(test_sub_hysteresis_humidity_noise_returns_none);
     RUN_TEST(test_temperature_change_at_threshold_refreshes);
+    RUN_TEST(test_temperature_change_below_threshold_suppressed);
     RUN_TEST(test_humidity_change_at_threshold_refreshes);
     RUN_TEST(test_temperature_change_is_direction_agnostic);
     // Minimum interval
@@ -314,6 +380,12 @@ int runUnityTests() {
     // Rollover
     RUN_TEST(test_rollover_does_not_suppress_refreshes);
     RUN_TEST(test_rollover_still_enforces_the_floor);
+    // Wall-clock trigger
+    RUN_TEST(test_minute_rollover_triggers_refresh);
+    RUN_TEST(test_same_minute_does_not_trigger_refresh);
+    RUN_TEST(test_clock_refresh_still_respects_the_interval_floor);
+    RUN_TEST(test_ntp_sync_populates_the_clock);
+    RUN_TEST(test_clock_trigger_advances_the_ghosting_counter);
     // Formatting
     RUN_TEST(test_format_temperature_one_decimal);
     RUN_TEST(test_format_temperature_negative);

@@ -164,16 +164,18 @@
             <div class="form-group">
                 <label for="displayInterval">Minimum Refresh Interval (seconds)</label>
                 <input type="number" id="displayInterval" placeholder="60" min="10" max="3600" style="width: 120px;">
-                <small class="form-hint">Shortest time between panel refreshes. Default: 60s. Lower
-                    values shorten the panel's service life.</small>
+                <small class="form-hint">Shortest time between panel refreshes. Default: 60s.
+                    The footer clock also refreshes on this budget, so values above 60s make
+                    the displayed time lag. Lower values shorten the panel's service life.</small>
             </div>
 
             <button class="btn btn-primary" onclick="updateDisplay()">Save Display Settings</button>
 
             <div class="info-box" style="margin-top: 15px;">
                 <strong>Note:</strong> The device will restart after saving display settings. Turning
-                the display off blanks the panel on the next boot &mdash; e-paper keeps its last image
-                until it is actively cleared. See docs/EINK_DISPLAY_WIRING.md for wiring.
+                the display off blanks the panel first &mdash; e-paper keeps its last image until it
+                is actively cleared &mdash; so saving may take a few seconds. See
+                docs/EINK_DISPLAY_WIRING.md for wiring.
             </div>
         </div>
 

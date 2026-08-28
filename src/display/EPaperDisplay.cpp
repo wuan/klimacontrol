@@ -99,6 +99,7 @@ namespace Display {
                                                         DEGREE_GAP + DEGREE_RADIUS);
             // y1 is already the absolute top of the digits.
             const int16_t ringCy = static_cast<int16_t>(y1 + DEGREE_TOP_INSET + DEGREE_RADIUS);
+            display.drawCircle(ringCx, ringCy, DEGREE_RADIUS + 1, GxEPD_BLACK);
             display.drawCircle(ringCx, ringCy, DEGREE_RADIUS, GxEPD_BLACK);
             display.drawCircle(ringCx, ringCy, DEGREE_RADIUS - 1, GxEPD_BLACK);
         }

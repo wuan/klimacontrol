@@ -1,7 +1,7 @@
 ## 1. Configuration layer
 
-- [x] 1.1 In `src/PrefsKeys.h`, add a "Display configuration" block with `DISPLAY_ENABLED = "disp_enabled"`, `DISPLAY_ROTATION = "disp_rot"`, `DISPLAY_INTERVAL = "disp_intv"`, `DISPLAY_CLEAR_PENDING = "disp_clear"` — all ≤12 characters per the NVS reliability note at the top of that file
-- [x] 1.2 In `src/Config.h`, add `struct DisplayConfig { bool enabled = false; uint8_t rotation = 0; uint16_t interval = 60; bool clear_pending = false; };` next to `SyslogConfig`, with a comment marking `clear_pending` as firmware-internal (never exposed via the HTTP API)
+- [x] 1.1 In `src/PrefsKeys.h`, add a "Display configuration" block with `DISPLAY_ENABLED = "disp_enabled"`, `DISPLAY_ROTATION = "disp_rot"`, `DISPLAY_INTERVAL = "disp_intv"` — all ≤12 characters per the NVS reliability note at the top of that file
+- [x] 1.2 In `src/Config.h`, add `struct DisplayConfig { bool enabled = false; uint8_t rotation = 0; uint16_t interval = 60; };` next to `SyslogConfig`
 - [x] 1.3 In `src/Config.h`, declare `void validateDisplayConfig(DisplayConfig &config);` alongside the other validators, and declare `DisplayConfig loadDisplayConfig();` / `void saveDisplayConfig(const DisplayConfig &config);` on `ConfigManager`
 - [x] 1.4 In `src/Config.cpp`, implement `validateDisplayConfig()` clamping `rotation` to 0..3 and `interval` to 10..3600 (constants `MIN_DISPLAY_INTERVAL = 10`, `MAX_DISPLAY_INTERVAL = 3600` in the `Config` namespace). This function must be free of `#ifdef ARDUINO` so the native `test_config` suite can reach it
 - [x] 1.5 In `src/Config.cpp`, implement `loadDisplayConfig()` / `saveDisplayConfig()` using `PreferencesGuard`, matching the `SyslogConfig` implementations
@@ -45,13 +45,13 @@
 - [x] 5.3 Implement `DisplayManager::begin()` (init + splash) and `DisplayManager::clearAndPark()` (the disable path)
 - [x] 5.4 In `src/Network.h`, add a nullable `DisplayManager *display = nullptr;` member and a `void setDisplay(DisplayManager *d);` setter, mirroring the existing `setWebServer()` pattern that breaks the construction cycle
 - [x] 5.5 In `src/Network.cpp`, in the one-second loop immediately after `statusLed.update()` (around line 572, where the `touchController->update()` call is commented out), add `if (display && !otaActive) { display->update(); }`
-- [x] 5.6 In `src/main.cpp`, add a file-scope `DisplayManager displayManager(sensorController);` next to `statusLed`, and in `setup()` after `config.begin()`: load the display config; if `enabled`, `displayManager.begin(cfg)` and `network.setDisplay(&displayManager)`; if not enabled and `clear_pending`, run `displayManager.clearAndPark()` then save the config with `clear_pending = false`; if enabled and `clear_pending`, just save the config with the flag cleared
+- [x] 5.6 In `src/main.cpp`, add a file-scope `DisplayManager displayManager(sensorController);` next to `statusLed`, and in `setup()` after `config.begin()`: load the display config; if `enabled`, `displayManager.begin(cfg)` and `network.setDisplay(&displayManager)`; otherwise do nothing (blanking happens in the route handler, not at boot)
 - [x] 5.7 Place the display init after `config.begin()` but before `network.begin()`, so the splash appears before WiFi association starts
 
 ## 6. HTTP route
 
-- [x] 6.1 Create `src/routes/DisplayRoutes.cpp` modelled on `src/routes/SyslogRoutes.cpp`, exposing `GET /api/display` returning `{"enabled":…, "rotation":…, "interval":…}` and never emitting `clear_pending`
-- [x] 6.2 Implement `POST /api/display`: `verifyCsrfHeader()` first, then deserialize, populate a `DisplayConfig` from the body (ignoring any `clear_pending` in the request), run `validateDisplayConfig()`, set `clear_pending = true` when the request turns a previously-enabled display off, `saveDisplayConfig()`, then `config.requestRestart(1000)`. Do not drive the panel from the handler
+- [x] 6.1 Create `src/routes/DisplayRoutes.cpp` modelled on `src/routes/SyslogRoutes.cpp`, exposing `GET /api/display` returning `{"enabled":…, "rotation":…, "interval":…}`
+- [x] 6.2 Implement `POST /api/display`: `verifyCsrfHeader()` first, then deserialize, populate a `DisplayConfig` from the body, run `validateDisplayConfig()`, blank the panel via `DisplayManager::disableAndClear()` when the request turns a previously-enabled display off, `saveDisplayConfig()`, then `config.requestRestart(1000)`
 - [x] 6.3 Declare `setupDisplayRoutes()` alongside the other route setups and call it from `WebServerManager` next to `setupMqttRoutes()`
 - [x] 6.4 Keep the JSON response within the documented per-route allocation discipline in the `http-api` spec
 
@@ -82,7 +82,7 @@
 - [ ] 9.4a Decide on the 100 µF bulk capacitor across the module's 3V3/GND. Currently absent, so the panel's ~25 mA refresh transient is unbuffered on a board with a known `ESP_RST_BROWNOUT` history. Not required unless 9.9 observes a brownout — but that makes 9.9 a real test rather than a formality, so run 9.9 before closing this out
 - [ ] 9.5 Confirm the placeholder rendering by booting with the display enabled and no sensor configured
 - [ ] 9.6 Confirm `GET /api/status` still reports internal free above 20480 B with the display enabled, and run a full OTA update end to end to prove the gate is still clearable
-- [ ] 9.7 Disable the display via the UI and confirm the panel is blank after the restart and that `disp_clear` has been cleared
+- [ ] 9.7 Disable the display via the UI and confirm the panel is blanked before the restart (not after it), and that no `disp_clear` key exists in NVS
 - [ ] 9.8 Unplug the panel with the display enabled; confirm three timed-out attempts, one `ESP_LOGE` line, no further refresh attempts, no watchdog reset, and that `GET /api/display` still reports `enabled: true`
 - [ ] 9.9 Check the periodic `Reset reason:` line across a few hours of operation for any `BROWNOUT` that was not present before the display was added
 - [ ] 9.10 Archive the change with `/opsx:archive` to create `openspec/specs/display/spec.md` and fold the four spec deltas into their existing capability specs

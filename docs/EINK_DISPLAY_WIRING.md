@@ -165,7 +165,7 @@ placeholder, not a fault.
 | Faint shadow of the previous reading | Normal ghosting between full refreshes | Clears on the next full refresh; lower the refresh interval or check that the panel is a V2 |
 | Text upside-down or sideways | Rotation setting | *Settings → E-Paper Display → Rotation* |
 | Device reboots during a refresh | Brownout | `Reset reason: BROWNOUT` in the boot log — add the 100 µF cap from §4 |
-| Panel keeps showing an old reading after disabling | Blanking has not run yet | It is queued for the next boot; power-cycle once. E-paper retains its image, so it must be actively cleared |
+| Panel keeps showing an old reading after disabling | Blanking failed | It should be cleared during the save, before the restart. Check the console for `Display disabled and blanked`; if absent, the panel had already faulted (see below) and could not be driven |
 
 ### The fault guard
 
