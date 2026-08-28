@@ -42,6 +42,30 @@
         </div>
 
         <div class="section">
+            <h2>Timezone</h2>
+            <p>Sets the local time shown on the device. Daylight saving is handled
+                automatically &mdash; the stored value carries the switchover rules, so
+                the clock is correct year-round without changing anything twice a year.</p>
+
+            <div class="form-group">
+                <label for="timezoneSelect">Timezone</label>
+                <select id="timezoneSelect" onchange="onTimezoneSelectChange()"></select>
+            </div>
+
+            <div class="form-group" id="timezoneCustomGroup" style="display: none;">
+                <label for="timezoneCustom">POSIX TZ string</label>
+                <input type="text" id="timezoneCustom" placeholder="e.g. CET-1CEST,M3.5.0,M10.5.0/3" maxlength="47">
+                <small class="form-hint">Format: <code>STDoffset[DST[offset][,start[/time],end[/time]]]</code></small>
+            </div>
+
+            <button class="btn btn-primary" onclick="updateTimezone()">Update Timezone</button>
+
+            <div class="info-box" id="timezoneStatus">
+                <strong>Device time: </strong><span id="timezoneLocalTime">Loading...</span>
+            </div>
+        </div>
+
+        <div class="section">
             <h2>I2C Sensors</h2>
             <p>Configure which sensors are connected to the I2C bus (STEMMA QT connector). Changes require a restart.</p>
 
@@ -968,6 +992,129 @@
         btn.textContent = 'Scan I2C Bus';
     }
 
+    // Timezone Functions
+    //
+    // The zone table lives here rather than in firmware flash: the device only
+    // ever stores and applies one opaque POSIX string, so extending or
+    // correcting this list is a frontend-only change.
+    //
+    // Deliberately omitted: zones needing the POSIX hour-24+ extension
+    // (Asia/Jerusalem) and those with repeatedly changing legislation
+    // (Africa/Cairo). Shipping a subtly wrong rule is worse than omitting the
+    // zone, and "Custom" covers those users.
+    const TIMEZONES = [
+        ['UTC0', 'UTC'],
+        ['GMT0BST,M3.5.0/1,M10.5.0', 'Europe/London, Dublin, Lisbon (GMT/BST)'],
+        ['CET-1CEST,M3.5.0,M10.5.0/3', 'Europe/Berlin, Paris, Madrid, Rome (CET/CEST)'],
+        ['EET-2EEST,M3.5.0/3,M10.5.0/4', 'Europe/Athens, Helsinki, Kyiv (EET/EEST)'],
+        ['MSK-3', 'Europe/Moscow (MSK)'],
+        ['EST5EDT,M3.2.0,M11.1.0', 'America/New_York, Toronto (EST/EDT)'],
+        ['CST6CDT,M3.2.0,M11.1.0', 'America/Chicago, Mexico City (CST/CDT)'],
+        ['MST7MDT,M3.2.0,M11.1.0', 'America/Denver (MST/MDT)'],
+        ['MST7', 'America/Phoenix (MST, no DST)'],
+        ['PST8PDT,M3.2.0,M11.1.0', 'America/Los_Angeles, Vancouver (PST/PDT)'],
+        ['AKST9AKDT,M3.2.0,M11.1.0', 'America/Anchorage (AKST/AKDT)'],
+        ['HST10', 'Pacific/Honolulu (HST, no DST)'],
+        ['<-03>3', 'America/Sao_Paulo, Buenos Aires (UTC-3)'],
+        ['<-05>5', 'America/Bogota, Lima (UTC-5)'],
+        ['<+04>-4', 'Asia/Dubai (UTC+4)'],
+        ['IST-5:30', 'Asia/Kolkata (IST, UTC+5:30)'],
+        ['<+07>-7', 'Asia/Bangkok, Jakarta (UTC+7)'],
+        ['CST-8', 'Asia/Shanghai, Singapore, Hong Kong (UTC+8)'],
+        ['JST-9', 'Asia/Tokyo (JST)'],
+        ['KST-9', 'Asia/Seoul (KST)'],
+        ['AWST-8', 'Australia/Perth (AWST)'],
+        ['ACST-9:30ACDT,M10.1.0,M4.1.0/3', 'Australia/Adelaide (ACST/ACDT)'],
+        ['AEST-10AEDT,M10.1.0,M4.1.0/3', 'Australia/Sydney, Melbourne (AEST/AEDT)'],
+        ['AEST-10', 'Australia/Brisbane (AEST, no DST)'],
+        ['NZST-12NZDT,M9.5.0,M4.1.0/3', 'Pacific/Auckland (NZST/NZDT)'],
+        ['SAST-2', 'Africa/Johannesburg (SAST)'],
+        ['WAT-1', 'Africa/Lagos (WAT)'],
+        ['EAT-3', 'Africa/Nairobi (EAT)']
+    ];
+
+    function populateTimezoneOptions() {
+        const select = document.getElementById('timezoneSelect');
+        if (select.options.length > 0) return;
+        TIMEZONES.forEach(([value, label]) => {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = label;
+            select.appendChild(opt);
+        });
+        const custom = document.createElement('option');
+        custom.value = '__custom__';
+        custom.textContent = 'Custom (POSIX TZ string)...';
+        select.appendChild(custom);
+    }
+
+    function onTimezoneSelectChange() {
+        const isCustom = document.getElementById('timezoneSelect').value === '__custom__';
+        document.getElementById('timezoneCustomGroup').style.display = isCustom ? '' : 'none';
+    }
+
+    function selectedTimezone() {
+        const select = document.getElementById('timezoneSelect');
+        if (select.value === '__custom__') {
+            return document.getElementById('timezoneCustom').value.trim();
+        }
+        return select.value;
+    }
+
+    async function loadTimezoneConfig() {
+        populateTimezoneOptions();
+        try {
+            const response = await fetch('/api/settings/timezone');
+            const data = await response.json();
+
+            const select = document.getElementById('timezoneSelect');
+            const known = TIMEZONES.some(([value]) => value === data.timezone);
+            if (known) {
+                select.value = data.timezone;
+                document.getElementById('timezoneCustom').value = '';
+            } else {
+                // Anything not in the curated list stays reachable via Custom.
+                select.value = '__custom__';
+                document.getElementById('timezoneCustom').value = data.timezone || '';
+            }
+            onTimezoneSelectChange();
+
+            document.getElementById('timezoneLocalTime').textContent =
+                data.synced ? data.local_time : 'waiting for NTP sync';
+        } catch (error) {
+            console.error('Failed to load timezone config:', error);
+            document.getElementById('timezoneLocalTime').textContent = 'Error loading';
+        }
+    }
+
+    async function updateTimezone() {
+        const timezone = selectedTimezone();
+        if (!timezone) {
+            alert('Please choose a timezone or enter a POSIX TZ string');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/settings/timezone', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
+                body: JSON.stringify({timezone})
+            });
+
+            if (response.ok) {
+                // Applied immediately by the device; no restart involved.
+                alert('Timezone updated');
+                loadTimezoneConfig();
+            } else {
+                const data = await response.json();
+                alert('Failed to update timezone: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to update timezone:', error);
+            alert('Error saving timezone');
+        }
+    }
+
     // Elevation Functions
     async function updateElevation() {
         const elevation = parseFloat(document.getElementById('elevation').value);
@@ -1063,6 +1210,7 @@
         await loadMqttConfig();
         await loadSyslogConfig();
         await loadDisplayConfig();
+        await loadTimezoneConfig();
         await loadEnergyConfig();
     }
     loadAll();

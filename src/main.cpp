@@ -25,6 +25,7 @@
 #include "StatusLed.h"
 #include "task/SensorMonitor.h"
 #include "OTAUpdater.h"
+#include "support/LocalTime.h"
 #ifdef ARDUINO
 #include "display/DisplayManager.h"
 #endif
@@ -335,6 +336,12 @@ void setup() {
 #endif
 
 #ifdef ARDUINO
+    // Apply the configured timezone before anything can format a local time.
+    // The POSIX TZ string carries the daylight-saving rules, so transitions are
+    // handled by libc with no further configuration — see support/LocalTime.h.
+    Support::applyTimezone(deviceConfig.timezone);
+    ESP_LOGI(TAG, "Timezone: %s", deviceConfig.timezone);
+
     // Before network.begin() so the splash is on the panel while WiFi
     // association is still in progress.
     setupDisplay(deviceConfig);

@@ -11,6 +11,7 @@
 #include "Log.h"
 #include "Network.h"
 #include "SensorController.h"
+#include "support/LocalTime.h"
 
 static const char *TAG = "display";
 
@@ -76,14 +77,10 @@ namespace Display {
         if (network == nullptr) {
             return;
         }
-        const uint32_t epoch = network->getCurrentEpoch();
-        if (epoch == 0) {
-            return; // NTP not synced; leave the clock blank rather than lie
-        }
-        const uint32_t secondsOfDay = epoch % 86400u;
-        snprintf(out, n, "%02u:%02u",
-                 static_cast<unsigned>(secondsOfDay / 3600u),
-                 static_cast<unsigned>((secondsOfDay % 3600u) / 60u));
+        // Local time, daylight saving included. formatLocalHhMm() leaves the
+        // buffer empty for epoch 0 (NTP not synced), so the footer field stays
+        // blank rather than claiming a time.
+        Support::formatLocalHhMm(out, n, network->getCurrentEpoch());
     }
 
     void DisplayManager::update() {

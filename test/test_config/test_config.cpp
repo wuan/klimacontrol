@@ -70,6 +70,32 @@ void test_display_config_defaults() {
     TEST_ASSERT_FALSE(config.clear_pending);
 }
 
+void test_device_config_timezone_default() {
+    Config::DeviceConfig config;
+    TEST_ASSERT_EQUAL_STRING("UTC0", config.timezone);
+}
+
+void test_validate_device_config_empty_timezone_reset() {
+    Config::DeviceConfig config;
+    config.timezone[0] = '\0';
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_EQUAL_STRING("UTC0", config.timezone);
+}
+
+void test_validate_device_config_nonprintable_timezone_reset() {
+    Config::DeviceConfig config;
+    strcpy(config.timezone, "CET\t-1");
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_EQUAL_STRING("UTC0", config.timezone);
+}
+
+void test_validate_device_config_valid_timezone_preserved() {
+    Config::DeviceConfig config;
+    strcpy(config.timezone, "CET-1CEST,M3.5.0,M10.5.0/3");
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_EQUAL_STRING("CET-1CEST,M3.5.0,M10.5.0/3", config.timezone);
+}
+
 // --- validateDisplayConfig ---
 
 void test_validate_display_config_defaults_unchanged() {
@@ -422,6 +448,11 @@ int runUnityTests() {
     RUN_TEST(test_energy_config_defaults);
     RUN_TEST(test_syslog_config_defaults);
     RUN_TEST(test_display_config_defaults);
+    // DeviceConfig timezone
+    RUN_TEST(test_device_config_timezone_default);
+    RUN_TEST(test_validate_device_config_empty_timezone_reset);
+    RUN_TEST(test_validate_device_config_nonprintable_timezone_reset);
+    RUN_TEST(test_validate_device_config_valid_timezone_preserved);
     RUN_TEST(test_get_device_id);
     // DisplayConfig validation
     RUN_TEST(test_validate_display_config_defaults_unchanged);

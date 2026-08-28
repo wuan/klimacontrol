@@ -25,6 +25,7 @@ namespace PrefsKeys {
     constexpr const char* TEMPERATURE_CONTROL_ENABLED = "temperature_control_enabled";
     constexpr const char* ELEVATION = "elevation";
     constexpr const char* SENSOR_I2C_ADDRESS = "sensor_i2c_address";
+    constexpr const char* TIMEZONE = "timezone";
 
     // Energy configuration
     constexpr const char* ENERGY_WIFI_POWER = "energy_wifi_pw";

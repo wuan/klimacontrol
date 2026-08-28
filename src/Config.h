@@ -86,6 +86,12 @@ namespace Config {
         bool temperature_control_enabled = false; // Temperature control enabled
         float elevation = 0.0f; // Meters above sea level, for sea-level pressure calculation
 
+        // POSIX TZ string carrying both the UTC offset and the daylight-saving
+        // transition rules, e.g. "CET-1CEST,M3.5.0,M10.5.0/3". Sits next to
+        // elevation because both describe where the device physically is.
+        // See src/support/LocalTime.h.
+        char timezone[48] = "UTC0";
+
         DeviceConfig() = default;
     };
 
@@ -200,6 +206,7 @@ namespace Config {
         static constexpr const char *ENERGY_WIFI_PW = "energy_wifi_pw";
         static constexpr const char *ENERGY_WIFI_SLEEP = "energy_wifi_sleep";
         static constexpr const char *SENSOR_I2C_ADDRESS = "sensor_i2c_address";
+        static constexpr const char *TIMEZONE = "timezone";
 
         // In-memory cache of device config — always read from here, never maintain separate copies
         DeviceConfig deviceConfig;
@@ -326,6 +333,7 @@ namespace Config {
         void updateTargetTemperature(float temperature);
         void updateTemperatureControlEnabled(bool enabled);
         void updateElevation(float elevation);
+        void updateTimezone(const char* timezone);
         void updateSensorI2CAddress(uint8_t address);
 
         /**
