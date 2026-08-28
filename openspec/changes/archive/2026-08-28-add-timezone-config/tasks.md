@@ -41,7 +41,7 @@
 
 - [x] 6.1 `pio run -e adafruit_qtpy_esp32s2` — SUCCESS, zero new warnings. Flash 1,310,602 B (69.0%), **+7,264 B** over the pre-timezone baseline of 1,303,338 B
 - [x] 6.2 `pio test -e native` — 307/307 PASS across 22 suites (282 existing + 21 new in `test_local_time` + 4 new timezone cases in `test_config`)
-- [ ] 6.3 On hardware: set the zone to `Europe/Berlin`, confirm `GET /api/settings/timezone` reports the expected local time and that no restart occurs
-- [ ] 6.4 On hardware with the e-paper display enabled, confirm the footer timestamp shows local rather than UTC time after the next refresh
-- [ ] 6.5 Confirm the MQTT payload's `time` field is still the UTC epoch, unchanged by the timezone setting
-- [ ] 6.6 Archive the change with `/opsx:archive`
+- [x] 6.3 Confirmed on hardware by the operator: setting `Europe/Berlin` makes `GET /api/settings/timezone` report the expected local time, and no restart occurs — the live `tzset()` apply (D2) works as designed
+- [x] 6.4 Confirmed on hardware by the operator: with the display enabled, the footer clock shows local time rather than UTC
+- [x] 6.5 Confirmed on hardware by the operator: the MQTT payload's `time` field is still the UTC epoch — the timezone affects presentation only
+- [x] 6.6 Archive the change with `/opsx:archive`. **Archive `add-eink-display` first**: it renames the `web-interface` requirement "Tabbed settings modal" to "Settings page sections", which this change's delta then modifies
