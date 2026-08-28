@@ -231,12 +231,24 @@ void SensorController::readSensors() {
             if (reading.valid) {
                 for (const auto &m : reading.measurements) {
 #if CORE_DEBUG_LEVEL >= 4
-                    bool is_int = std::holds_alternative<int32_t>(m.value);
+                    // One call per alternative rather than a ternary format
+                    // string: _KLIMA_LOG concatenates the format with its prefix
+                    // ("%08lu " #letter " %6s " format), which only works for a
+                    // string *literal*, and the ternary over int32_t/float
+                    // collapses both arms to float — so "%d" was being handed a
+                    // double. The previous single-call form could not compile at
+                    // all once ESP_LOGD stopped being a no-op.
+                    if (const auto *intValue = std::get_if<int32_t>(&m.value)) {
+                        ESP_LOGD(TAG, "%s: %s=%d %s (%u ms)",
+                                 sensor->getType(), Sensor::measurementTypeLabel(m.type),
+                                 *intValue, Sensor::measurementTypeUnit(m.type), readTime);
+                    } else {
+                        ESP_LOGD(TAG, "%s: %s=%.1f %s (%u ms)",
+                                 sensor->getType(), Sensor::measurementTypeLabel(m.type),
+                                 std::get<float>(m.value), Sensor::measurementTypeUnit(m.type),
+                                 readTime);
+                    }
 #endif
-                    ESP_LOGD(TAG, is_int ? "%s: %s=%d %s (%u ms)" : "%s: %s=%.1f %s (%u ms)",
-                             sensor->getType(), Sensor::measurementTypeLabel(m.type),
-                             is_int ? std::get<int32_t>(m.value) : std::get<float>(m.value),
-                             Sensor::measurementTypeUnit(m.type), readTime);
                     allMeasurements.push_back(m);
                 }
 

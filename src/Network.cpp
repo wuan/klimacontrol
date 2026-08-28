@@ -556,6 +556,14 @@ void Network::configureUsingAPMode() {
 
         unsigned long now = millis();
 
+        // An OTA download owns the network for minutes and squeezes internal
+        // SRAM down to what the TLS session leaves over. Everything in this task
+        // that either competes for that memory or interprets a failure as "the
+        // link is broken" has to stand down for the duration — see the
+        // individual guards below. Sampled once per iteration so all of them see
+        // one consistent view.
+        const bool otaActive = OTAUpdater::isUpdateInProgress();
+
         statusLed.update();
 
         // if (touchController) {
@@ -570,7 +578,7 @@ void Network::configureUsingAPMode() {
         static constexpr uint8_t LOW_HEAP_RESTART_STREAK = 5;
         static uint8_t lowHeapStreak = 0;
         uint32_t freeHeap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-        if (freeHeap < MIN_FREE_INTERNAL_BYTES && !OTAUpdater::isUpdateInProgress()) {
+        if (freeHeap < MIN_FREE_INTERNAL_BYTES && !otaActive) {
             lowHeapStreak++;
             ESP_LOGW(TAG, "Low internal heap %u bytes (%u/%u consecutive)",
                      freeHeap, lowHeapStreak, LOW_HEAP_RESTART_STREAK);
@@ -677,9 +685,14 @@ void Network::configureUsingAPMode() {
             static constexpr uint32_t NTP_UPDATE_INTERVAL_S = 3600;
             static bool lastNtpUpdateFailed = false;
 
+            // Deferred during OTA: a UDP exchange that stalls blocks this task
+            // for the NTP timeout, and a failure would be counted as an internet
+            // outage (see reportInternetFailure below) even though the link is
+            // merely saturated by the download. The clock tolerates a delay of a
+            // few minutes; the interval check re-fires as soon as OTA is done.
             if (ntpSynced) {
                 uint32_t currentEpoch = ntpClient.getEpochTime();
-                if (currentEpoch - lastNtpUpdateEpoch >= NTP_UPDATE_INTERVAL_S) {
+                if (!otaActive && currentEpoch - lastNtpUpdateEpoch >= NTP_UPDATE_INTERVAL_S) {
                     if (safeNtpUpdate()) {
                         uint32_t epoch = ntpClient.getEpochTime();
                         if (isNtpEpochPlausible(epoch)) {
@@ -705,7 +718,7 @@ void Network::configureUsingAPMode() {
                         // Stay synced — the previous epoch is still usable, just stale.
                     }
                 }
-            } else if (now - lastNtpRetry >= NTP_UNSYNCED_RETRY_MS) {
+            } else if (!otaActive && now - lastNtpRetry >= NTP_UNSYNCED_RETRY_MS) {
                 // NTP not yet synced - retry at most once per minute
                 lastNtpRetry = now;
                 if (safeNtpUpdate()) {
@@ -730,8 +743,20 @@ void Network::configureUsingAPMode() {
                 }
             }
 
-            // MQTT: reconnect/keepalive + publish measurements
-            if (mqttClient) {
+            // MQTT: reconnect/keepalive + publish measurements.
+            //
+            // Suspended for the duration of an OTA download. MQTT is the most
+            // expensive thing this task does while the flash is being written:
+            // MqttClient::loop() opens a TCP socket (a fresh lwIP PCB plus a
+            // 1 KB TX buffer out of the internal pool the download has already
+            // drained) and blocks up to TCP_CONNECT_TIMEOUT_MS + the handshake
+            // on every retry, so the 1 s tick that also drives the status LED
+            // and the WiFi supervision stalls for seconds at a time. Worse, each
+            // failed attempt was counted as an internet outage below and
+            // eventually tore the link down under the downloader. The broker may
+            // drop us on keepalive; that is fine — a successful update reboots
+            // anyway, and a failed one reconnects on the next tick.
+            if (mqttClient && !otaActive) {
                 // Check MQTT connect failures and report to internet monitoring
                 uint32_t mqttFailures = mqttClient->getConsecutiveConnectFailures();
                 static uint32_t lastReportedMqttFailures = 0;
@@ -782,7 +807,34 @@ void Network::configureUsingAPMode() {
             // Internet connectivity failure monitoring. If we've had repeated
             // failures from MQTT, OTA, or NTP that indicate internet is down
             // (not just WiFi), trigger a WiFi reconnect to recover.
-            if (internetConnectFailures >= INTERNET_FAILURE_THRESHOLD) {
+            //
+            // Never while an OTA download is running. The recovery action here is
+            // WiFi.disconnect() + WiFi.reconnect(), which tears the link out from
+            // under the OTA worker mid-transfer: the download dies with
+            // "Connection lost during download", and because nothing resets the
+            // counter without a success it fires again every
+            // INTERNET_FAILURE_WINDOW_MS, leaving the device unreachable for as
+            // long as updates keep being attempted. The premise of the guard —
+            // "repeated failures mean the internet is gone" — simply doesn't hold
+            // during an OTA, when MQTT and NTP fail because the link and the
+            // internal heap are saturated by a transfer that is itself proof the
+            // internet works.
+            static bool otaWasActive = false;
+            if (otaWasActive && !otaActive) {
+                // Start the post-OTA window clean: failures recorded around the
+                // download describe the download, not the link.
+                internetConnectFailures = 0;
+                lastInternetFailureAction = now;
+                if (mqttClient) {
+                    // Drop back to the base reconnect backoff so MQTT returns
+                    // within seconds instead of the minutes the suspended
+                    // attempts would otherwise have escalated to.
+                    mqttClient->resetConsecutiveConnectFailures();
+                }
+            }
+            otaWasActive = otaActive;
+
+            if (!otaActive && internetConnectFailures >= INTERNET_FAILURE_THRESHOLD) {
                 if (now - lastInternetFailureAction >= INTERNET_FAILURE_WINDOW_MS) {
                     lastInternetFailureAction = now;
                     ESP_LOGW(TAG, "Internet connectivity lost (%u failures) - forcing WiFi reconnect",
