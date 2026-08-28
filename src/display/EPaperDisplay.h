@@ -75,12 +75,12 @@ namespace Display {
         bool faulted = false;
         uint8_t consecutiveTimeouts = 0;
 
-        // Runs the paged draw loop for the current window, timing it and
-        // feeding the task watchdog either side. `drawFooter` is honoured only
-        // on a full refresh, where the footer region is inside the window.
+        // Runs the paged draw loop for the current window. The footer is drawn
+        // unconditionally: it carries the timestamp of the reading above it and
+        // lies inside the partial-refresh window, so it stays in step with the
+        // values on every refresh.
         void runPagedDraw(const char *tempStr, const char *humStr,
-                          const char *footerLeft, const char *footerRight,
-                          bool drawFooter);
+                          const char *footerLeft, const char *footerRight);
 
         // Records the duration of a completed panel operation and trips the
         // fault guard when the timeout streak is reached.

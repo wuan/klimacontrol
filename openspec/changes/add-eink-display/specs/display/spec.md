@@ -212,18 +212,34 @@ SHALL be compiled and unit-tested in the `native` PlatformIO environment.
 
 ### Requirement: Partial refresh window
 
-A `Partial` refresh SHALL update only the value block, `(0, 30)` 200×110, via
-`setPartialWindow()`. The footer SHALL be redrawn only during a `Full` refresh.
+A `Partial` refresh SHALL update the region `(0, 30)` 200×160 via
+`setPartialWindow()`. This window SHALL contain every element that can change
+between refreshes: both value lines and the footer.
+
+The footer's right-hand field SHALL be understood as the **timestamp of the
+reading displayed above it**, not as a wall clock. It SHALL therefore be
+redrawn on every refresh, partial included, so that it can never be older than
+the values it accompanies.
+
+The firmware SHALL NOT schedule a refresh solely to advance the clock. On a
+panel whose refresh budget is deliberately constrained, a per-minute repaint
+would defeat the entire refresh policy; the timestamp advances only when the
+reading it describes does.
 
 #### Scenario: Partial refresh does not flash
 
 - **WHEN** the policy returns `Partial`
-- **THEN** only the value region SHALL be rewritten, without the black/white inversion flash of a full refresh
+- **THEN** the region SHALL be rewritten without the black/white inversion flash of a full refresh
 
-#### Scenario: Footer staleness is bounded by the full-refresh cadence
+#### Scenario: Timestamp stays in step with the reading
 
-- **WHEN** only partial refreshes have occurred since the last full refresh
-- **THEN** the footer clock MAY be stale, and it SHALL be brought current on the next full refresh
+- **WHEN** a partial refresh repaints the temperature and humidity
+- **THEN** the footer timestamp SHALL be repainted in the same operation, showing the time at which those values were rendered
+
+#### Scenario: A stable sensor does not repaint the panel
+
+- **WHEN** the measured values remain inside the hysteresis band for an extended period, so no refresh is due
+- **THEN** the panel SHALL NOT be refreshed, and the displayed timestamp SHALL continue to show when the visible reading was taken
 
 ### Requirement: Boot splash
 

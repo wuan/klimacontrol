@@ -34,8 +34,14 @@ namespace Display {
             GxEPD2_154_D67(DisplayPins::CS, DisplayPins::DC, DisplayPins::RST, DisplayPins::BUSY));
 
         // Layout (rotation 0; GFX transforms these for other rotations).
-        constexpr int16_t VALUE_WINDOW_Y = 30;
-        constexpr int16_t VALUE_WINDOW_H = 110;
+        //
+        // The partial-refresh window spans the values AND the footer. The
+        // footer's clock is not a wall clock — it is the timestamp of the
+        // reading above it, so it has to be repainted whenever that reading is.
+        // Leaving it outside the window (values only) froze it between full
+        // refreshes, which on a stable sensor could be indefinitely.
+        constexpr int16_t REFRESH_WINDOW_Y = 30;
+        constexpr int16_t REFRESH_WINDOW_H = 160; // y 30..189, includes the footer
         constexpr int16_t PANEL_W = GxEPD2_154_D67::WIDTH;
         constexpr int16_t PANEL_H = GxEPD2_154_D67::HEIGHT;
         constexpr int16_t TEMP_BASELINE_Y = 85;
@@ -170,8 +176,7 @@ namespace Display {
     }
 
     void EPaperDisplay::runPagedDraw(const char *tempStr, const char *humStr,
-                                     const char *footerLeft, const char *footerRight,
-                                     bool drawFooter) {
+                                     const char *footerLeft, const char *footerRight) {
         display.firstPage();
         do {
             display.fillScreen(GxEPD_WHITE);
@@ -184,17 +189,18 @@ namespace Display {
             snprintf(humLine, sizeof(humLine), "%s %%rH", humStr);
             drawCentered(humLine, HUMIDITY_BASELINE_Y);
 
-            if (drawFooter) {
-                display.drawFastHLine(FOOTER_MARGIN_X, FOOTER_RULE_Y,
-                                      PANEL_W - 2 * FOOTER_MARGIN_X, GxEPD_BLACK);
-                display.setFont(nullptr); // built-in 6x8 font
-                if (footerLeft != nullptr && footerLeft[0] != '\0') {
-                    display.setCursor(FOOTER_MARGIN_X, FOOTER_TEXT_Y);
-                    display.print(footerLeft);
-                }
-                if (footerRight != nullptr && footerRight[0] != '\0') {
-                    drawRightAligned(footerRight, PANEL_W - FOOTER_MARGIN_X, FOOTER_TEXT_Y);
-                }
+            // Drawn on every refresh, partial included: the footer's right-hand
+            // field timestamps the reading above it, so it must never be older
+            // than that reading.
+            display.drawFastHLine(FOOTER_MARGIN_X, FOOTER_RULE_Y,
+                                  PANEL_W - 2 * FOOTER_MARGIN_X, GxEPD_BLACK);
+            display.setFont(nullptr); // built-in 6x8 font
+            if (footerLeft != nullptr && footerLeft[0] != '\0') {
+                display.setCursor(FOOTER_MARGIN_X, FOOTER_TEXT_Y);
+                display.print(footerLeft);
+            }
+            if (footerRight != nullptr && footerRight[0] != '\0') {
+                drawRightAligned(footerRight, PANEL_W - FOOTER_MARGIN_X, FOOTER_TEXT_Y);
             }
         } while (display.nextPage());
     }
@@ -210,10 +216,10 @@ namespace Display {
         if (full) {
             display.setFullWindow();
         } else {
-            // Only the two value strings change between refreshes, so the
-            // partial window is confined to the value block. The footer is
-            // outside it and is repainted on full refreshes only.
-            display.setPartialWindow(0, VALUE_WINDOW_Y, PANEL_W, VALUE_WINDOW_H);
+            // Everything that changes between refreshes — the values and the
+            // footer timestamp — lives inside this window. Only the top margin
+            // is excluded, which is blank.
+            display.setPartialWindow(0, REFRESH_WINDOW_Y, PANEL_W, REFRESH_WINDOW_H);
         }
 
         // The paged loop blocks on the panel's BUSY line for ~0.5 s (partial)
@@ -222,7 +228,7 @@ namespace Display {
         // "blocking external call" requirement.
         const uint32_t start = millis();
         feedWatchdog();
-        runPagedDraw(tempStr, humStr, footerLeft, footerRight, full);
+        runPagedDraw(tempStr, humStr, footerLeft, footerRight);
         feedWatchdog();
         const uint32_t elapsed = millis() - start;
 

@@ -361,23 +361,36 @@ the clear: the flag persists, and the next boot completes the blanking.
       │                                        │
       │                                        │
  y=30 │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│ ┐
-      │            21.4°                       │ │  partial-refresh
-      │        FreeSansBold24pt7b              │ │  window:
-      │                                        │ │  (0, 30) 200 x 110
-      │            47 %rH                      │ │
+      │            21.4°                       │ │
+      │        FreeSansBold24pt7b              │ │  partial-refresh
+      │                                        │ │  window:
+      │            47 %rH                      │ │  (0, 30) 200 x 160
       │         FreeSans12pt7b                 │ │
- y=140│ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│ ┘
-      │  ────────────────────────────────      │
-      │  klima-a1b2                 14:32      │   footer: full refresh only
+      │  ────────────────────────────────      │ │
+      │  klima-a1b2                 14:32      │ │  footer INSIDE the window
+ y=190│ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│ ┘
  y=199└────────────────────────────────────────┘
 ```
 
-Only the two value strings change between refreshes, so the partial window is
-confined to `(0, 30) 200×110`. The footer (device name, clock) is redrawn only
-on a full refresh, which is also when a minute-resolution clock is allowed to
-be up to 12 minutes stale — acceptable for a climate display, and the
-alternative would be widening the partial window to include it and refreshing on
-every clock tick.
+The partial window spans **both** the value block and the footer,
+`(0, 30) 200×160`.
+
+An earlier revision confined it to the value block and repainted the footer only
+on full refreshes. Hardware testing exposed that as wrong: with a stable sensor
+there may be no refresh for hours, so the clock simply froze. The mistake was
+conceptual rather than geometric — treating that field as a *wall clock* on a
+display which, by design, only repaints when a value changes.
+
+Reframed, it is the **timestamp of the reading above it**: "this 21.4 °C was
+measured at 14:32". Under that reading it plainly belongs inside the refresh
+window, and its not advancing between refreshes becomes correct behaviour rather
+than staleness — it tells the viewer how fresh the number is, which is genuinely
+useful on a panel that updates irregularly.
+
+The rejected alternative is scheduling a refresh whenever the minute changes.
+That produces 60 refreshes an hour, at or below the configured minimum interval,
+defeating the hysteresis and interval brakes D4 exists to enforce and spending
+panel life to animate a clock the user's phone already shows.
 
 Placeholder rendering when data is invalid: `--.-°` and `-- %rH`.
 
