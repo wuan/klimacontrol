@@ -29,6 +29,8 @@
 #include <esp_task_wdt.h>
 #include <esp_idf_version.h>
 #include <esp_system.h>
+#include <esp_core_dump.h>
+#include <esp_heap_caps.h>
 #include "HardwareWatchdog.h"
 #endif
 
@@ -53,6 +55,57 @@ static const char *resetReasonStr(esp_reset_reason_t reason) {
         case ESP_RST_SDIO:      return "SDIO";
         default:                return "UNKNOWN";
     }
+}
+
+// Print the stored core dump summary, if one is present in the `coredump`
+// partition (see partitions.csv). The IDF panic handler writes the dump to
+// flash automatically (CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH), but its live
+// backtrace goes to UART0 — which nobody is watching on this board, since our
+// console is USB CDC. Replaying the summary here is the only way the crashing
+// PC/task from the *previous* boot ever reaches the serial monitor.
+//
+// The dump is deliberately NOT erased: the partition holds only the most
+// recent crash and is overwritten by the next one, and leaving it in place
+// lets espcoredump.py pull the full ELF with symbolicated frames:
+//
+//   python $HOME/.platformio/packages/framework-espidf/components/espcoredump/
+//     espcoredump.py -p <port> info_corefile
+//     -t elf .pio/build/adafruit_qtpy_esp32s2/firmware.elf
+static void logCoreDumpSummary() {
+    esp_err_t check = esp_core_dump_image_check();
+    if (check == ESP_ERR_NOT_FOUND) {
+        return; // no crash recorded — the common case
+    }
+    if (check != ESP_OK) {
+        ESP_LOGW(TAG, "Core dump present but unreadable (err 0x%x)", check);
+        return;
+    }
+
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH && CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
+    esp_core_dump_summary_t summary;
+    if (esp_core_dump_get_summary(&summary) != ESP_OK) {
+        ESP_LOGW(TAG, "Core dump present but summary could not be parsed");
+        return;
+    }
+
+    ESP_LOGE(TAG, "Core dump from previous crash: task='%s' PC=0x%08x cause=%u vaddr=0x%08x",
+             summary.exc_task, summary.exc_pc,
+             summary.ex_info.exc_cause, summary.ex_info.exc_vaddr);
+
+    // One line per frame keeps each Serial.printf small; the USB CDC TX
+    // buffer is only 64 bytes and a long line would just stall the boot.
+    for (uint32_t i = 0; i < summary.exc_bt_info.depth && i < 16; i++) {
+        ESP_LOGE(TAG, "  bt[%u] 0x%08x", i, summary.exc_bt_info.bt[i]);
+    }
+    if (summary.exc_bt_info.corrupted) {
+        ESP_LOGW(TAG, "  (backtrace marked corrupted)");
+    }
+#else
+    size_t addr = 0, size = 0;
+    if (esp_core_dump_image_get(&addr, &size) == ESP_OK) {
+        ESP_LOGE(TAG, "Core dump from previous crash: %u bytes at 0x%06x", size, addr);
+    }
+#endif
 }
 #endif
 
@@ -86,6 +139,11 @@ void setup() {
 #ifdef ARDUINO
     esp_reset_reason_t resetReason = esp_reset_reason();
     ESP_LOGI(TAG, "Reset reason: %s (%d)", resetReasonStr(resetReason), resetReason);
+    ESP_LOGI(TAG, "Boot heap: internal free=%u largest=%u, total free=%u",
+             heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+             heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
+    logCoreDumpSummary();
 #endif
     config.begin();
     // Wire the pre-constructed WebServerManager into the network task. Both
@@ -173,6 +231,38 @@ void setup() {
     // See: POWER_OPTIMIZATION.md - "Why it's not working"
 #endif
 
+    // Configure the task watchdog timer (30s timeout, panic on trigger) BEFORE
+    // any task that subscribes to it is created. Both the network and sensor
+    // tasks call esp_task_wdt_add(NULL) as their first act; they run at the same
+    // priority as this setup task, so if init happened afterwards the add() would
+    // race it, return ESP_ERR_INVALID_STATE, and leave the task permanently
+    // unsubscribed — every later esp_task_wdt_reset() in it a silent no-op, and
+    // the 30s stall protection quietly gone. The RTC watchdog would not cover it
+    // either, since loop() keeps feeding that independently.
+    //
+    // The init API changed between IDF 4.x (this toolchain: arduino-esp32 2.0.x)
+    // and IDF 5.x, where it takes a config struct and the core may have already
+    // initialized the TWDT (hence the reconfigure fallback). Guard by version so
+    // a toolchain bump doesn't silently fail to compile.
+#if ESP_IDF_VERSION_MAJOR >= 5
+    const esp_task_wdt_config_t wdtConfig = {
+        .timeout_ms = 30000,
+        .idle_core_mask = 0,
+        .trigger_panic = true,
+    };
+    esp_err_t wdtInit = esp_task_wdt_init(&wdtConfig);
+    if (wdtInit == ESP_ERR_INVALID_STATE) {
+        wdtInit = esp_task_wdt_reconfigure(&wdtConfig);
+    }
+#else
+    esp_err_t wdtInit = esp_task_wdt_init(30, true);
+#endif
+    if (wdtInit == ESP_OK) {
+        ESP_LOGI(TAG, "Task watchdog configured (30s timeout)");
+    } else {
+        ESP_LOGE(TAG, "Task watchdog init FAILED (err 0x%x) - tasks will run unguarded", wdtInit);
+    }
+
     ESP_LOGI(TAG, "Starting network task");
     try {
         network.begin();
@@ -191,25 +281,6 @@ void setup() {
     } catch (...) {
         ESP_LOGE(TAG, "Unknown error starting sensor monitor task");
     }
-
-    // Configure task watchdog timer (30s timeout, panic on trigger).
-    // The init API changed between IDF 4.x (this toolchain: arduino-esp32 2.0.x)
-    // and IDF 5.x, where it takes a config struct and the core may have already
-    // initialized the TWDT (hence the reconfigure fallback). Guard by version so
-    // a toolchain bump doesn't silently fail to compile.
-#if ESP_IDF_VERSION_MAJOR >= 5
-    const esp_task_wdt_config_t wdtConfig = {
-        .timeout_ms = 30000,
-        .idle_core_mask = 0,
-        .trigger_panic = true,
-    };
-    if (esp_task_wdt_init(&wdtConfig) == ESP_ERR_INVALID_STATE) {
-        esp_task_wdt_reconfigure(&wdtConfig);
-    }
-#else
-    esp_task_wdt_init(30, true);
-#endif
-    ESP_LOGI(TAG, "Task watchdog configured (30s timeout)");
 
     // Independent hardware (RTC) watchdog backstop. Longer than the 30s TWDT so
     // the TWDT fires first on an ordinary task stall; this only triggers on a

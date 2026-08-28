@@ -20,6 +20,7 @@
 #ifdef ARDUINO
 #include <esp_pm.h>
 #include <esp_task_wdt.h>
+#include <esp_heap_caps.h>
 #include "Log.h"
 #endif
 
@@ -185,6 +186,21 @@ void Network::startSTA(const char *ssid, const char *password) {
     // repeatedly (e.g., during the restart loop bug).
     WiFi.disconnect(false);
     vTaskDelay(50 / portTICK_PERIOD_MS);
+
+    // WiFi.mode(WIFI_STA) is where esp_wifi_init() runs: it powers up the radio
+    // and allocates the WiFi/TCP-IP task stacks, which must come from one
+    // contiguous block of *internal* SRAM (never PSRAM) — the same constraint
+    // that broke the OTA tasks, see OTAUpdater.h. It is also the current surge
+    // that trips the brownout detector on a marginal supply. Both failure modes
+    // reset the chip with no output surviving on USB CDC, so log the heap state
+    // immediately before the call: this line being the last one in the log
+    // pinpoints esp_wifi_init(), and the numbers say whether memory was the
+    // cause (low largest-block) or not (healthy heap => suspect brownout, and
+    // the next boot's "Reset reason:" line confirms it).
+    ESP_LOGI(TAG, "Pre-WiFi heap: internal free=%u largest=%u, total free=%u",
+             heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+             heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
 
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
@@ -364,7 +380,14 @@ void Network::configureUsingAPMode() {
 
 [[noreturn]] void Network::task() {
 #ifdef ARDUINO
-    esp_task_wdt_add(NULL);
+    // Subscribe to the TWDT. setup() initializes the TWDT before creating this
+    // task, so this should always succeed; log loudly if it does not, because an
+    // unsubscribed task makes every esp_task_wdt_reset() in startSTA() and
+    // loop() a silent no-op and removes the 30s stall protection entirely.
+    esp_err_t wdtAdd = esp_task_wdt_add(NULL);
+    if (wdtAdd != ESP_OK) {
+        ESP_LOGE(TAG, "esp_task_wdt_add failed (err 0x%x) - task runs unguarded", wdtAdd);
+    }
 
     ESP_LOGI(TAG, "Network task started");
 

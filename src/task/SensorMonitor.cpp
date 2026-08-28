@@ -38,7 +38,14 @@ namespace Task {
     }
     
     void SensorMonitor::task() {
-        esp_task_wdt_add(NULL);
+        // Subscribe to the TWDT. setup() initializes the TWDT before creating
+        // this task, so this should always succeed; log loudly if it does not,
+        // because an unsubscribed task makes every esp_task_wdt_reset() below a
+        // silent no-op and removes the 30s stall protection entirely.
+        esp_err_t wdtAdd = esp_task_wdt_add(NULL);
+        if (wdtAdd != ESP_OK) {
+            ESP_LOGE(TAG, "esp_task_wdt_add failed (err 0x%x) - task runs unguarded", wdtAdd);
+        }
 
         unsigned long lastDiagnostics = millis();
         static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 300000; // 5 minutes
