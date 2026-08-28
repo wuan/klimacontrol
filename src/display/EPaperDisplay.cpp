@@ -53,9 +53,9 @@ namespace Display {
         // Geometry of the degree mark. The Adafruit GFX free fonts only carry
         // glyphs 0x20-0x7E, so U+00B0 (and the Latin-1 0xB0 byte) renders as
         // nothing — the ring has to be drawn, not printed.
-        constexpr int16_t DEGREE_RADIUS = 5;
-        constexpr int16_t DEGREE_GAP = 7;      // space between the digits and the ring
-        constexpr int16_t DEGREE_TOP_INSET = 6; // below the cap height of the big font
+        constexpr int16_t DEGREE_RADIUS = 6;
+        constexpr int16_t DEGREE_GAP = 5;      // space between the digits and the ring
+        constexpr int16_t DEGREE_TOP_INSET = 0; // below the cap height of the big font
         constexpr int16_t DEGREE_ADVANCE = DEGREE_GAP + 2 * DEGREE_RADIUS;
 
         // Draw `text` horizontally centred on the panel with its baseline at
