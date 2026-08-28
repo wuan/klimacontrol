@@ -36,6 +36,11 @@ ESP32-based temperature and humidity controller with web interface for monitorin
 | Flash | 4MB |
 | Sensors | Multiple I2C sensors (auto-detected) |
 | I2C pins | SDA: GPIO 8, SCL: GPIO 9 |
+| Optional display | Waveshare 1.54" e-paper (200×200, SSD1681) over SPI |
+
+An optional e-paper display can show the current temperature and humidity. It is
+disabled by default; see [E-Paper Display Wiring](docs/EINK_DISPLAY_WIRING.md)
+for the module to buy, the pin-by-pin wiring, and troubleshooting.
 
 ## Supported Sensors
 
@@ -194,6 +199,23 @@ Device logs can be forwarded to a remote syslog server via UDP (RFC 3164). Confi
 - **Hostname**: uses the device's mDNS hostname (e.g. `klima-aabbcc`)
 - **Severity mapping**: E=error(3), W=warning(4), I=info(6), D=debug(7)
 - **Zero overhead when disabled**: no UDP socket allocated, inline `isActive()` check
+
+## E-Paper Display
+
+An optional Waveshare 1.54" e-paper module (200×200, SSD1681) shows the current
+temperature and relative humidity. Disabled by default; enable it under
+*Settings → E-Paper Display* or via the `/api/display` endpoint.
+
+- **Zero idle power**: e-paper keeps its image with no power between refreshes
+- **Paged rendering**: 625-byte page buffer rather than a 5 KB framebuffer, to
+  keep internal SRAM above the OTA pre-flight gate
+- **Refresh policy**: value hysteresis (±0.2 °C / ±1 %RH), a configurable
+  minimum interval (default 60 s), and a full refresh every 12 partials to clear
+  ghosting
+- **Fails safe**: a disconnected panel is detected after three timed-out
+  refreshes and stops being driven, without touching the saved configuration
+
+See [E-Paper Display Wiring](docs/EINK_DISPLAY_WIRING.md) for hardware setup.
 
 ## Over-the-Air (OTA) Updates
 

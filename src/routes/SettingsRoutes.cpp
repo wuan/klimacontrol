@@ -5,6 +5,8 @@
 
 #include "Config.h"
 #include "SensorController.h"
+#include "Network.h"
+#include "support/LocalTime.h"
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
@@ -132,6 +134,68 @@ void WebServerManager::setupSettingsRoutes() {
                       config.updateElevation(elevation);
 
                       ESP_LOGI(TAG, "Elevation updated: %.0f m", elevation);
+
+                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+                  }
+              }
+    );
+
+    // GET /api/settings/timezone - Get timezone and the resulting local time
+    server.on("/api/settings/timezone", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        const Config::DeviceConfig &deviceConfig = config.getDeviceConfig();
+        const uint32_t epoch = network.getCurrentEpoch();
+
+        char localTime[8];
+        Support::formatLocalHhMm(localTime, sizeof(localTime), epoch);
+
+        JsonDocument doc;
+        doc["timezone"] = deviceConfig.timezone;
+        // Empty until NTP syncs; `synced` lets the UI say "waiting for NTP"
+        // rather than render a placeholder time.
+        doc["local_time"] = localTime;
+        doc["synced"] = epoch != 0;
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, CONTENT_TYPE_JSON, response);
+    });
+
+    // POST /api/settings/timezone - Update the timezone (POSIX TZ string)
+    server.on("/api/settings/timezone", HTTP_POST,
+              []([[maybe_unused]] AsyncWebServerRequest *request) {
+              },
+              nullptr,
+              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
+                  if (index == 0) {
+                      if (!verifyCsrfHeader(request)) {
+                          return;
+                      }
+
+                      JsonDocument doc;
+                      DeserializationError error = deserializeJson(doc, data, len);
+
+                      if (error) {
+                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
+                          return;
+                      }
+
+                      const char *timezone = doc["timezone"] | "";
+                      if (!Support::isPlausibleTimezone(timezone)) {
+                          request->send(400, CONTENT_TYPE_JSON,
+                                        R"({"success":false,"error":"Valid POSIX timezone string required"})");
+                          return;
+                      }
+
+                      config.updateTimezone(timezone);
+
+                      // Applied live, deliberately WITHOUT requestRestart().
+                      // Unlike the neighbouring settings routes, tzset() fully
+                      // applies the change: no component holds derived state
+                      // that a restart would reconcile. Adding a restart here
+                      // would be pure user-visible cost for no correctness gain.
+                      Support::applyTimezone(timezone);
+
+                      ESP_LOGI(TAG, "Timezone updated: %s", timezone);
 
                       request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
                   }

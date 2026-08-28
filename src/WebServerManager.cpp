@@ -90,6 +90,7 @@ void WebServerManager::setupAPIRoutes() {
     setupOTARoutes();
     setupMqttRoutes();
     setupSyslogRoutes();
+    setupDisplayRoutes();
     setupI2CRoutes();
 #endif
 }

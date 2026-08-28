@@ -25,6 +25,7 @@ namespace PrefsKeys {
     constexpr const char* TEMPERATURE_CONTROL_ENABLED = "temperature_control_enabled";
     constexpr const char* ELEVATION = "elevation";
     constexpr const char* SENSOR_I2C_ADDRESS = "sensor_i2c_address";
+    constexpr const char* TIMEZONE = "timezone";
 
     // Energy configuration
     constexpr const char* ENERGY_WIFI_POWER = "energy_wifi_pw";
@@ -41,6 +42,13 @@ namespace PrefsKeys {
     constexpr const char* MQTT_PASSWORD = "mqtt_pass";
     constexpr const char* MQTT_PREFIX = "mqtt_prefix";
     constexpr const char* MQTT_INTERVAL = "mqtt_interval";
+
+    // Display configuration
+    // NOTE: "disp_interval" would be 13 characters and hit the NVS limit noted
+    // above, so the interval is stored under the abbreviated "disp_intv".
+    constexpr const char* DISPLAY_ENABLED = "disp_enabled";
+    constexpr const char* DISPLAY_ROTATION = "disp_rot";
+    constexpr const char* DISPLAY_INTERVAL = "disp_intv";
 
     // Syslog configuration
     constexpr const char* SYSLOG_ENABLED = "syslog_enabled";

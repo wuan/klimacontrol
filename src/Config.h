@@ -86,6 +86,12 @@ namespace Config {
         bool temperature_control_enabled = false; // Temperature control enabled
         float elevation = 0.0f; // Meters above sea level, for sea-level pressure calculation
 
+        // POSIX TZ string carrying both the UTC offset and the daylight-saving
+        // transition rules, e.g. "CET-1CEST,M3.5.0,M10.5.0/3". Sits next to
+        // elevation because both describe where the device physically is.
+        // See src/support/LocalTime.h.
+        char timezone[48] = "UTC0";
+
         DeviceConfig() = default;
     };
 
@@ -133,10 +139,31 @@ namespace Config {
         SyslogConfig() = default;
     };
 
+    // Display refresh interval bounds (seconds). The floor is deliberately well
+    // below Waveshare's ~180 s longevity guidance: the value hysteresis in
+    // Display::RefreshPolicy means a short interval only produces frequent
+    // refreshes when the reading is genuinely changing that fast.
+    constexpr uint16_t MIN_DISPLAY_INTERVAL = 10;
+    constexpr uint16_t MAX_DISPLAY_INTERVAL = 3600;
+    constexpr uint8_t MAX_DISPLAY_ROTATION = 3;
+    constexpr uint16_t DEFAULT_DISPLAY_INTERVAL = 60;
+
+    /**
+     * E-paper display configuration structure
+     */
+    struct DisplayConfig {
+        bool enabled = false; // Default off — an unconfigured device behaves as before
+        uint8_t rotation = 0; // 0..3, mounting orientation
+        uint16_t interval = DEFAULT_DISPLAY_INTERVAL; // Minimum seconds between refreshes
+
+        DisplayConfig() = default;
+    };
+
     // Validation functions — pure C++, testable on native builds
     void validateDeviceConfig(DeviceConfig &config);
     void validateMqttConfig(MqttConfig &config);
     void validateEnergyConfig(EnergyConfig &config);
+    void validateDisplayConfig(DisplayConfig &config);
 
     // Deferred-restart state encoding helpers (pure C++, testable on native builds).
     // The state is packed into a single 64-bit word: low bit = "requested" flag,
@@ -174,6 +201,7 @@ namespace Config {
         static constexpr const char *ENERGY_WIFI_PW = "energy_wifi_pw";
         static constexpr const char *ENERGY_WIFI_SLEEP = "energy_wifi_sleep";
         static constexpr const char *SENSOR_I2C_ADDRESS = "sensor_i2c_address";
+        static constexpr const char *TIMEZONE = "timezone";
 
         // In-memory cache of device config — always read from here, never maintain separate copies
         DeviceConfig deviceConfig;
@@ -300,6 +328,7 @@ namespace Config {
         void updateTargetTemperature(float temperature);
         void updateTemperatureControlEnabled(bool enabled);
         void updateElevation(float elevation);
+        void updateTimezone(const char* timezone);
         void updateSensorI2CAddress(uint8_t address);
 
         /**
@@ -359,6 +388,18 @@ namespace Config {
 
         SyslogConfig loadSyslogConfig();
         void saveSyslogConfig(const SyslogConfig &config);
+
+        /**
+         * Load e-paper display configuration from NVS
+         * @return DisplayConfig structure, defaults (disabled) if not found
+         */
+        DisplayConfig loadDisplayConfig();
+
+        /**
+         * Save e-paper display configuration to NVS
+         * @param config Display configuration to save
+         */
+        void saveDisplayConfig(const DisplayConfig &config);
     };
 } // namespace Config
 

@@ -155,3 +155,98 @@ convention for `heap_caps_*` calls in the route handlers.
   `largest_free_block` key whose value is greater than or equal to
   zero and less than or equal to `free_heap`
 
+### Requirement: Display endpoints
+
+The firmware SHALL expose `GET /api/display` and `POST /api/display` for reading
+and updating the e-paper display configuration, implemented in
+`src/routes/DisplayRoutes.cpp` following the structure of the existing
+`SyslogRoutes.cpp`.
+
+`GET /api/display` SHALL return the user-facing fields only:
+
+```json
+{"enabled": false, "rotation": 0, "interval": 60}
+```
+
+`POST /api/display` SHALL require the CSRF header
+`X-Requested-With: KlimaControl` via `verifyCsrfHeader()`, SHALL validate the
+body through `Config::validateDisplayConfig()`, SHALL persist the result, and
+SHALL then call `config.requestRestart(1000)` — matching the save-then-restart
+convention of the other settings routes.
+
+When the request disables a display that was previously enabled, the handler
+SHALL blank the panel synchronously before saving and scheduling the restart.
+This blocks the callback for the duration of a full refresh (~2.6 s), and up to
+a further refresh if the Network task is mid-repaint.
+
+#### Scenario: Reading the display configuration
+
+- **WHEN** a client GETs `/api/display` on a device that has never configured the display
+- **THEN** the response SHALL be `200` with `enabled: false`, `rotation: 0`, and `interval: 60`
+
+#### Scenario: Enabling the display
+
+- **WHEN** a client POSTs `/api/display` with `{"enabled": true, "rotation": 2, "interval": 120}` and the CSRF header
+- **THEN** the configuration SHALL be persisted and a restart SHALL be scheduled
+
+#### Scenario: Disabling the display blanks the panel inline
+
+- **WHEN** a client POSTs `/api/display` with `{"enabled": false}` while the display was previously enabled
+- **THEN** the panel SHALL be blanked before the response is sent, the persisted configuration SHALL have `enabled = false`, and a restart SHALL be scheduled
+
+#### Scenario: Missing CSRF header
+
+- **WHEN** a client POSTs `/api/display` without the `X-Requested-With: KlimaControl` header
+- **THEN** the request SHALL be rejected and no configuration SHALL be written
+
+#### Scenario: Out-of-range values are clamped, not rejected
+
+- **WHEN** a client POSTs `/api/display` with `{"enabled": true, "rotation": 9, "interval": 1}`
+- **THEN** the persisted configuration SHALL contain a `rotation` in 0..3 and an `interval` in 10..3600
+
+#### Scenario: Enabling or reconfiguring does not drive the panel
+
+- **WHEN** a `POST /api/display` request enables the display or changes only rotation or interval
+- **THEN** the handler SHALL return without driving the panel; only the disable transition performs a blanking refresh
+
+### Requirement: Timezone endpoints
+
+The firmware SHALL expose `GET /api/settings/timezone` returning the configured
+POSIX TZ string together with the current local time, and
+`POST /api/settings/timezone` to update it.
+
+```json
+{"timezone": "CET-1CEST,M3.5.0,M10.5.0/3", "local_time": "14:32", "synced": true}
+```
+
+`local_time` SHALL be an empty string when NTP has not yet synced, and `synced`
+SHALL report that state, so the UI can distinguish "no clock yet" from midnight.
+
+`POST` SHALL require the CSRF header `X-Requested-With: KlimaControl`, SHALL
+reject an implausible value with 400, SHALL persist the value, and SHALL apply it
+immediately via `Support::applyTimezone()`.
+
+Unlike the other mutating settings routes, this endpoint SHALL NOT schedule a
+restart: `tzset()` fully applies the change, and no component holds derived
+state that a restart would reconcile.
+
+#### Scenario: Reading the timezone before NTP sync
+
+- **WHEN** a client GETs `/api/settings/timezone` on a device that has not yet synced NTP
+- **THEN** the response SHALL contain the configured `timezone`, an empty `local_time`, and `synced: false`
+
+#### Scenario: Updating the timezone takes effect without a restart
+
+- **WHEN** a client POSTs `{"timezone": "CET-1CEST,M3.5.0,M10.5.0/3"}` with the CSRF header
+- **THEN** the value SHALL be persisted and applied immediately, no restart SHALL be scheduled, and a subsequent GET SHALL report a `local_time` in the new zone
+
+#### Scenario: Rejecting an implausible value
+
+- **WHEN** a client POSTs an empty or non-printable timezone string
+- **THEN** the request SHALL be rejected with 400 and the stored value SHALL be unchanged
+
+#### Scenario: Missing CSRF header
+
+- **WHEN** a client POSTs `/api/settings/timezone` without the `X-Requested-With: KlimaControl` header
+- **THEN** the request SHALL be rejected and no configuration SHALL be written
+

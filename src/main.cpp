@@ -25,6 +25,10 @@
 #include "StatusLed.h"
 #include "task/SensorMonitor.h"
 #include "OTAUpdater.h"
+#include "support/LocalTime.h"
+#ifdef ARDUINO
+#include "display/DisplayManager.h"
+#endif
 
 #ifdef ARDUINO
 #include <esp_task_wdt.h>
@@ -131,6 +135,48 @@ Task::SensorMonitor sensorMonitor(sensorController);
 // → "Long-lived singletons are constructed once".
 Network network(config, sensorController, sensorMonitor, statusLed, nullptr);
 WebServerManager webServer(config, network, sensorController, sensorMonitor);
+#ifdef ARDUINO
+// E-paper display. Constructed unconditionally (its 625 B page buffer is in BSS
+// either way), but only initialized when enabled in configuration — see
+// setupDisplay() below.
+Display::DisplayManager displayManager(sensorController);
+#endif
+
+#ifdef ARDUINO
+// Bring up the e-paper display according to the persisted configuration.
+//
+// Only two cases: enabled -> init, splash, wire into the Network task; disabled
+// -> do nothing at all, and the SPI and control pins are never claimed.
+//
+// There is deliberately no "blank the panel on boot" path. e-paper retains its
+// image with no power, so a disabled display does have to be actively cleared —
+// but that happens synchronously in the POST /api/display handler, before the
+// restart, rather than being deferred to the next boot via a persisted flag.
+static void setupDisplay(const Config::DeviceConfig &deviceConfig) {
+    Config::DisplayConfig displayConfig = config.loadDisplayConfig();
+
+    if (!displayConfig.enabled) {
+        return;
+    }
+
+    // Prefer the user-assigned name; fall back to the derived hostname.
+    char name[32];
+    if (deviceConfig.device_name[0] != '\0') {
+        strlcpy(name, deviceConfig.device_name, sizeof(name));
+    } else {
+        snprintf(name, sizeof(name), "%s%s", Constants::HOSTNAME_PREFIX, config.getDeviceId().c_str());
+    }
+
+    if (displayManager.begin(displayConfig, name)) {
+        displayManager.setNetwork(&network);
+        network.setDisplay(&displayManager);
+    } else {
+        ESP_LOGE(TAG, "Display enabled in config but failed to initialize");
+    }
+}
+#endif
+
+
 
 void setup() {
     delay(1000);
@@ -269,6 +315,18 @@ void setup() {
     // requests, so /api/ota/* always has a worker to notify. Their stacks are
     // reserved in BSS, so this cannot fail on a fragmented heap.
     OTAUpdater::begin();
+#endif
+
+#ifdef ARDUINO
+    // Apply the configured timezone before anything can format a local time.
+    // The POSIX TZ string carries the daylight-saving rules, so transitions are
+    // handled by libc with no further configuration — see support/LocalTime.h.
+    Support::applyTimezone(deviceConfig.timezone);
+    ESP_LOGI(TAG, "Timezone: %s", deviceConfig.timezone);
+
+    // Before network.begin() so the splash is on the panel while WiFi
+    // association is still in progress.
+    setupDisplay(deviceConfig);
 #endif
 
     ESP_LOGI(TAG, "Starting network task");

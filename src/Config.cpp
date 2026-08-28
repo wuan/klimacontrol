@@ -1,4 +1,5 @@
 #include "Config.h"
+#include "support/LocalTime.h"
 #include "PrefsKeys.h"
 #include <cmath>
 
@@ -104,6 +105,12 @@ namespace Config {
         if (std::isnan(config.elevation) || config.elevation < -500.0f || config.elevation > 9000.0f) {
             config.elevation = 0.0f;
         }
+
+        // An empty or corrupted timezone degrades to UTC rather than to
+        // undefined tzset() behaviour.
+        if (!Support::isPlausibleTimezone(config.timezone)) {
+            strlcpy(config.timezone, Support::DEFAULT_TIMEZONE, sizeof(config.timezone));
+        }
         if (config.sensor_i2c_address < MIN_SENSOR_I2C_ADDRESS || config.sensor_i2c_address > MAX_SENSOR_I2C_ADDRESS) {
             config.sensor_i2c_address = DEFAULT_SENSOR_I2C_ADDRESS;
         }
@@ -128,6 +135,7 @@ namespace Config {
         deviceConfig.target_temperature = guard.get().getFloat(TARGET_TEMPERATURE, 22.0f);
         deviceConfig.temperature_control_enabled = guard.get().getBool(TEMPERATURE_CONTROL_ENABLED, false);
         deviceConfig.elevation = guard.get().getFloat(ELEVATION, 0.0f);
+        guard.get().getString(TIMEZONE, deviceConfig.timezone, sizeof(deviceConfig.timezone));
         deviceConfig.sensor_i2c_address = guard.get().getUChar(SENSOR_I2C_ADDRESS, DEFAULT_SENSOR_I2C_ADDRESS);
 #endif
 
@@ -148,6 +156,7 @@ namespace Config {
         guard.get().putFloat(TARGET_TEMPERATURE, validated.target_temperature);
         guard.get().putBool(TEMPERATURE_CONTROL_ENABLED, validated.temperature_control_enabled);
         guard.get().putFloat(ELEVATION, validated.elevation);
+        guard.get().putString(TIMEZONE, validated.timezone);
         guard.get().putUChar(SENSOR_I2C_ADDRESS, validated.sensor_i2c_address);
 #endif
 
@@ -193,6 +202,21 @@ namespace Config {
         guard.get().putFloat(ELEVATION, elevation);
 #endif
         deviceConfig.elevation = elevation;
+    }
+
+    void ConfigManager::updateTimezone([[maybe_unused]] const char* timezone) {
+        // Validate — same logic as validateDeviceConfig()
+        char validated[sizeof(deviceConfig.timezone)];
+        if (Support::isPlausibleTimezone(timezone)) {
+            strlcpy(validated, timezone, sizeof(validated));
+        } else {
+            strlcpy(validated, Support::DEFAULT_TIMEZONE, sizeof(validated));
+        }
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putString(TIMEZONE, validated);
+#endif
+        strlcpy(deviceConfig.timezone, validated, sizeof(deviceConfig.timezone));
     }
 
     void ConfigManager::updateSensorI2CAddress(uint8_t address) {
@@ -395,6 +419,54 @@ namespace Config {
         guard.get().putString("syslog_host", config.host);
 
         ESP_LOGD(TAG, "Saved syslog configuration");
+#endif
+    }
+
+    void validateDisplayConfig(DisplayConfig &config) {
+        if (config.rotation > MAX_DISPLAY_ROTATION) {
+            config.rotation = 0;
+        }
+        if (config.interval < MIN_DISPLAY_INTERVAL) {
+            config.interval = MIN_DISPLAY_INTERVAL;
+        } else if (config.interval > MAX_DISPLAY_INTERVAL) {
+            config.interval = MAX_DISPLAY_INTERVAL;
+        }
+    }
+
+    DisplayConfig ConfigManager::loadDisplayConfig() {
+        DisplayConfig displayConfig;
+
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, true);
+
+        displayConfig.enabled = guard.get().getBool(PrefsKeys::DISPLAY_ENABLED, false);
+        displayConfig.rotation = guard.get().getUChar(PrefsKeys::DISPLAY_ROTATION, 0);
+        displayConfig.interval = guard.get().getUShort(PrefsKeys::DISPLAY_INTERVAL, DEFAULT_DISPLAY_INTERVAL);
+
+        ESP_LOGD(TAG, "Loaded display config from NVS: enabled=%d rotation=%u interval=%u",
+                 displayConfig.enabled, displayConfig.rotation, displayConfig.interval);
+#endif
+
+        // Validate ranges — NVS may hold garbage after flash corruption
+        validateDisplayConfig(displayConfig);
+
+        return displayConfig;
+    }
+
+    void ConfigManager::saveDisplayConfig([[maybe_unused]] const DisplayConfig &config) {
+        // Validate before persisting to keep NVS consistent
+        DisplayConfig validated = config;
+        validateDisplayConfig(validated);
+
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false);
+
+        guard.get().putBool(PrefsKeys::DISPLAY_ENABLED, validated.enabled);
+        guard.get().putUChar(PrefsKeys::DISPLAY_ROTATION, validated.rotation);
+        guard.get().putUShort(PrefsKeys::DISPLAY_INTERVAL, validated.interval);
+
+        ESP_LOGD(TAG, "Saved display configuration: enabled=%d rotation=%u interval=%u",
+                 validated.enabled, validated.rotation, validated.interval);
 #endif
     }
 } // namespace Config

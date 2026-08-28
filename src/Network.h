@@ -23,6 +23,10 @@ namespace Config {
 
 class WebServerManager;
 
+namespace Display {
+    class DisplayManager;
+}
+
 /**
  * Network operating modes
  */
@@ -50,6 +54,11 @@ private:
     // and re-initialized in place on each (re)connect. See spec
     // `memory-management` → "Long-lived singletons are constructed once".
     WebServerManager *webServer = nullptr;
+    // Non-owning; nullptr when the e-paper display is disabled in config (the
+    // default) or on native builds. Wired via setDisplay() after construction,
+    // the same way webServer is, so neither object needs the other at
+    // construction time.
+    Display::DisplayManager *display = nullptr;
     StatusLed &statusLed;
     std::unique_ptr<MqttClient> mqttClient;
     uint32_t lastMqttPublish;
@@ -144,6 +153,17 @@ public:
      * of the firmware.
      */
     void setWebServer(WebServerManager *webServer) { this->webServer = webServer; }
+
+    /**
+     * Wire in the e-paper display, if one is enabled. Non-owning; pass nullptr
+     * (or never call this) to leave the display unused.
+     */
+    void setDisplay(Display::DisplayManager *display) { this->display = display; }
+
+    /**
+     * The wired-in display, or nullptr when none is enabled. Non-owning.
+     */
+    Display::DisplayManager *getDisplay() const { return display; }
 
     /**
      * One-time initialization of long-lived singletons that the network task
