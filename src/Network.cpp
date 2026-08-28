@@ -853,10 +853,10 @@ void Network::configureUsingAPMode() {
             // Periodic diagnostics: heap and task stack high-water marks
             if (now - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {
                 lastDiagnostics = now;
-                ESP_LOGD(TAG, "Diagnostics: heap=%u bytes (min=%u), uptime=%lu s",
+                ESP_LOGI(TAG, "Diagnostics: heap=%u bytes (min=%u), uptime=%lu s",
                          ESP.getFreeHeap(), ESP.getMinFreeHeap(), now / 1000);
                 if (taskHandle) {
-                    ESP_LOGD(TAG, "Network task stack HWM: %u bytes",
+                    ESP_LOGI(TAG, "Network task stack HWM: %u bytes",
                              uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
                 }
             }

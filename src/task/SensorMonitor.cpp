@@ -71,7 +71,7 @@ namespace Task {
             // Periodic stack high-water mark logging for this task
             if (startTime - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {
                 lastDiagnostics = startTime;
-                ESP_LOGD(TAG, "SensorMonitor stack HWM: %u bytes",
+                ESP_LOGI(TAG, "SensorMonitor stack HWM: %u bytes",
                          uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
             }
 
