@@ -231,14 +231,33 @@ private:
     // esp_get_free_heap_size() is useless as a gate on this board: with
     // CONFIG_SPIRAM_USE_MALLOC=y and CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0 it
     // sums internal SRAM and the 2 MB of PSRAM, so a 64 KB check passed
-    // unconditionally while the resources OTA actually needs — the mbedTLS
-    // working set, lwIP/socket structures, DMA buffers — are internal-only.
-    // That is exactly the "largest free internal block 10228 < 10240" class of
-    // failure this file has been fighting, so gate on both the internal total
-    // and the largest contiguous internal block. hasEnoughMemory() logs both
-    // numbers, so these can be re-tuned from a real device.
-    static constexpr uint32_t MIN_FREE_INTERNAL = 32768;
-    static constexpr uint32_t MIN_LARGEST_INTERNAL_BLOCK = 8192;
+    // unconditionally while the resources OTA actually needs — lwIP/socket
+    // structures, DMA buffers — are internal-only. So gate on both the internal
+    // total and the largest contiguous internal block; hasEnoughMemory() logs
+    // both numbers, so these can be re-tuned from a real device.
+    //
+    // The values must describe what OTA *actually* allocates internally, not a
+    // round-number safety margin: the earlier 32 KB / 8 KB pair sat above this
+    // firmware's steady-state internal free (~24 KB free, ~7.6 KB largest
+    // block), so every update was refused with "Insufficient internal heap"
+    // before a single byte was fetched. Note Network's own low-heap watchdog
+    // only restarts below 16 KB — a gate above that describes a device state
+    // that never occurs in normal operation.
+    //
+    // Nothing on the OTA path needs a large contiguous *internal* block any
+    // more:
+    //   - both task stacks are reserved in BSS at link time (see below), so
+    //     they are not heap allocations at all;
+    //   - CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096 sends every allocation
+    //     larger than 4 KB to PSRAM first, which covers the 8 KB
+    //     HTTP_RX_BUFFER and mbedTLS's 16 KB record buffers (see
+    //     esp_mbedtls_mem_calloc in the .cpp);
+    //   - what is left is the 2 KB TX buffer plus small lwIP/socket structures.
+    // Hence a 4 KB largest-block requirement, and a total that keeps ~4 KB of
+    // slack above Network's 16 KB restart threshold for WiFi RX during the
+    // download.
+    static constexpr uint32_t MIN_FREE_INTERNAL = 20480;
+    static constexpr uint32_t MIN_LARGEST_INTERNAL_BLOCK = 4096;
 
     // Worker stack must hold the 4 KB chunk buffer plus the mbedTLS handshake
     // working set. Measured actual usage is ~9.3 KB; 12 KB gives ~32% headroom

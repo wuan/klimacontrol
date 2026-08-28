@@ -22,13 +22,27 @@ static const char* TAG = "ota";
 extern "C" esp_err_t esp_crt_bundle_attach(void *conf);
 
 // Override the pre-compiled SDK's mbedTLS allocator.
-// The SDK version uses MALLOC_CAP_INTERNAL only, which fails on ESP32-S2 with
-// fragmented internal SRAM. This version tries internal first, then falls back
-// to PSRAM for large allocations (like the 16KB TLS buffers).
+// The SDK version uses MALLOC_CAP_INTERNAL only, which fails on ESP32-S2 once
+// internal SRAM is fragmented.
+//
+// Routing rule mirrors CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096, i.e. what
+// plain malloc() does on this board: anything larger than 4 KB goes to PSRAM
+// first, small allocations stay internal, and both directions fall back to the
+// other pool. Preferring *internal* for the large blocks (as this override used
+// to do) is actively harmful here: mbedTLS asks for a 16 KB record buffer per
+// direction, so a single TLS session would swallow the entire internal pool the
+// WiFi/lwIP path needs to keep running during the download. Steady-state
+// internal free on this firmware is only ~24 KB.
 extern "C" void *esp_mbedtls_mem_calloc(size_t n, size_t size) {
-    void *ptr = heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    // 4 KB, matching CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL.
+    constexpr size_t PSRAM_THRESHOLD = 4096;
+    const size_t total = n * size;
+    const uint32_t preferred = total > PSRAM_THRESHOLD ? MALLOC_CAP_SPIRAM : MALLOC_CAP_INTERNAL;
+    const uint32_t fallback = total > PSRAM_THRESHOLD ? MALLOC_CAP_INTERNAL : MALLOC_CAP_SPIRAM;
+
+    void *ptr = heap_caps_calloc(n, size, preferred | MALLOC_CAP_8BIT);
     if (ptr == nullptr) {
-        ptr = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        ptr = heap_caps_calloc(n, size, fallback | MALLOC_CAP_8BIT);
     }
     return ptr;
 }
@@ -368,6 +382,14 @@ bool OTAUpdater::performUpdate(
         setUpdateState(UpdateState::Failed, 0, 0, Update.errorString());
         return false;
     }
+
+    // Internal heap *after* the TLS handshake and the client's buffer
+    // allocations, i.e. the trough of the whole download. This is the number to
+    // tune MIN_FREE_INTERNAL / MIN_LARGEST_INTERNAL_BLOCK against: the pre-flight
+    // gate can only guess how much the session will cost, this measures it.
+    ESP_LOGI(TAG, "Internal heap with TLS session up: free=%u largest=%u",
+             heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
     ESP_LOGI(TAG, "Flashing to %s...", nextPartition->label);
 
