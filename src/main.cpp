@@ -24,6 +24,7 @@
 #include "SensorController.h"
 #include "StatusLed.h"
 #include "task/SensorMonitor.h"
+#include "OTAUpdater.h"
 
 #ifdef ARDUINO
 #include <esp_task_wdt.h>
@@ -263,6 +264,13 @@ void setup() {
         ESP_LOGE(TAG, "Task watchdog init FAILED (err 0x%x) - tasks will run unguarded", wdtInit);
     }
 
+#ifdef ARDUINO
+    // Create the parked OTA worker tasks before the web server can accept
+    // requests, so /api/ota/* always has a worker to notify. Their stacks are
+    // reserved in BSS, so this cannot fail on a fragmented heap.
+    OTAUpdater::begin();
+#endif
+
     ESP_LOGI(TAG, "Starting network task");
     try {
         network.begin();
@@ -287,6 +295,17 @@ void setup() {
     // total hang the TWDT can't catch. Fed from loop() below.
     static constexpr uint32_t HW_WDT_TIMEOUT_MS = 60000;
     HardwareWatchdog::begin(HW_WDT_TIMEOUT_MS);
+
+#ifdef ARDUINO
+    // Cancel the pending rollback now that init has completed and both tasks
+    // are running. Deliberately the last thing in setup(): an image that
+    // crashes during init should still be rolled back by the bootloader, which
+    // only happens while it remains unconfirmed. Once we get here the image has
+    // proven it can boot, so confirm it — otherwise the next restart from any
+    // source (low-heap guard, WiFi force-restart, watchdog, power cycle) would
+    // silently revert the device to the previous firmware.
+    OTAUpdater::confirmRunningImage();
+#endif
 }
 
 void loop() {

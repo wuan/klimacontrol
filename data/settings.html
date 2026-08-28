@@ -226,12 +226,14 @@
 
             <div id="updateProgress" style="display: none; margin-top: 15px;">
                 <div class="info-box">
-                    <strong>Installing update...</strong><br>
+                    <strong>Installing update...</strong> <span id="updatePercent"></span><br>
                     <div style="margin-top: 10px;">Please wait. The device will restart automatically after the update
                         completes.
                     </div>
                 </div>
             </div>
+
+            <div id="updateResult" style="display: none; margin-top: 15px;"></div>
 
             <div class="warning-box">
                 <strong>Note:</strong> The device will restart after installing an update. Make sure you have a stable
@@ -488,9 +490,21 @@
             return;
         }
 
+        const progressDiv = document.getElementById('updateProgress');
+        const resultDiv = document.getElementById('updateResult');
         document.getElementById('updateAvailable').style.display = 'none';
-        document.getElementById('updateProgress').style.display = 'block';
+        progressDiv.style.display = 'block';
+        resultDiv.style.display = 'none';
+        document.getElementById('updatePercent').textContent = '';
         document.getElementById('checkUpdateBtn').disabled = true;
+
+        const showFailure = (message) => {
+            progressDiv.style.display = 'none';
+            resultDiv.className = 'warning-box';
+            resultDiv.innerHTML = '<strong>Update failed</strong><br>' + message;
+            resultDiv.style.display = 'block';
+            document.getElementById('checkUpdateBtn').disabled = false;
+        };
 
         try {
             // No download URL is sent: the device installs only the release it
@@ -498,21 +512,81 @@
             // arbitrary binary.
             const response = await fetch('/api/ota/update', {method: 'POST', headers: {'X-Requested-With': 'KlimaControl'}});
 
-            if (response.ok) {
-                setTimeout(() => {
-                    alert('Update started! The device will restart in a few moments.\n\nPlease wait about 30 seconds, then refresh this page.');
-                }, 2000);
-            } else {
-                alert('Failed to start update. Please try again.');
-                document.getElementById('updateProgress').style.display = 'none';
-                document.getElementById('checkUpdateBtn').disabled = false;
+            if (!response.ok) {
+                showFailure('The device refused to start the update. It may already be busy, or the update is no longer newer than the running firmware.');
+                return;
             }
+
+            await pollOtaUpdate();
         } catch (error) {
             console.error('Failed to perform update:', error);
-            alert('Error performing update. Please try again.');
-            document.getElementById('updateProgress').style.display = 'none';
-            document.getElementById('checkUpdateBtn').disabled = false;
+            showFailure('Could not reach the device.');
         }
+    }
+
+    // Poll GET /api/ota/update until the device reports success or failure.
+    // The download runs on a worker task and takes minutes, so this is the only
+    // way to see progress or learn that it failed — the POST above returns as
+    // soon as the worker is spawned.
+    async function pollOtaUpdate() {
+        const progressDiv = document.getElementById('updateProgress');
+        const percentSpan = document.getElementById('updatePercent');
+        const resultDiv = document.getElementById('updateResult');
+
+        // Generous cap: a ~1.3 MB image over TLS on this hardware takes a few
+        // minutes. 10 minutes at 2s spacing.
+        const maxAttempts = 300;
+        let missedPolls = 0;
+
+        for (let i = 0; i < maxAttempts; i++) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            let data;
+            try {
+                const response = await fetch('/api/ota/update');
+                data = await response.json();
+                missedPolls = 0;
+            } catch (error) {
+                // The device restarts itself right after a successful flash, so
+                // losing the connection late in the process is expected rather
+                // than an error. Tolerate a few misses before giving up.
+                if (++missedPolls > 5) {
+                    progressDiv.style.display = 'none';
+                    resultDiv.className = 'info-box';
+                    resultDiv.innerHTML = '<strong>Device is no longer responding.</strong><br>' +
+                        'If the update had finished it is now restarting — wait a moment and reload this page.';
+                    resultDiv.style.display = 'block';
+                    return;
+                }
+                continue;
+            }
+
+            if (data.status === 'downloading') {
+                percentSpan.textContent = (data.percent || 0) + '%';
+            } else if (data.status === 'success') {
+                progressDiv.style.display = 'none';
+                resultDiv.className = 'success-box';
+                resultDiv.innerHTML = '<strong>Update installed.</strong><br>' +
+                    'The device is restarting. Reload this page in a few seconds.';
+                resultDiv.style.display = 'block';
+                return;
+            } else if (data.status === 'error') {
+                progressDiv.style.display = 'none';
+                resultDiv.className = 'warning-box';
+                resultDiv.innerHTML = '<strong>Update failed</strong><br>' +
+                    (data.error || 'Unknown error') +
+                    '<br>The device is still running the previous firmware.';
+                resultDiv.style.display = 'block';
+                document.getElementById('checkUpdateBtn').disabled = false;
+                return;
+            }
+        }
+
+        progressDiv.style.display = 'none';
+        resultDiv.className = 'warning-box';
+        resultDiv.innerHTML = '<strong>Update timed out</strong><br>Check the device log for details.';
+        resultDiv.style.display = 'block';
+        document.getElementById('checkUpdateBtn').disabled = false;
     }
 
     function formatBytes(bytes) {

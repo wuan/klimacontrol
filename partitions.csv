@@ -1,5 +1,6 @@
-# ESP32-S3 OTA Partition Table - 4MB Flash
-# For use with Adafruit QT Py ESP32-S3
+# ESP32-S2 OTA Partition Table - 4MB Flash
+# For use with Adafruit QT Py ESP32-S2 (see platformio.ini:
+# board = adafruit_qtpy_esp32s2, board_build.partitions = partitions.csv)
 #
 # This partition table is configured for OTA firmware updates:
 # - Dual app partitions (app0, app1) for atomic updates
@@ -13,11 +14,10 @@
 # 0x1000 - 0x1FFF     : Partition table
 # 0x2000 - 0xDFFF     : System data and app partitions
 #
-# To use this file:
-# 1. Copy to your project root
-# 2. Add to platformio.ini:
-#    [env:adafruit_qtpy_esp32s3_nopsram]
-#    board_build.partitions = partitions.csv
+# Rollback: CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y in the Arduino precompiled
+# SDK, so a newly flashed image boots as ESP_OTA_IMG_PENDING_VERIFY and is
+# reverted on the next reset unless the app confirms it. OTAUpdater does that at
+# the end of setup() via confirmRunningImage().
 
 # Name,Type,SubType,Offset,Size,Flags
 nvs,data,nvs,36K,20K,

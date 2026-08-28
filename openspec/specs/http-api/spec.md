@@ -51,12 +51,24 @@ The firmware SHALL expose: `POST /api/settings/wifi`, `POST /api/settings/device
 
 ### Requirement: OTA endpoints
 
-The firmware SHALL expose: `GET /api/ota/check`, `POST /api/ota/update`, `GET /api/ota/status`, `POST /api/ota/confirm`.
+The firmware SHALL expose: `POST /api/ota/check`, `GET /api/ota/check`, `POST /api/ota/update`, `GET /api/ota/update`, `GET /api/ota/status`, `POST /api/ota/confirm`.
+
+`POST /api/ota/update` SHALL NOT accept a download URL: the device installs only the asset identified by its own check of the compiled-in owner/repo, so a client cannot point it at an arbitrary binary. For the same reason `GET /api/ota/check` SHALL NOT expose the download URL.
 
 #### Scenario: Checking for updates
 
-- **WHEN** `GET /api/ota/check` is requested and a newer GitHub release exists
-- **THEN** the response SHALL include `update_available: true` and the latest `version` and `download_url`
+- **WHEN** `GET /api/ota/check` is polled after `POST /api/ota/check` and a strictly newer GitHub release exists
+- **THEN** the response SHALL include `update_available: true`, `latest_version`, `release_name`, and `size_bytes`, and SHALL NOT include a download URL
+
+#### Scenario: Polling a running update
+
+- **WHEN** `GET /api/ota/update` is requested while a download is in progress
+- **THEN** the response SHALL include `status: "downloading"` with `percent` and `bytes`
+
+#### Scenario: Polling a failed update
+
+- **WHEN** `GET /api/ota/update` is requested after a download failed
+- **THEN** the response SHALL include `status: "error"` and an `error` message
 
 ### Requirement: MQTT endpoints
 

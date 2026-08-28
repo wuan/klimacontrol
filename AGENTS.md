@@ -341,14 +341,16 @@ The project includes Over-The-Air (OTA) firmware update capability using GitHub 
 - Settings page - User interface for updates
 
 **Update Flow**:
-1. User clicks "Check for Updates" in Settings
-2. `OTAUpdater::checkForUpdate()` queries GitHub REST API for latest release
-3. If update available, shows version, size, and release notes
-4. User clicks "Install Update"
-5. `OTAUpdater::performUpdate()` downloads .bin file from GitHub over HTTPS
-6. Streams firmware to inactive partition (app0 ↔ app1)
-7. ESP.restart() boots into new partition
-8. Optional: `OTAUpdater::confirmBoot()` disables automatic rollback
+1. User clicks "Check for Updates" in Settings; the browser `POST`s `/api/ota/check` and polls `GET /api/ota/check`
+2. The parked `ota_check` task runs `OTAUpdater::checkForUpdate()`, which queries the GitHub REST API for the latest release and locates the `firmware.bin` asset by exact name
+3. If the release is *strictly newer* than `FIRMWARE_VERSION` (semver ordering, see `src/support/VersionCompare.h`), the UI shows version and size
+4. User clicks "Install Update"; the browser `POST`s `/api/ota/update` (no URL is sent — the device installs only what its own check found) and polls `GET /api/ota/update` for progress
+5. The parked `ota_update` task runs `OTAUpdater::performUpdate()`, downloading over HTTPS in 4 KB chunks
+6. Streams firmware to inactive partition (app0 ↔ app1); `Update.end()` → `esp_ota_set_boot_partition()` verifies the image checksum/SHA-256
+7. A restart is scheduled via `ConfigManager::requestRestart()` and the device boots the new partition
+8. At the end of `setup()`, `OTAUpdater::confirmRunningImage()` cancels the pending rollback
+
+**Both OTA tasks are created once, by `OTAUpdater::begin()` in `setup()`, and then park on a task notification forever.** They are never deleted. This is load-bearing: their stacks are static BSS buffers (a FreeRTOS stack needs contiguous *internal* SRAM, which is unreliable to allocate once WiFi/mbedTLS have fragmented the heap), and `vTaskDelete()` only queues a task for reclamation by the idle task — so recreating a task on the same `StaticTask_t` before idle has run corrupts the scheduler's lists. A check and an update are mutually exclusive via a single atomic `Activity` state claimed with one compare-exchange.
 
 **Partition Layout** (4MB flash):
 ```
@@ -366,29 +368,47 @@ coredump (64 KB)- Crash diagnostics
 
 **OTAUpdater Class**:
 ```cpp
-// Check GitHub for updates
+// Create the two parked worker tasks. Call from setup(), before the web server.
+static void begin();
+
+// Cancel the pending rollback. Call at the END of setup(): a new image that
+// crashes during init should still roll back, but any later restart must not.
+static void confirmRunningImage();
+
+// Check GitHub for updates (blocking; runs on the ota_check task)
 static bool checkForUpdate(const char* owner, const char* repo, FirmwareInfo& info);
 
-// Download and flash firmware
-static bool performUpdate(const String& url, size_t size,
-                         std::function<void(int, size_t)> onProgress = nullptr);
+// Non-blocking entry points used by the HTTP routes
+static bool startBackgroundCheck(const char* owner, const char* repo);
+static CheckState getCheckResult(FirmwareInfo& infoOut);
+static bool startBackgroundUpdateFromLatestCheck(Config::ConfigManager& config);
+static UpdateState getUpdateProgress(int& percentOut, size_t& bytesOut, String& errorOut);
+
+// True only if info.version is strictly newer than FIRMWARE_VERSION
+static bool isUpdateAvailable(const FirmwareInfo& info);
 
 // Confirm successful boot (disables rollback)
 static bool confirmBoot();
 
-// Check if running unconfirmed update
+// Check if running unconfirmed update (tests ESP_OTA_IMG_PENDING_VERIFY)
 static bool hasUnconfirmedUpdate();
 
-// Memory safety check
-static bool hasEnoughMemory();  // Requires 64KB free heap
+// Memory safety check — INTERNAL SRAM only; esp_get_free_heap_size() includes
+// PSRAM on this board and would pass unconditionally.
+static bool hasEnoughMemory();
+
+// performUpdate() is private: it takes an arbitrary URL, so only the worker
+// task may call it, with a URL that came from the device's own GitHub check.
 ```
 
 ### Web API Endpoints
 
-- `GET /api/ota/check` - Check for updates from GitHub
-- `POST /api/ota/update` - Download and install update
+- `POST /api/ota/check` - Start a background check (202, or 409 if busy)
+- `GET /api/ota/check` - Poll the check: `idle` / `checking` / `done` / `error`. Never exposes the download URL.
+- `POST /api/ota/update` - Install the release found by the last check. Takes no URL by design.
+- `GET /api/ota/update` - Poll the update: `idle` / `downloading` (+`percent`, `bytes`) / `success` / `error` (+`error`)
 - `GET /api/ota/status` - Current version, partition, memory info
-- `POST /api/ota/confirm` - Confirm successful boot
+- `POST /api/ota/confirm` - Confirm successful boot (normally redundant; `confirmRunningImage()` already ran at boot)
 
 ### Configuration
 
@@ -401,31 +421,44 @@ Edit `src/OTAConfig.h`:
 
 ### Creating a Release
 
+Normally handled by `.github/workflows/release.yml` on a pushed tag. Manually:
+
 ```bash
 # Build firmware
-pio run -e adafruit_qtpy_esp32s3_nopsram
+pio run -e adafruit_qtpy_esp32s2
 
-# Create GitHub release with .bin file
+# Create GitHub release. The asset MUST be named exactly firmware.bin.
 gh release create v1.0.0 \
-  .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.bin \
+  .pio/build/adafruit_qtpy_esp32s2/firmware.bin \
   -t "Version 1.0.0" \
   -n "Release notes here"
 ```
 
-The device will automatically find the .bin file in the release assets.
+The device looks for the asset named exactly `firmware.bin` (`OTA_FIRMWARE_ASSET`).
+It deliberately does *not* pick the first asset ending in `.bin`: a release that
+also carried a filesystem image, a bootloader blob, or a build for another board
+would otherwise have one of those flashed as the application. Such an image can
+still pass `esp_ota_set_boot_partition()`'s verification — it is a valid image,
+just not one this board can run — and would boot-loop the device into needing
+USB recovery. The tag must be `vMAJOR.MINOR.PATCH`, since the device compares
+versions by ordering and ignores unparseable tags.
 
 ### Safety Features
 
-1. **HTTPS with Certificate Verification**: Uses esp_crt_bundle (Mozilla CA certificates)
-2. **Size Verification**: Checks expected vs actual download size
-3. **Progressive Streaming**: 4KB chunks minimize memory usage
-4. **Automatic Rollback**: If new firmware doesn't call `confirmBoot()`, rolls back on next boot
-5. **Memory Check**: Requires 64KB free heap before starting OTA
+1. **HTTPS with Certificate Verification**: Uses esp_crt_bundle (Mozilla CA certificates). Redirects are followed only when they stay on `https` — the `https://github.com/` host allowlist covers just the first hop, so the CDN hop that carries the image is checked separately.
+2. **Size Verification**: Checks expected vs actual download size; `esp_ota_set_boot_partition()` verifies the image checksum/SHA-256 before the partition becomes bootable
+3. **Exact Asset Name**: Only `firmware.bin` is ever flashed
+4. **Version Ordering**: Only a strictly newer release is offered or installed, so a `git describe` dev build is never handed a downgrade
+5. **Progressive Streaming**: 4KB chunks minimize memory usage
+6. **Automatic Rollback**: `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`, so a newly flashed image boots as `ESP_OTA_IMG_PENDING_VERIFY` and the bootloader reverts on the *next* reset unless the app confirms it. `confirmRunningImage()` does that at the end of `setup()` — late enough that a crash during init still rolls back, early enough that no automatic restart path (low-heap guard, WiFi force-restart, watchdog, power cycle) can revert a working update.
+7. **No Client-Supplied URL**: `POST /api/ota/update` carries no URL; the device flashes only what its own check of the compiled-in owner/repo found
+8. **Memory Check**: Requires a minimum free *internal* heap and a minimum largest contiguous internal block before starting OTA
 
 ### Memory Requirements
 
 - **Download overhead**: ~64KB heap during OTA
-- **Available RAM**: 320KB (5x required minimum)
+- **Available RAM**: 320KB internal SRAM + 2MB PSRAM. Measure OTA headroom against *internal* SRAM only: `esp_get_free_heap_size()` / `ESP.getFreeHeap()` sum both (`CONFIG_SPIRAM_USE_MALLOC=y`, `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0`), and the allocations that fail under pressure — task stacks, lwIP/WiFi structures, DMA buffers, the mbedTLS working set — are internal-only. Both the OTA gate and the network task's low-heap restart guard use `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)`.
+- **Static BSS cost**: 19 KB for the two permanently-resident OTA task stacks (7 KB check + 12 KB update)
 - **Flash write**: Direct streaming to partition (no buffering)
 
 ### Troubleshooting

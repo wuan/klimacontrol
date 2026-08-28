@@ -540,7 +540,13 @@ void Network::configureUsingAPMode() {
     // connected, so both baselines start at "now".
     unsigned long connectedSinceMs = millis();   // start of the current connected streak (0 = down)
     unsigned long lastStableConnectMs = millis(); // last time the link was confirmed stable
-    static constexpr uint32_t MIN_FREE_HEAP_BYTES = 16384; // 16 KB
+    // Measured against *internal* SRAM only. ESP.getFreeHeap() sums internal
+    // and PSRAM on this board (CONFIG_SPIRAM_USE_MALLOC=y with
+    // CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0), so with 2 MB of PSRAM free this
+    // guard could essentially never trip — and the allocations that actually
+    // fail under pressure (task stacks, lwIP/WiFi structures, DMA buffers) are
+    // internal-only anyway.
+    static constexpr uint32_t MIN_FREE_INTERNAL_BYTES = 16384; // 16 KB
     static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 300000; // 5 minutes
     static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
     while (true) {
@@ -563,10 +569,10 @@ void Network::configureUsingAPMode() {
         // Skip during OTA: TLS buffers temporarily consume most internal SRAM.
         static constexpr uint8_t LOW_HEAP_RESTART_STREAK = 5;
         static uint8_t lowHeapStreak = 0;
-        uint32_t freeHeap = ESP.getFreeHeap();
-        if (freeHeap < MIN_FREE_HEAP_BYTES && !OTAUpdater::isUpdateInProgress()) {
+        uint32_t freeHeap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        if (freeHeap < MIN_FREE_INTERNAL_BYTES && !OTAUpdater::isUpdateInProgress()) {
             lowHeapStreak++;
-            ESP_LOGW(TAG, "Low heap %u bytes (%u/%u consecutive)",
+            ESP_LOGW(TAG, "Low internal heap %u bytes (%u/%u consecutive)",
                      freeHeap, lowHeapStreak, LOW_HEAP_RESTART_STREAK);
             if (lowHeapStreak >= LOW_HEAP_RESTART_STREAK) {
                 ESP_LOGE(TAG, "CRITICAL: Low heap persisted - restarting...");

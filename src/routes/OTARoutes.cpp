@@ -47,7 +47,11 @@ void WebServerManager::setupOTARoutes() {
                 break;
             case OTAUpdater::CheckState::Done:
                 doc["status"] = "done";
-                doc["update_available"] = info.isValid && (info.version != FIRMWARE_VERSION);
+                // Ordering comparison, not textual inequality: an untagged
+                // developer build reports "v1.2.3-4-gabc1234", which differs
+                // from the v1.2.3 release but is not older than it. Comparing
+                // with != offered that downgrade as an update.
+                doc["update_available"] = OTAUpdater::isUpdateAvailable(info);
                 doc["latest_version"] = info.version;
                 doc["release_name"] = info.name;
                 doc["size_bytes"] = info.size;
@@ -93,6 +97,47 @@ void WebServerManager::setupOTARoutes() {
         }
     });
 
+    // GET /api/ota/update - Poll the state of a running/finished update.
+    //
+    // The download takes minutes and POST /api/ota/update returns as soon as
+    // the worker is spawned, so this is the only way a client can learn the
+    // progress or the outcome. Without it a failed update was invisible to the
+    // UI: the browser was told "starting" and then simply waited for a device
+    // that was never going to restart.
+    server.on("/api/ota/update", HTTP_GET, [](AsyncWebServerRequest *request) {
+        JsonDocument doc;
+
+        int percent = 0;
+        size_t bytes = 0;
+        String error;
+        switch (OTAUpdater::getUpdateProgress(percent, bytes, error)) {
+            case OTAUpdater::UpdateState::Idle:
+                doc["status"] = "idle";
+                break;
+            case OTAUpdater::UpdateState::Downloading:
+                doc["status"] = "downloading";
+                doc["percent"] = percent;
+                doc["bytes"] = bytes;
+                break;
+            case OTAUpdater::UpdateState::Success:
+                doc["status"] = "success";
+                doc["percent"] = 100;
+                doc["bytes"] = bytes;
+                doc["message"] = "Update installed, device is restarting";
+                break;
+            case OTAUpdater::UpdateState::Failed:
+                doc["status"] = "error";
+                doc["percent"] = percent;
+                doc["bytes"] = bytes;
+                doc["error"] = error.isEmpty() ? "Update failed" : error;
+                break;
+        }
+
+        String response;
+        serializeJson(doc, response);
+        request->send(200, CONTENT_TYPE_JSON, response);
+    });
+
     // GET /api/ota/status - Get OTA status
     server.on("/api/ota/status", HTTP_GET, [](AsyncWebServerRequest *request) {
         JsonDocument doc;
@@ -124,7 +169,12 @@ void WebServerManager::setupOTARoutes() {
         request->send(200, CONTENT_TYPE_JSON, response);
     });
 
-    // POST /api/ota/confirm - Confirm successful boot after OTA
+    // POST /api/ota/confirm - Confirm successful boot after OTA.
+    //
+    // Normally redundant: OTAUpdater::confirmRunningImage() already runs at the
+    // end of setup(), so by the time this endpoint is reachable the image is
+    // confirmed and GET /api/ota/status reports unconfirmed_update: false. Kept
+    // as a manual escape hatch (and because the ota-updates spec requires it).
     server.on("/api/ota/confirm", HTTP_POST, [](AsyncWebServerRequest *request) {
         if (!verifyCsrfHeader(request)) {
             return;

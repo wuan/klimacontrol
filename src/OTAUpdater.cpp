@@ -5,12 +5,15 @@
 
 #include "OTAUpdater.h"
 #include "Config.h"
+#include "OTAConfig.h"
+#include "support/VersionCompare.h"
 
 #ifdef ARDUINO
 #include <esp_http_client.h>
 #include <esp_heap_caps.h>
 #include "Log.h"
 #include <WiFi.h>
+#include <cstring>
 
 static const char* TAG = "ota";
 
@@ -32,6 +35,28 @@ extern "C" void *esp_mbedtls_mem_calloc(size_t n, size_t size) {
 
 extern "C" void esp_mbedtls_mem_free(void *ptr) {
     heap_caps_free(ptr);
+}
+
+// Scheme prefix of the most recently seen Location header, captured by
+// otaHttpEventHandler so openWithRedirects() can refuse a downgrade to
+// cleartext before following the hop.
+//
+// A file-static is sufficient because the Activity claim serializes all OTA
+// HTTP: the check and the update are mutually exclusive, so only one client is
+// ever open. It also keeps this off the OTA task stacks, which run within ~2 KB
+// of their measured high-water marks — reconstructing the URL via
+// esp_http_client_get_url() would have needed a ~1 KB stack buffer to hold
+// GitHub's signed CDN URLs.
+static char redirectLocation[32];
+
+static esp_err_t otaHttpEventHandler(esp_http_client_event_t *evt) {
+    if (evt->event_id == HTTP_EVENT_ON_HEADER &&
+        evt->header_key != nullptr && evt->header_value != nullptr &&
+        strcasecmp(evt->header_key, "Location") == 0) {
+        // Only the scheme prefix matters; truncation is intentional.
+        strlcpy(redirectLocation, evt->header_value, sizeof(redirectLocation));
+    }
+    return ESP_OK;
 }
 
 // Streaming reader for ArduinoJson — reads directly from esp_http_client
@@ -74,6 +99,7 @@ struct HttpClient {
     // Returns the HTTP status code, or -1 on connection failure.
     int openWithRedirects(int maxRedirects = 5) {
         for (int i = 0; i < maxRedirects; i++) {
+            redirectLocation[0] = '\0';
             esp_err_t err = esp_http_client_open(handle, 0);
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "HTTP open failed: %s", esp_err_to_name(err));
@@ -93,6 +119,16 @@ struct HttpClient {
             }
 
             if (status == 301 || status == 302 || status == 307 || status == 308) {
+                // The caller's host allowlist only covers the first hop, so
+                // enforce the transport on every subsequent one: a
+                // "Location: http://..." would otherwise be followed in
+                // cleartext, silently dropping both confidentiality and the
+                // CA-bundle check for the hop that actually carries the
+                // firmware image.
+                if (!redirectTargetIsSecure()) {
+                    ESP_LOGE(TAG, "Redirect refused: target is not HTTPS");
+                    return -1;
+                }
                 esp_http_client_close(handle);
                 if (esp_http_client_set_redirection(handle) != ESP_OK) {
                     ESP_LOGE(TAG, "Redirect failed: no Location header");
@@ -106,7 +142,30 @@ struct HttpClient {
         ESP_LOGE(TAG, "Too many redirects");
         return -1;
     }
+
+private:
+    // Classify the captured Location header. A relative Location ("/path") is
+    // accepted because it inherits the current request's scheme, which is
+    // already HTTPS; an absolute one must say https explicitly.
+    static bool redirectTargetIsSecure() {
+        if (strncasecmp(redirectLocation, "https://", 8) == 0) {
+            return true;
+        }
+        // No scheme delimiter in the prefix we captured => relative URL. Real
+        // schemes are far shorter than the buffer, so this cannot misclassify a
+        // truncated absolute URL as relative.
+        return strstr(redirectLocation, "://") == nullptr;
+    }
 };
+
+// ============================================================================
+// Activity claim
+// ============================================================================
+
+bool OTAUpdater::claimActivity(Activity want) {
+    Activity expected = Activity::None;
+    return activity.compare_exchange_strong(expected, want);
+}
 
 // ============================================================================
 // Public Methods
@@ -115,15 +174,20 @@ struct HttpClient {
 bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInfo &info) {
     info.isValid = false;
 
-    // Mark OTA in progress for the duration of the check: the TLS connection to
+    // Mark OTA busy for the duration of the check: the TLS connection to
     // api.github.com plus the JSON document together consume tens of KB and can
     // drive free heap below the network task's low-heap guard threshold, which
-    // would otherwise restart the device mid-check. The flag is restored on
-    // every return path by the RAII guard below.
-    updateInProgress = true;
-    struct InProgressGuard {
-        ~InProgressGuard() { updateInProgress = false; }
-    } guard;
+    // would otherwise restart the device mid-check.
+    //
+    // The claim is conditional and self-restoring: when called from
+    // otaCheckTask the slot is already held (by startBackgroundCheck), so we
+    // must not release it here — releasing unconditionally is what previously
+    // let a check cancel a concurrent update's claim.
+    const bool claimed = claimActivity(Activity::Checking);
+    struct ActivityGuard {
+        bool owned;
+        ~ActivityGuard() { if (owned) releaseActivity(); }
+    } guard{claimed};
 
     String apiUrl = String("https://api.github.com/repos/") + owner + "/" + repo + "/releases/latest";
     ESP_LOGI(TAG, "Checking: %s", apiUrl.c_str());
@@ -132,6 +196,13 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     config.url = apiUrl.c_str();
     config.timeout_ms = TIMEOUT_MS;
     config.crt_bundle_attach = esp_crt_bundle_attach;
+    // Captures Location headers so openWithRedirects() can reject a redirect
+    // that would downgrade the transport to cleartext.
+    config.event_handler = otaHttpEventHandler;
+    // Same reasoning as the download path — see HTTP_RX_BUFFER. GitHub emits
+    // multi-kilobyte header blocks and we should not depend on its current TLS
+    // record framing to make the 512-byte default work.
+    config.buffer_size = HTTP_RX_BUFFER;
 
     HttpClient client(config);
     if (!client) {
@@ -180,15 +251,26 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
         return false;
     }
 
+    // Require the exact expected asset name rather than the first thing ending
+    // in ".bin". A release that also carries a filesystem image, a bootloader
+    // blob, or a build for a different board would otherwise have one of those
+    // flashed as the application: such an image can still pass
+    // esp_ota_set_boot_partition()'s checksum/SHA-256 verification (it is a
+    // valid image, just not one this board can run) and would boot-loop the
+    // device into needing USB recovery.
     for (JsonObject asset : doc["assets"].as<JsonArray>()) {
         auto assetName = asset["name"].as<String>();
-        if (assetName.endsWith(".bin")) {
+        if (assetName == OTA_FIRMWARE_ASSET) {
             info.downloadUrl = asset["browser_download_url"].as<String>();
             info.size = asset["size"].as<size_t>();
             info.isValid = true;
             ESP_LOGI(TAG, "Release %s: %s (%zu bytes)",
                      info.version.c_str(), assetName.c_str(), info.size);
             break;
+        }
+        if (assetName.endsWith(".bin")) {
+            ESP_LOGD(TAG, "Ignoring asset %s (expecting %s)",
+                     assetName.c_str(), OTA_FIRMWARE_ASSET);
         }
     }
 
@@ -199,11 +281,15 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     doc.shrinkToFit();
 
     if (!info.isValid) {
-        info.errorMessage = "No .bin file found in release assets";
+        info.errorMessage = "Release has no " OTA_FIRMWARE_ASSET " asset";
         return false;
     }
 
     return true;
+}
+
+bool OTAUpdater::isUpdateAvailable(const FirmwareInfo &info) {
+    return info.isValid && Support::isNewerVersion(FIRMWARE_VERSION, info.version.c_str());
 }
 
 bool OTAUpdater::performUpdate(
@@ -213,36 +299,42 @@ bool OTAUpdater::performUpdate(
 ) {
     ESP_LOGI(TAG, "Downloading %zu bytes from %s", expectedSize, downloadUrl.c_str());
 
-    updateInProgress = true;
+    setUpdateState(UpdateState::Downloading, 0, 0, nullptr);
 
-    // Runs on a dedicated worker task (startBackgroundUpdate) that is NOT
+    // Report the failure to the client as well as the log. Without this a
+    // failed update is invisible to the UI: the POST has already returned
+    // "starting" and there is nothing else the client can poll.
+    auto fail = [](const char *message) {
+        ESP_LOGE(TAG, "%s", message);
+        setUpdateState(UpdateState::Failed, 0, 0, message);
+        return false;
+    };
+
+    // Runs on a dedicated worker task (see begin()) that is NOT
     // watchdog-subscribed, and the per-chunk vTaskDelay(1) below lets the
     // subscribed Network/SensorMonitor tasks keep feeding their own watchdogs.
     // So there is nothing to disable here.
-    auto cleanup = []() {
-        updateInProgress = false;
-    };
 
     if (!hasEnoughMemory()) {
-        cleanup();
-        return false;
+        return fail("Not enough free internal memory for OTA");
     }
 
     const esp_partition_t *nextPartition = esp_ota_get_next_update_partition(nullptr);
     if (nextPartition == nullptr) {
-        ESP_LOGE(TAG, "No OTA partition available");
-        cleanup();
-        return false;
+        return fail("No OTA partition available");
     }
 
     esp_http_client_config_t config{};
     config.url = downloadUrl.c_str();
     config.timeout_ms = TIMEOUT_MS;
     config.crt_bundle_attach = esp_crt_bundle_attach;
+    // Captures Location headers so openWithRedirects() can reject a redirect
+    // that would downgrade the transport to cleartext.
+    config.event_handler = otaHttpEventHandler;
     // RX buffer must hold GitHub's whole 302 redirect header block (~5 KB, with a
     // ~3.6 KB Content-Security-Policy line) in one read, or fetch_headers() stalls
     // and openWithRedirects() returns -1 ("No HTTP response") without ever
-    // following the redirect — see HTTP_RX_BUFFER. The default 512 and the old
+    // following the redirect — see HTTP_RX_BUFFER. The default 512 and the
     // CHUNK_SIZE (4096) are both smaller than that block.
     config.buffer_size = HTTP_RX_BUFFER;
     // github.com 302-redirects release downloads to a signed CDN URL
@@ -254,28 +346,26 @@ bool OTAUpdater::performUpdate(
 
     HttpClient client(config);
     if (!client) {
-        ESP_LOGE(TAG, "HTTP client init failed");
-        cleanup();
-        return false;
+        return fail("HTTP client init failed");
     }
 
     int statusCode = client.openWithRedirects();
     if (statusCode != 200) {
         ESP_LOGE(TAG, "HTTP status: %d", statusCode);
-        cleanup();
+        setUpdateState(UpdateState::Failed, 0, 0,
+                       String("Download failed (HTTP " + String(statusCode) + ")").c_str());
         return false;
     }
 
     int contentLength = esp_http_client_get_content_length(client.handle);
     if (contentLength > 0 && static_cast<size_t>(contentLength) != expectedSize) {
         ESP_LOGE(TAG, "Size mismatch: expected %zu, got %d", expectedSize, contentLength);
-        cleanup();
-        return false;
+        return fail("Download size does not match the release metadata");
     }
 
     if (!Update.begin(expectedSize, U_FLASH)) {
         ESP_LOGE(TAG, "Update.begin() failed: %s", Update.errorString());
-        cleanup();
+        setUpdateState(UpdateState::Failed, 0, 0, Update.errorString());
         return false;
     }
 
@@ -293,7 +383,8 @@ bool OTAUpdater::performUpdate(
             ESP_LOGE(TAG, "Download failed at %zu/%zu bytes (read returned %d)",
                      totalRead, expectedSize, bytesRead);
             Update.abort();
-            cleanup();
+            setUpdateState(UpdateState::Failed, (int)((totalRead * 100) / expectedSize), totalRead,
+                           "Connection lost during download");
             return false;
         }
 
@@ -301,7 +392,8 @@ bool OTAUpdater::performUpdate(
         if (bytesWritten != static_cast<size_t>(bytesRead)) {
             ESP_LOGE(TAG, "Flash write failed at %zu bytes", totalRead);
             Update.abort();
-            cleanup();
+            setUpdateState(UpdateState::Failed, (int)((totalRead * 100) / expectedSize), totalRead,
+                           "Flash write failed");
             return false;
         }
 
@@ -310,6 +402,7 @@ bool OTAUpdater::performUpdate(
 
         if (millis() - lastProgressLog > 1000) {
             int percent = (totalRead * 100) / expectedSize;
+            setUpdateState(UpdateState::Downloading, percent, totalRead, nullptr);
             if (onProgress) {
                 onProgress(percent, totalRead);
             }
@@ -319,140 +412,167 @@ bool OTAUpdater::performUpdate(
 
     if (!Update.end(false)) {
         ESP_LOGE(TAG, "Update.end() failed: %s", Update.errorString());
-        cleanup();
+        setUpdateState(UpdateState::Failed, 100, totalRead, Update.errorString());
         return false;
     }
 
     ESP_LOGI(TAG, "Complete: %zu bytes flashed", totalRead);
-    cleanup();
+    setUpdateState(UpdateState::Success, 100, totalRead, nullptr);
     return true;
 }
 
-namespace {
-    // Heap-allocated payload handed to the OTA worker task. Owned by the worker,
-    // which deletes it before exiting.
-    struct OtaJob {
-        String url;
-        size_t size;
-        Config::ConfigManager *config;
-    };
-}
-
-void OTAUpdater::otaWorkerTask(void *arg) {
-    auto *job = static_cast<OtaJob *>(arg);
-
-    bool success = OTAUpdater::performUpdate(job->url, job->size,
-        [](int percent, size_t bytes) {
-            ESP_LOGI(TAG, "Progress: %d%% (%zu bytes)", percent, bytes);
-        });
-
-    if (success) {
-        ESP_LOGI(TAG, "OTA update successful, scheduling restart...");
-        job->config->requestRestart(1000);
-    } else {
-        ESP_LOGE(TAG, "OTA update failed");
-    }
-
-    delete job;
-    // High-water mark = smallest free stack (in bytes) seen on this task.
-    // If this ever approaches 0, UPDATE_TASK_STACK is too small; the worker
-    // runs the TLS download + flash-write loop so it needs more than the
-    // check task. Logged here so the static stack can be re-tuned.
-    ESP_LOGI(TAG, "ota_update stack high-water mark: %u bytes free",
-             (unsigned)uxTaskGetStackHighWaterMark(nullptr));
-
-    // Self-delete: each OTA task owns its own static stack/TCB (see
-    // otaUpdateStack / otaUpdateTCB in the header), so there is nothing to
-    // share and no other task to reap us. FreeRTOS releases the buffers
-    // asynchronously via the idle task, which is fine because no one else
-    // holds a handle to this task.
-    vTaskDelete(nullptr);
-}
-
-SemaphoreHandle_t OTAUpdater::checkResultMutex() {
+SemaphoreHandle_t OTAUpdater::stateMutex() {
     static SemaphoreHandle_t m = xSemaphoreCreateMutex();
     return m;
 }
 
-namespace {
-    // Heap-allocated payload for the check worker. Owner/repo are copied so the
-    // worker doesn't depend on the caller's string lifetimes.
-    struct CheckJob {
-        String owner;
-        String repo;
-    };
-}
-
-void OTAUpdater::otaCheckTask(void *arg) {
-    auto *job = static_cast<CheckJob *>(arg);
-
-    FirmwareInfo info;
-    bool ok = checkForUpdate(job->owner.c_str(), job->repo.c_str(), info);
-
-    SemaphoreHandle_t m = checkResultMutex();
+void OTAUpdater::setUpdateState(UpdateState state, int percent, size_t bytes, const char *error) {
+    SemaphoreHandle_t m = stateMutex();
     if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
-        checkResult = info;
-        checkState = ok ? CheckState::Done : CheckState::Failed;
+        updateState = state;
+        updatePercent = percent;
+        updateBytes = bytes;
+        updateError = error ? error : "";
         xSemaphoreGive(m);
     }
+}
 
-    delete job;
-    // High-water mark = smallest free stack (in bytes) seen on this task. If this
-    // ever approaches 0, CHECK_TASK_STACK is too small and must be raised.
-    ESP_LOGI(TAG, "ota_check stack high-water mark: %u bytes free",
-             (unsigned)uxTaskGetStackHighWaterMark(nullptr));
+// ============================================================================
+// Parked worker tasks
+//
+// Both tasks are created once by begin() and then block forever on a task
+// notification. They are never deleted, which is what makes their static
+// stacks safe to reuse across requests: vTaskDelete() only queues a task for
+// reclamation by the idle task, so recreating a task on the same StaticTask_t
+// before idle has run inserts a TCB into the ready list while it is still
+// linked into xTasksWaitingTermination — scheduler list corruption. The
+// previous design cleared its busy flag *before* self-deleting, so a client
+// retrying immediately after a failed update (the expected reaction) could hit
+// exactly that window.
+// ============================================================================
 
-    // Self-delete: each OTA task owns its own static stack/TCB (see
-    // otaCheckStack / otaCheckTCB in the header), so there is nothing to
-    // share and no other task to reap us.
-    vTaskDelete(nullptr);
+void OTAUpdater::otaCheckTask(void *) {
+    while (true) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        FirmwareInfo info;
+        bool ok = checkForUpdate(pendingOwner, pendingRepo, info);
+
+        SemaphoreHandle_t m = stateMutex();
+        if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
+            checkResult = info;
+            checkState = ok ? CheckState::Done : CheckState::Failed;
+            xSemaphoreGive(m);
+        }
+
+        // High-water mark = smallest free stack (in bytes) seen on this task. If
+        // this ever approaches 0, CHECK_TASK_STACK is too small and must be raised.
+        ESP_LOGI(TAG, "ota_check stack high-water mark: %u bytes free",
+                 (unsigned)uxTaskGetStackHighWaterMark(nullptr));
+
+        // Release last: the slot is the gate that lets the next request in, so
+        // it must not open until this iteration has fully finished touching
+        // shared state.
+        releaseActivity();
+    }
+}
+
+void OTAUpdater::otaWorkerTask(void *) {
+    while (true) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        bool success = performUpdate(pendingUpdate.downloadUrl, pendingUpdate.size,
+            [](int percent, size_t bytes) {
+                ESP_LOGI(TAG, "Progress: %d%% (%zu bytes)", percent, bytes);
+            });
+
+        if (success) {
+            ESP_LOGI(TAG, "OTA update successful, scheduling restart...");
+            if (pendingConfig) {
+                pendingConfig->requestRestart(1000);
+            }
+        } else {
+            ESP_LOGE(TAG, "OTA update failed");
+        }
+
+        // High-water mark = smallest free stack (in bytes) seen on this task.
+        // If this ever approaches 0, UPDATE_TASK_STACK is too small; the worker
+        // runs the TLS download + flash-write loop so it needs more than the
+        // check task. Logged here so the static stack can be re-tuned.
+        ESP_LOGI(TAG, "ota_update stack high-water mark: %u bytes free",
+                 (unsigned)uxTaskGetStackHighWaterMark(nullptr));
+
+        releaseActivity();
+    }
+}
+
+void OTAUpdater::confirmRunningImage() {
+    // With CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y a freshly flashed image is
+    // marked ESP_OTA_IMG_NEW by esp_ota_set_boot_partition(); the bootloader
+    // promotes it to ESP_OTA_IMG_PENDING_VERIFY on first boot and, if it is
+    // still PENDING_VERIFY at the *next* boot, marks it ABORTED and reverts to
+    // the previous partition. See the header for why this runs at the end of
+    // setup() rather than the start.
+    if (!hasUnconfirmedUpdate()) {
+        return; // already confirmed — the common case
+    }
+    ESP_LOGI(TAG, "Running a newly flashed image — confirming it to cancel rollback");
+    confirmBoot();
+}
+
+void OTAUpdater::begin() {
+    if (checkTaskHandle == nullptr) {
+        checkTaskHandle = xTaskCreateStatic(otaCheckTask, "ota_check", CHECK_TASK_STACK,
+                                            nullptr, 1, otaCheckStack, &otaCheckTCB);
+    }
+    if (updateTaskHandle == nullptr) {
+        updateTaskHandle = xTaskCreateStatic(otaWorkerTask, "ota_update", UPDATE_TASK_STACK,
+                                             nullptr, 1, otaUpdateStack, &otaUpdateTCB);
+    }
+
+    if (checkTaskHandle == nullptr || updateTaskHandle == nullptr) {
+        // xTaskCreateStatic() only returns NULL if the buffers are null, so this
+        // is a programming error rather than a heap condition — but the OTA
+        // endpoints would silently do nothing, so say so loudly.
+        ESP_LOGE(TAG, "OTA worker tasks could not be created - OTA is unavailable");
+    } else {
+        ESP_LOGI(TAG, "OTA workers ready (check %u B, update %u B static stacks)",
+                 (unsigned)CHECK_TASK_STACK, (unsigned)UPDATE_TASK_STACK);
+    }
 }
 
 bool OTAUpdater::startBackgroundCheck(const char *owner, const char *repo) {
-    SemaphoreHandle_t m = checkResultMutex();
-    if (!m) return false;
+    if (checkTaskHandle == nullptr) {
+        ESP_LOGE(TAG, "Check not started: OTAUpdater::begin() has not run");
+        return false;
+    }
 
-    if (xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
-        // Don't start if a check is already running or a real update is underway.
-        if (checkState == CheckState::InProgress || updateInProgress) {
-            xSemaphoreGive(m);
-            ESP_LOGW(TAG, "Check not started (busy)");
-            return false;
-        }
+    // One atomic claim gates both activities, so a check can never start
+    // alongside an update (or vice versa).
+    if (!claimActivity(Activity::Checking)) {
+        ESP_LOGW(TAG, "Check not started (busy)");
+        return false;
+    }
+
+    SemaphoreHandle_t m = stateMutex();
+    if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
         checkState = CheckState::InProgress;
         checkResult = FirmwareInfo{};
         xSemaphoreGive(m);
-    } else {
-        return false;
     }
 
-    auto *job = new CheckJob{String(owner), String(repo)};
-    // Use the statically-reserved stack (see otaCheckStack / otaCheckTCB in the
-    // header): a FreeRTOS stack needs one contiguous block of internal SRAM,
-    // which is unreliable to allocate at runtime once WiFi/TLS have fragmented
-    // internal heap. The check task owns this buffer for its lifetime and
-    // self-deletes on exit. xTaskCreateStatic() returns NULL only if the buffers
-    // are null, so it no longer fails on a fragmented heap.
-    TaskHandle_t handle = xTaskCreateStatic(otaCheckTask, "ota_check",
-                                            CHECK_TASK_STACK, job, 1,
-                                            otaCheckStack, &otaCheckTCB);
-    if (handle == nullptr) {
-        ESP_LOGE(TAG, "Failed to create OTA check task");
-        // Roll back to Failed so we don't get stuck in InProgress forever.
-        if (xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
-            checkState = CheckState::Failed;
-            xSemaphoreGive(m);
-        }
-        delete job;
-        return false;
-    }
+    // Safe without a lock: the claim above excludes every other writer until
+    // the worker releases the slot.
+    strlcpy(pendingOwner, owner, sizeof(pendingOwner));
+    strlcpy(pendingRepo, repo, sizeof(pendingRepo));
 
-    ESP_LOGI(TAG, "OTA check task started");
+    xTaskNotifyGive(checkTaskHandle);
+    ESP_LOGI(TAG, "OTA check requested");
     return true;
 }
 
 OTAUpdater::CheckState OTAUpdater::getCheckResult(FirmwareInfo &infoOut) {
-    SemaphoreHandle_t m = checkResultMutex();
+    SemaphoreHandle_t m = stateMutex();
     if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
         CheckState state = checkState;
         infoOut = checkResult;
@@ -460,6 +580,20 @@ OTAUpdater::CheckState OTAUpdater::getCheckResult(FirmwareInfo &infoOut) {
         return state;
     }
     return CheckState::Idle;
+}
+
+OTAUpdater::UpdateState OTAUpdater::getUpdateProgress(int &percentOut, size_t &bytesOut,
+                                                      String &errorOut) {
+    SemaphoreHandle_t m = stateMutex();
+    if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
+        UpdateState state = updateState;
+        percentOut = updatePercent;
+        bytesOut = updateBytes;
+        errorOut = updateError;
+        xSemaphoreGive(m);
+        return state;
+    }
+    return UpdateState::Idle;
 }
 
 bool OTAUpdater::startBackgroundUpdateFromLatestCheck(Config::ConfigManager &config) {
@@ -472,50 +606,48 @@ bool OTAUpdater::startBackgroundUpdateFromLatestCheck(Config::ConfigManager &con
         return false;
     }
 
+    // Only ever move forward. Without an ordering comparison an untagged
+    // developer build (FIRMWARE_VERSION "v1.2.3-4-gabc1234") differs textually
+    // from the v1.2.3 release, so the device would have offered — and
+    // installed — a downgrade while calling it an update.
+    if (!isUpdateAvailable(info)) {
+        ESP_LOGW(TAG, "Update refused: %s is not newer than running %s",
+                 info.version.c_str(), FIRMWARE_VERSION);
+        return false;
+    }
+
     // Defense in depth: the URL came from our own GitHub check, but reject
     // anything that isn't a github.com release download before flashing it.
     // GitHub serves release assets from github.com (which then 302-redirects to
-    // its CDN); esp_http_client follows that redirect internally.
+    // its CDN); openWithRedirects() enforces HTTPS on those later hops.
     if (!info.downloadUrl.startsWith("https://github.com/")) {
         ESP_LOGE(TAG, "Update refused: unexpected download host in %s", info.downloadUrl.c_str());
         return false;
     }
 
-    return startBackgroundUpdate(info.downloadUrl, info.size, config);
+    return startBackgroundUpdate(info, config);
 }
 
-bool OTAUpdater::startBackgroundUpdate(const String &downloadUrl, size_t expectedSize,
-                                       Config::ConfigManager &config) {
-    // Claim the in-progress slot up front so a rapid second request can't spawn
-    // a concurrent worker in the window before performUpdate() sets the flag.
-    // The test-and-set must be atomic: two callers racing on a plain read+write
-    // could both observe false and both spawn a worker (TOCTOU).
-    bool expected = false;
-    if (!updateInProgress.compare_exchange_strong(expected, true)) {
+bool OTAUpdater::startBackgroundUpdate(const FirmwareInfo &info, Config::ConfigManager &config) {
+    if (updateTaskHandle == nullptr) {
+        ESP_LOGE(TAG, "Update not started: OTAUpdater::begin() has not run");
+        return false;
+    }
+
+    // Claim the slot before touching the job payload. The single
+    // compare-exchange is what prevents two concurrent workers *and* a
+    // concurrent check.
+    if (!claimActivity(Activity::Updating)) {
         ESP_LOGW(TAG, "Update already in progress - ignoring request");
         return false;
     }
 
-    auto *job = new OtaJob{downloadUrl, expectedSize, &config};
+    pendingUpdate = info;
+    pendingConfig = &config;
+    setUpdateState(UpdateState::Downloading, 0, 0, nullptr);
 
-    // Use the statically-reserved stack (see otaUpdateStack / otaUpdateTCB in
-    // the header): the worker's 16 KB contiguous internal-SRAM stack is
-    // impossible to allocate reliably at runtime once WiFi/TLS have fragmented
-    // internal heap, so we reserve it in BSS at boot. The worker owns this
-    // buffer for its lifetime and self-deletes on exit. xTaskCreateStatic()
-    // returns NULL only if the buffers are null, so this no longer fails on a
-    // fragmented heap.
-    TaskHandle_t handle = xTaskCreateStatic(otaWorkerTask, "ota_update",
-                                            UPDATE_TASK_STACK, job, 1,
-                                            otaUpdateStack, &otaUpdateTCB);
-    if (handle == nullptr) {
-        ESP_LOGE(TAG, "Failed to create OTA worker task");
-        updateInProgress = false;
-        delete job;
-        return false;
-    }
-
-    ESP_LOGI(TAG, "OTA worker task started");
+    xTaskNotifyGive(updateTaskHandle);
+    ESP_LOGI(TAG, "OTA update requested (%s, %zu bytes)", info.version.c_str(), info.size);
     return true;
 }
 
@@ -535,7 +667,12 @@ bool OTAUpdater::hasUnconfirmedUpdate() {
     if (esp_ota_get_state_partition(partition, &state) != ESP_OK) {
         return false;
     }
-    return state == ESP_OTA_IMG_NEW;
+    // PENDING_VERIFY, not NEW. ESP_OTA_IMG_NEW exists only between
+    // esp_ota_set_boot_partition() and the next boot; the bootloader promotes it
+    // to ESP_OTA_IMG_PENDING_VERIFY before handing control to the app (see
+    // esp_flash_partitions.h). Testing for NEW here therefore always returned
+    // false, so nothing could ever tell that the running image was unconfirmed.
+    return state == ESP_OTA_IMG_PENDING_VERIFY;
 }
 
 bool OTAUpdater::getRunningPartitionInfo(String &label, uint32_t &address) {
@@ -554,9 +691,14 @@ void OTAUpdater::getMemoryInfo(uint32_t &freeHeap, uint32_t &minFreeHeap) {
 }
 
 bool OTAUpdater::hasEnoughMemory() {
-    uint32_t freeHeap = esp_get_free_heap_size();
-    if (freeHeap < MIN_FREE_HEAP) {
-        ESP_LOGW(TAG, "Insufficient heap: %u (need %d)", freeHeap, MIN_FREE_HEAP);
+    // Internal SRAM only — see MIN_FREE_INTERNAL. esp_get_free_heap_size()
+    // includes PSRAM on this board and would pass unconditionally.
+    uint32_t internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+
+    if (internalFree < MIN_FREE_INTERNAL || largestBlock < MIN_LARGEST_INTERNAL_BLOCK) {
+        ESP_LOGW(TAG, "Insufficient internal heap: free=%u (need %u), largest block=%u (need %u)",
+                 internalFree, MIN_FREE_INTERNAL, largestBlock, MIN_LARGEST_INTERNAL_BLOCK);
         return false;
     }
     return true;
