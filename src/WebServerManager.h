@@ -88,6 +88,7 @@ protected:
     void setupOTARoutes();
     void setupMqttRoutes();
     void setupSyslogRoutes();
+    void setupDisplayRoutes();
     void setupI2CRoutes();
 
     /**

@@ -133,10 +133,36 @@ namespace Config {
         SyslogConfig() = default;
     };
 
+    // Display refresh interval bounds (seconds). The floor is deliberately well
+    // below Waveshare's ~180 s longevity guidance: the value hysteresis in
+    // Display::RefreshPolicy means a short interval only produces frequent
+    // refreshes when the reading is genuinely changing that fast.
+    constexpr uint16_t MIN_DISPLAY_INTERVAL = 10;
+    constexpr uint16_t MAX_DISPLAY_INTERVAL = 3600;
+    constexpr uint8_t MAX_DISPLAY_ROTATION = 3;
+    constexpr uint16_t DEFAULT_DISPLAY_INTERVAL = 60;
+
+    /**
+     * E-paper display configuration structure
+     */
+    struct DisplayConfig {
+        bool enabled = false; // Default off — an unconfigured device behaves as before
+        uint8_t rotation = 0; // 0..3, mounting orientation
+        uint16_t interval = DEFAULT_DISPLAY_INTERVAL; // Minimum seconds between refreshes
+
+        // Firmware-internal one-shot: set when the display is disabled so the
+        // next boot can blank the panel (e-paper retains its image unpowered).
+        // Never emitted by GET /api/display and never read from a request body.
+        bool clear_pending = false;
+
+        DisplayConfig() = default;
+    };
+
     // Validation functions — pure C++, testable on native builds
     void validateDeviceConfig(DeviceConfig &config);
     void validateMqttConfig(MqttConfig &config);
     void validateEnergyConfig(EnergyConfig &config);
+    void validateDisplayConfig(DisplayConfig &config);
 
     // Deferred-restart state encoding helpers (pure C++, testable on native builds).
     // The state is packed into a single 64-bit word: low bit = "requested" flag,
@@ -359,6 +385,18 @@ namespace Config {
 
         SyslogConfig loadSyslogConfig();
         void saveSyslogConfig(const SyslogConfig &config);
+
+        /**
+         * Load e-paper display configuration from NVS
+         * @return DisplayConfig structure, defaults (disabled) if not found
+         */
+        DisplayConfig loadDisplayConfig();
+
+        /**
+         * Save e-paper display configuration to NVS
+         * @param config Display configuration to save
+         */
+        void saveDisplayConfig(const DisplayConfig &config);
     };
 } // namespace Config
 

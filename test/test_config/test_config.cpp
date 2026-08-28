@@ -62,6 +62,95 @@ void test_syslog_config_defaults() {
     TEST_ASSERT_EQUAL_STRING("", config.host);
 }
 
+void test_display_config_defaults() {
+    Config::DisplayConfig config;
+    TEST_ASSERT_FALSE(config.enabled);
+    TEST_ASSERT_EQUAL(0, config.rotation);
+    TEST_ASSERT_EQUAL(60, config.interval);
+    TEST_ASSERT_FALSE(config.clear_pending);
+}
+
+// --- validateDisplayConfig ---
+
+void test_validate_display_config_defaults_unchanged() {
+    Config::DisplayConfig config;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_FALSE(config.enabled);
+    TEST_ASSERT_EQUAL(0, config.rotation);
+    TEST_ASSERT_EQUAL(60, config.interval);
+    TEST_ASSERT_FALSE(config.clear_pending);
+}
+
+void test_validate_display_config_rotation_valid_unchanged() {
+    for (uint8_t r = 0; r <= 3; r++) {
+        Config::DisplayConfig config;
+        config.rotation = r;
+        Config::validateDisplayConfig(config);
+        TEST_ASSERT_EQUAL(r, config.rotation);
+    }
+}
+
+void test_validate_display_config_rotation_too_high_reset() {
+    Config::DisplayConfig config;
+    config.rotation = 4;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(0, config.rotation);
+
+    config.rotation = 255;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(0, config.rotation);
+}
+
+void test_validate_display_config_interval_below_floor_clamped() {
+    Config::DisplayConfig config;
+    config.interval = 0;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(Config::MIN_DISPLAY_INTERVAL, config.interval);
+
+    config.interval = 9;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(Config::MIN_DISPLAY_INTERVAL, config.interval);
+}
+
+void test_validate_display_config_interval_at_bounds_unchanged() {
+    Config::DisplayConfig config;
+    config.interval = Config::MIN_DISPLAY_INTERVAL;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(Config::MIN_DISPLAY_INTERVAL, config.interval);
+
+    config.interval = 60;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(60, config.interval);
+
+    config.interval = Config::MAX_DISPLAY_INTERVAL;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(Config::MAX_DISPLAY_INTERVAL, config.interval);
+}
+
+void test_validate_display_config_interval_above_ceiling_clamped() {
+    Config::DisplayConfig config;
+    config.interval = 3601;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(Config::MAX_DISPLAY_INTERVAL, config.interval);
+
+    config.interval = 65535;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(Config::MAX_DISPLAY_INTERVAL, config.interval);
+}
+
+void test_validate_display_config_preserves_enabled_and_clear_pending() {
+    // Validation clamps ranges only; it must never flip the enable flag or
+    // drop the pending-clear one-shot, which would lose a queued blanking.
+    Config::DisplayConfig config;
+    config.enabled = true;
+    config.clear_pending = true;
+    config.rotation = 200;
+    config.interval = 1;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_TRUE(config.enabled);
+    TEST_ASSERT_TRUE(config.clear_pending);
+}
+
 // --- validateDeviceConfig ---
 
 void test_validate_device_config_valid_values_unchanged() {
@@ -332,7 +421,16 @@ int runUnityTests() {
     RUN_TEST(test_sensor_config_defaults);
     RUN_TEST(test_energy_config_defaults);
     RUN_TEST(test_syslog_config_defaults);
+    RUN_TEST(test_display_config_defaults);
     RUN_TEST(test_get_device_id);
+    // DisplayConfig validation
+    RUN_TEST(test_validate_display_config_defaults_unchanged);
+    RUN_TEST(test_validate_display_config_rotation_valid_unchanged);
+    RUN_TEST(test_validate_display_config_rotation_too_high_reset);
+    RUN_TEST(test_validate_display_config_interval_below_floor_clamped);
+    RUN_TEST(test_validate_display_config_interval_at_bounds_unchanged);
+    RUN_TEST(test_validate_display_config_interval_above_ceiling_clamped);
+    RUN_TEST(test_validate_display_config_preserves_enabled_and_clear_pending);
     // DeviceConfig validation
     RUN_TEST(test_validate_device_config_valid_values_unchanged);
     RUN_TEST(test_validate_device_config_nan_temperature_reset);

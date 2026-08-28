@@ -14,6 +14,9 @@
 #include "OTAUpdater.h"
 #include "WebServerManager.h"
 #include "SyslogOutput.h"
+#ifdef ARDUINO
+#include "display/DisplayManager.h"
+#endif
 #include "support/NetworkWatchdog.h"
 #include "support/WifiBackoff.h"
 
@@ -571,9 +574,17 @@ void Network::configureUsingAPMode() {
 
         statusLed.update();
 
-        // if (touchController) {
-        //     touchController->update();
-        // }
+        // Repaint the e-paper display if the refresh policy calls for it. The
+        // common case returns immediately without touching SPI; an actual
+        // refresh blocks ~0.5-2.6 s on the panel's BUSY line and feeds the task
+        // watchdog either side (see Display::EPaperDisplay::render).
+        //
+        // Skipped during OTA: a download owns the network for minutes and
+        // squeezes internal SRAM down to what the TLS session leaves over, so
+        // nothing else should be competing for memory or the SPI bus.
+        if (display && !otaActive) {
+            display->update();
+        }
 
         // Low heap check - restart cleanly before an OOM crash. Require the
         // condition to persist across several ~1 s iterations so a transient dip

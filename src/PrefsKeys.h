@@ -42,6 +42,14 @@ namespace PrefsKeys {
     constexpr const char* MQTT_PREFIX = "mqtt_prefix";
     constexpr const char* MQTT_INTERVAL = "mqtt_interval";
 
+    // Display configuration
+    // NOTE: "disp_interval" would be 13 characters and hit the NVS limit noted
+    // above, so the interval is stored under the abbreviated "disp_intv".
+    constexpr const char* DISPLAY_ENABLED = "disp_enabled";
+    constexpr const char* DISPLAY_ROTATION = "disp_rot";
+    constexpr const char* DISPLAY_INTERVAL = "disp_intv";
+    constexpr const char* DISPLAY_CLEAR_PENDING = "disp_clear";
+
     // Syslog configuration
     constexpr const char* SYSLOG_ENABLED = "syslog_enabled";
     constexpr const char* SYSLOG_HOST = "syslog_host";

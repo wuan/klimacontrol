@@ -114,6 +114,46 @@
         </div>
 
         <div class="section">
+            <h2>E-Paper Display</h2>
+            <p>Show the current temperature and humidity on a Waveshare 1.54" e-paper module
+                (200&times;200, SSD1681) wired to the SPI pins. Changes require a restart.</p>
+
+            <div class="form-group toggle-row">
+                <span class="toggle-label">Enable Display</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="displayEnabled">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="displayRotation">Rotation</label>
+                <select id="displayRotation" style="width: 160px;">
+                    <option value="0">0&deg;</option>
+                    <option value="1">90&deg;</option>
+                    <option value="2">180&deg;</option>
+                    <option value="3">270&deg;</option>
+                </select>
+                <small class="form-hint">Match the physical mounting orientation.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="displayInterval">Minimum Refresh Interval (seconds)</label>
+                <input type="number" id="displayInterval" placeholder="60" min="10" max="3600" style="width: 120px;">
+                <small class="form-hint">Shortest time between panel refreshes. Default: 60s. Lower
+                    values shorten the panel's service life.</small>
+            </div>
+
+            <button class="btn btn-primary" onclick="updateDisplay()">Save Display Settings</button>
+
+            <div class="info-box" style="margin-top: 15px;">
+                <strong>Note:</strong> The device will restart after saving display settings. Turning
+                the display off blanks the panel on the next boot &mdash; e-paper keeps its last image
+                until it is actively cleared. See docs/EINK_DISPLAY_WIRING.md for wiring.
+            </div>
+        </div>
+
+        <div class="section">
             <h2>Syslog</h2>
             <p>Forward device logs to a remote syslog server (UDP, RFC 3164).</p>
 
@@ -719,6 +759,50 @@
         }
     }
 
+    // E-Paper Display Functions
+    async function loadDisplayConfig() {
+        try {
+            const response = await fetch('/api/display');
+            const data = await response.json();
+
+            document.getElementById('displayEnabled').checked = data.enabled;
+            document.getElementById('displayRotation').value = data.rotation || 0;
+            document.getElementById('displayInterval').value = data.interval || 60;
+        } catch (error) {
+            console.error('Failed to load display config:', error);
+        }
+    }
+
+    async function updateDisplay() {
+        const config = {
+            enabled: document.getElementById('displayEnabled').checked,
+            rotation: parseInt(document.getElementById('displayRotation').value) || 0,
+            interval: parseInt(document.getElementById('displayInterval').value) || 60
+        };
+
+        if (!confirm('Save display settings?\n\nThe device will restart to apply changes.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/display', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
+                body: JSON.stringify(config)
+            });
+
+            if (response.ok) {
+                alert('Display settings saved. Device is restarting...');
+            } else {
+                const data = await response.json();
+                alert('Failed to save display settings: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Failed to update display settings:', error);
+            alert('Error saving display settings');
+        }
+    }
+
     // I2C Sensor Functions
     let knownTypes = {}; // {type: [addresses]}
 
@@ -978,6 +1062,7 @@
         await loadSensorConfig();
         await loadMqttConfig();
         await loadSyslogConfig();
+        await loadDisplayConfig();
         await loadEnergyConfig();
     }
     loadAll();

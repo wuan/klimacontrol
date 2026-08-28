@@ -397,4 +397,55 @@ namespace Config {
         ESP_LOGD(TAG, "Saved syslog configuration");
 #endif
     }
+
+    void validateDisplayConfig(DisplayConfig &config) {
+        if (config.rotation > MAX_DISPLAY_ROTATION) {
+            config.rotation = 0;
+        }
+        if (config.interval < MIN_DISPLAY_INTERVAL) {
+            config.interval = MIN_DISPLAY_INTERVAL;
+        } else if (config.interval > MAX_DISPLAY_INTERVAL) {
+            config.interval = MAX_DISPLAY_INTERVAL;
+        }
+    }
+
+    DisplayConfig ConfigManager::loadDisplayConfig() {
+        DisplayConfig displayConfig;
+
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, true);
+
+        displayConfig.enabled = guard.get().getBool(PrefsKeys::DISPLAY_ENABLED, false);
+        displayConfig.rotation = guard.get().getUChar(PrefsKeys::DISPLAY_ROTATION, 0);
+        displayConfig.interval = guard.get().getUShort(PrefsKeys::DISPLAY_INTERVAL, DEFAULT_DISPLAY_INTERVAL);
+        displayConfig.clear_pending = guard.get().getBool(PrefsKeys::DISPLAY_CLEAR_PENDING, false);
+
+        ESP_LOGD(TAG, "Loaded display config from NVS: enabled=%d rotation=%u interval=%u clear_pending=%d",
+                 displayConfig.enabled, displayConfig.rotation,
+                 displayConfig.interval, displayConfig.clear_pending);
+#endif
+
+        // Validate ranges — NVS may hold garbage after flash corruption
+        validateDisplayConfig(displayConfig);
+
+        return displayConfig;
+    }
+
+    void ConfigManager::saveDisplayConfig([[maybe_unused]] const DisplayConfig &config) {
+        // Validate before persisting to keep NVS consistent
+        DisplayConfig validated = config;
+        validateDisplayConfig(validated);
+
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false);
+
+        guard.get().putBool(PrefsKeys::DISPLAY_ENABLED, validated.enabled);
+        guard.get().putUChar(PrefsKeys::DISPLAY_ROTATION, validated.rotation);
+        guard.get().putUShort(PrefsKeys::DISPLAY_INTERVAL, validated.interval);
+        guard.get().putBool(PrefsKeys::DISPLAY_CLEAR_PENDING, validated.clear_pending);
+
+        ESP_LOGD(TAG, "Saved display configuration: enabled=%d rotation=%u interval=%u clear_pending=%d",
+                 validated.enabled, validated.rotation, validated.interval, validated.clear_pending);
+#endif
+    }
 } // namespace Config

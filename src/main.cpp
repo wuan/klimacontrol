@@ -25,6 +25,9 @@
 #include "StatusLed.h"
 #include "task/SensorMonitor.h"
 #include "OTAUpdater.h"
+#ifdef ARDUINO
+#include "display/DisplayManager.h"
+#endif
 
 #ifdef ARDUINO
 #include <esp_task_wdt.h>
@@ -131,6 +134,66 @@ Task::SensorMonitor sensorMonitor(sensorController);
 // → "Long-lived singletons are constructed once".
 Network network(config, sensorController, sensorMonitor, statusLed, nullptr);
 WebServerManager webServer(config, network, sensorController, sensorMonitor);
+#ifdef ARDUINO
+// E-paper display. Constructed unconditionally (its 625 B page buffer is in BSS
+// either way), but only initialized when enabled in configuration — see
+// setupDisplay() below.
+Display::DisplayManager displayManager(sensorController);
+#endif
+
+#ifdef ARDUINO
+// Bring up the e-paper display according to the persisted configuration.
+//
+// Three cases, driven by the `enabled` flag and the `clear_pending` one-shot:
+//
+//   enabled                  -> init, splash, wire into the Network task.
+//   disabled + clear_pending -> init, blank the panel, drop the flag. e-paper
+//                               retains its image with no power, so a display
+//                               that was just turned off has to be actively
+//                               cleared or it shows a stale reading forever.
+//   disabled                 -> do nothing at all; the SPI and control pins are
+//                               never claimed.
+//
+// The flag is persisted rather than blanked inline in the HTTP handler so that
+// losing power between the save and the clear still leaves the blanking queued
+// for the next boot.
+static void setupDisplay(const Config::DeviceConfig &deviceConfig) {
+    Config::DisplayConfig displayConfig = config.loadDisplayConfig();
+
+    if (!displayConfig.enabled) {
+        if (displayConfig.clear_pending) {
+            ESP_LOGI(TAG, "Display disabled with a pending clear - blanking panel");
+            displayManager.clearAndPark(displayConfig);
+            displayConfig.clear_pending = false;
+            config.saveDisplayConfig(displayConfig);
+        }
+        return;
+    }
+
+    // Prefer the user-assigned name; fall back to the derived hostname.
+    char name[32];
+    if (deviceConfig.device_name[0] != '\0') {
+        strlcpy(name, deviceConfig.device_name, sizeof(name));
+    } else {
+        snprintf(name, sizeof(name), "%s%s", Constants::HOSTNAME_PREFIX, config.getDeviceId().c_str());
+    }
+
+    if (displayManager.begin(displayConfig, name)) {
+        displayManager.setNetwork(&network);
+        network.setDisplay(&displayManager);
+    } else {
+        ESP_LOGE(TAG, "Display enabled in config but failed to initialize");
+    }
+
+    // A stale clear_pending alongside an enabled display just means the user
+    // re-enabled it before the blanking ran; drop it.
+    if (displayConfig.clear_pending) {
+        displayConfig.clear_pending = false;
+        config.saveDisplayConfig(displayConfig);
+    }
+}
+#endif
+
 
 void setup() {
     delay(1000);
@@ -269,6 +332,12 @@ void setup() {
     // requests, so /api/ota/* always has a worker to notify. Their stacks are
     // reserved in BSS, so this cannot fail on a fragmented heap.
     OTAUpdater::begin();
+#endif
+
+#ifdef ARDUINO
+    // Before network.begin() so the splash is on the panel while WiFi
+    // association is still in progress.
+    setupDisplay(deviceConfig);
 #endif
 
     ESP_LOGI(TAG, "Starting network task");

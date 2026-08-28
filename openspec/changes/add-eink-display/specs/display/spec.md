@@ -1,0 +1,319 @@
+## ADDED Requirements
+
+### Requirement: Hardware target and wiring
+
+The firmware SHALL support a single Waveshare 1.54" V2 e-paper module (SSD1681
+controller, 200×200 pixels, monochrome) connected over the board's hardware SPI
+bus. The panel SHALL be driven via the GxEPD2 panel class `GxEPD2_154_D67`.
+
+Pin assignments SHALL be compile-time constants in `src/display/DisplayPins.h`
+and SHALL NOT be runtime-configurable:
+
+| Panel signal | GPIO | QT Py ESP32-S2 pad |
+|---|---|---|
+| `CLK`  | 36 | `SCK` (Arduino `SPI`) |
+| `DIN`  | 35 | `MO` (Arduino `SPI`) |
+| `CS`   | 18 | `A0` |
+| `DC`   | 8  | `A3` |
+| `RST`  | 9  | `A2` |
+| `BUSY` | 17 | `A1`, input, active HIGH |
+| `VCC`  | —  | `3V` |
+| `GND`  | —  | `GND` |
+
+The `MI` pad (GPIO37) SHALL be left unconnected.
+
+The assignment SHALL NOT use the STEMMA QT I2C pins (`SDA1`=GPIO41,
+`SCL1`=GPIO40), the NeoPixel pins (GPIO39 data, GPIO38 power), the boot button
+(GPIO0), or any pin in the flash/PSRAM range GPIO27–32.
+
+The chip-select line SHALL NOT be assigned to GPIO37. Although the panel is
+write-only and the `MI` pad carries no signal, `SPI.begin()` on this target
+attaches MISO unconditionally — passing `-1` resolves to GPIO37 and executes
+`pinMode(37, INPUT)` — which would silently reconfigure a chip-select placed
+there and leave the panel unresponsive.
+
+#### Scenario: Chip select survives SPI bus initialisation
+
+- **WHEN** the SPI bus is initialised and the display's chip-select pin is configured as an output, in either order
+- **THEN** the chip-select pin SHALL remain an output, and SHALL therefore not be GPIO37
+
+#### Scenario: Pin map matches the board variant
+
+- **WHEN** the pin constants in `src/display/DisplayPins.h` are reviewed against `variants/adafruit_qtpy_esp32s2/pins_arduino.h`
+- **THEN** `SCK`, `MOSI`, `A0`, `A1`, `A2` and `A3` SHALL resolve to GPIO 36, 35, 18, 17, 9 and 8 respectively
+
+### Requirement: Wiring documentation
+
+The repository SHALL contain `docs/EINK_DISPLAY_WIRING.md`, linked from
+`README.md`, giving the hardware-side instructions needed to connect the panel
+without reading firmware source.
+
+It SHALL cover: which Waveshare product variant is supported and how to identify
+it; the complete signal → GPIO → pad → ribbon-colour wiring table; the reason
+GPIO37 is not used for chip select; power and decoupling guidance; a
+pre-power-on continuity checklist; and a symptom-to-cause troubleshooting table.
+
+The wiring table SHALL identify pads by their silkscreen label rather than
+physical position, and SHALL stay consistent with `src/display/DisplayPins.h`.
+
+#### Scenario: Wiring the panel from documentation alone
+
+- **WHEN** an operator has the board and the module and follows `docs/EINK_DISPLAY_WIRING.md`
+- **THEN** they SHALL be able to complete the wiring, verify it before applying power, and identify the cause of a blank or garbled panel without reading the firmware
+
+#### Scenario: Documentation and firmware pin map agree
+
+- **WHEN** a pin constant in `src/display/DisplayPins.h` is changed
+- **THEN** the wiring table in `docs/EINK_DISPLAY_WIRING.md` SHALL be updated in the same change
+
+The module SHALL be powered from the 3.3 V rail. Where the module ships on a
+Waveshare e-Paper Driver HAT carrier, the carrier's voltage jumper SHALL be set
+to 3.3 V and its SPI jumper to 4-wire mode.
+
+#### Scenario: SPI bus does not contend with the sensor bus
+
+- **WHEN** the display is enabled and sensors are attached to the STEMMA QT connector
+- **THEN** display SPI traffic and sensor I2C traffic SHALL use disjoint pins, and no I2C bus lock SHALL be required for a display refresh
+
+#### Scenario: Panel is write-only
+
+- **WHEN** the display is initialised
+- **THEN** the firmware SHALL NOT read from the panel, and the `MI` pad SHALL carry no panel signal
+
+### Requirement: Paged rendering with a bounded page buffer
+
+The firmware SHALL render the panel using GxEPD2's paged mode with a page height
+of `GxEPD2_154_D67::HEIGHT / 8` (25 rows), giving a page buffer of
+`(200 / 8) * 25` = 625 bytes. The firmware SHALL NOT allocate a full-screen
+200×200 framebuffer.
+
+The page buffer resides in BSS (internal SRAM) and is therefore allocated
+regardless of whether the display is enabled.
+
+#### Scenario: Page buffer size
+
+- **WHEN** the firmware is built for `adafruit_qtpy_esp32s2`
+- **THEN** the GxEPD2 display object SHALL be instantiated as `GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT / 8>`, consuming 625 bytes of internal SRAM
+
+#### Scenario: Display does not disturb the OTA heap gate
+
+- **WHEN** the firmware is running normally with the display enabled and no OTA in progress
+- **THEN** free internal heap SHALL remain above the OTA pre-flight gate of 20480 bytes, so firmware updates remain possible
+
+#### Scenario: Drawing spans multiple pages
+
+- **WHEN** a refresh is performed
+- **THEN** the draw callback SHALL be invoked once per page inside a `do { … } while (display.nextPage());` loop, and glyphs straddling a page boundary SHALL render correctly
+
+### Requirement: Runtime configuration, default off
+
+The display SHALL be configured at runtime via `Config::DisplayConfig` and SHALL
+default to disabled, so a device flashed with this firmware and not reconfigured
+behaves as it did before apart from the BSS and flash cost.
+
+Configuration changes SHALL be persisted to NVS and SHALL take effect via a
+device restart, matching the save-then-`requestRestart()` convention used by
+every other settings route.
+
+When the display is disabled, the firmware SHALL NOT call `display.init()` and
+SHALL NOT claim the SPI or control pins, except for the one-shot blanking
+described in the *Clear on disable* requirement.
+
+#### Scenario: Default state on a device that has never been configured
+
+- **WHEN** a device boots with no display keys present in NVS
+- **THEN** `loadDisplayConfig()` SHALL return `enabled = false`, `rotation = 0`, `interval = 60`, and the panel SHALL never be initialised
+
+#### Scenario: Enabling the display
+
+- **WHEN** an operator enables the display via the settings UI
+- **THEN** the configuration SHALL be persisted, a restart SHALL be scheduled, and after the restart the panel SHALL be initialised and painted
+
+### Requirement: Displayed content
+
+The display SHALL show the current temperature and the current relative
+humidity, sourced from `SensorController` under a single consistent snapshot.
+No other measurement type SHALL be rendered.
+
+The layout SHALL place the temperature as the primary value and the humidity
+below it, with a footer carrying the device name and the current time. The
+value block SHALL occupy the region `(0, 30)` to `(199, 139)`; the footer SHALL
+occupy the region below it.
+
+When a value is unavailable — the sensor snapshot is invalid, or the accessor
+returns `NAN` — the firmware SHALL render a placeholder (`--.-` for temperature,
+`--` for humidity) rather than a stale or zero value.
+
+#### Scenario: Both values available
+
+- **WHEN** the sensor snapshot is valid and reports 21.4 °C and 47 %RH
+- **THEN** the panel SHALL show the temperature to one decimal place and the humidity as a whole number, with the temperature rendered in the larger font
+
+#### Scenario: No sensor attached
+
+- **WHEN** the display is enabled but no sensor is configured, so `getTemperature()` returns `NAN`
+- **THEN** the panel SHALL render the placeholder text rather than a numeric value
+
+#### Scenario: Values are read atomically
+
+- **WHEN** the display gathers the values to render
+- **THEN** it SHALL use `SensorController::getSnapshot()` (or an equivalent single-lock accessor) so temperature, humidity and the validity flag describe the same instant
+
+### Requirement: Refresh policy
+
+The firmware SHALL decide between no refresh, a partial refresh, and a full
+refresh using a pure decision function that takes the temperature, the humidity,
+a validity flag and the current millisecond clock, and returns one of
+`RefreshKind::{None, Partial, Full}`.
+
+The policy SHALL apply, in order:
+
+1. **First paint** — the first evaluation after boot SHALL return `Full`.
+2. **Hysteresis** — a refresh SHALL be considered only when the temperature has
+   moved at least 0.2 °C, or the humidity at least 1.0 %RH, since the last
+   rendered values, or when the validity flag has changed in either direction.
+3. **Minimum interval** — a refresh SHALL NOT occur within
+   `DisplayConfig::interval` seconds of the previous refresh. A change
+   suppressed by this floor SHALL be re-evaluated on subsequent ticks rather
+   than discarded.
+4. **Ghosting** — every 12th consecutive partial refresh SHALL be promoted to a
+   full refresh, resetting the counter.
+
+Elapsed-time comparisons SHALL use unsigned subtraction so the policy behaves
+correctly across the `millis()` rollover.
+
+The decision function SHALL be free of Arduino and FreeRTOS dependencies and
+SHALL be compiled and unit-tested in the `native` PlatformIO environment.
+
+#### Scenario: Noise below the hysteresis threshold
+
+- **WHEN** the temperature moves from 21.44 °C to 21.46 °C and the humidity is unchanged
+- **THEN** the policy SHALL return `None` and the panel SHALL NOT be refreshed
+
+#### Scenario: Change inside the minimum interval
+
+- **WHEN** the temperature has moved 0.5 °C but only 20 seconds have elapsed since the last refresh and `interval` is 60
+- **THEN** the policy SHALL return `None`, and once 60 seconds have elapsed the still-outstanding change SHALL produce a refresh
+
+#### Scenario: Periodic full refresh clears ghosting
+
+- **WHEN** 12 partial refreshes have occurred since the last full refresh and a further refresh is due
+- **THEN** the policy SHALL return `Full` and reset the partial counter
+
+#### Scenario: Validity transition forces a refresh
+
+- **WHEN** the sensor snapshot transitions from valid to invalid, or from invalid to valid
+- **THEN** the change SHALL bypass the value hysteresis check so the panel switches between the reading and the placeholder promptly
+
+#### Scenario: Clock rollover
+
+- **WHEN** `millis()` wraps from near `UINT32_MAX` to a small value between two evaluations
+- **THEN** the minimum-interval check SHALL still compute a correct elapsed time and SHALL NOT suppress refreshes for the following 49 days
+
+### Requirement: Partial refresh window
+
+A `Partial` refresh SHALL update only the value block, `(0, 30)` 200×110, via
+`setPartialWindow()`. The footer SHALL be redrawn only during a `Full` refresh.
+
+#### Scenario: Partial refresh does not flash
+
+- **WHEN** the policy returns `Partial`
+- **THEN** only the value region SHALL be rewritten, without the black/white inversion flash of a full refresh
+
+#### Scenario: Footer staleness is bounded by the full-refresh cadence
+
+- **WHEN** only partial refreshes have occurred since the last full refresh
+- **THEN** the footer clock MAY be stale, and it SHALL be brought current on the next full refresh
+
+### Requirement: Boot splash
+
+When the display is enabled, the firmware SHALL paint a splash screen at the end
+of `setup()` showing the device name and an indication that the device is
+starting, before any sensor reading is available.
+
+#### Scenario: Booting device is visibly distinct from a dead one
+
+- **WHEN** a device with the display enabled powers on
+- **THEN** the panel SHALL show the device name and a "starting" indication within the boot sequence, and SHALL be replaced by the first measurement once a valid sensor snapshot exists
+
+### Requirement: Clear on disable
+
+Because e-paper retains its image without power, disabling the display SHALL
+result in the panel being blanked to white exactly once.
+
+The firmware SHALL persist a `clear_pending` one-shot flag when the display is
+disabled. On boot, when the display is disabled and `clear_pending` is set, the
+firmware SHALL initialise the panel, clear it to white, hibernate it, and then
+clear the flag. When the display is enabled on boot, the flag SHALL be cleared
+without action.
+
+The blanking SHALL NOT be performed inside the HTTP request handler.
+
+#### Scenario: Disabling the display blanks the panel
+
+- **WHEN** an operator disables the display via the settings UI
+- **THEN** the configuration SHALL be saved with `clear_pending` set, a restart SHALL be scheduled, and after the restart the panel SHALL be blank and the flag SHALL be cleared
+
+#### Scenario: Power loss between the save and the blanking
+
+- **WHEN** power is lost after the disable is persisted but before the panel is blanked
+- **THEN** `clear_pending` SHALL still be set in NVS, and the next successful boot SHALL complete the blanking
+
+#### Scenario: Handler is not blocked by the refresh
+
+- **WHEN** `POST /api/display` disables the display
+- **THEN** the request handler SHALL return without performing an e-paper refresh
+
+### Requirement: Refresh runs on the Network task and is suppressed during OTA
+
+The display refresh SHALL be driven from the Network task's one-second loop,
+alongside `StatusLed::update()`. It SHALL be skipped entirely while
+`OTAUpdater::isUpdateInProgress()` is true.
+
+Because a refresh is a blocking external call that can exceed the per-iteration
+budget, the firmware SHALL call `esp_task_wdt_reset()` immediately before and
+immediately after the blocking page loop, per the `system-architecture`
+*FreeRTOS task structure* requirement.
+
+The display SHALL NOT be given its own FreeRTOS task.
+
+#### Scenario: No refresh during an OTA download
+
+- **WHEN** an OTA update is in progress and a value change would otherwise trigger a refresh
+- **THEN** the refresh SHALL be skipped, and the outstanding change SHALL be rendered after the OTA flow completes
+
+#### Scenario: Watchdog is fed around a blocking refresh
+
+- **WHEN** a full refresh blocks for approximately two seconds waiting on the BUSY line
+- **THEN** `esp_task_wdt_reset()` SHALL have been called immediately before the blocking loop and SHALL be called immediately after it, so the 30-second task watchdog is not starved
+
+#### Scenario: Common path does not block
+
+- **WHEN** the refresh policy returns `None`
+- **THEN** the per-second display update SHALL return without touching the SPI bus
+
+### Requirement: BUSY fault guard
+
+The firmware SHALL time each refresh. A refresh exceeding 12000 ms SHALL count
+as a timeout. After 3 consecutive timeouts the display SHALL enter an in-memory
+`faulted` state in which further refresh attempts are skipped until the device
+restarts, and SHALL log the condition once at `ESP_LOGE`. Any successful refresh
+SHALL reset the consecutive-timeout counter.
+
+The firmware SHALL NOT modify the persisted `DisplayConfig` in response to a
+hardware fault.
+
+#### Scenario: Panel is configured but not connected
+
+- **WHEN** the display is enabled but the panel is absent, so the BUSY line never releases
+- **THEN** after three consecutive timed-out refresh attempts the firmware SHALL log an error, stop attempting refreshes, and continue running WiFi, MQTT and sensor reads normally
+
+#### Scenario: Fault does not rewrite configuration
+
+- **WHEN** the display has entered the faulted state
+- **THEN** `GET /api/display` SHALL still report `enabled = true`, and NVS SHALL be unchanged
+
+#### Scenario: Reseated panel recovers on reboot
+
+- **WHEN** a faulted device is restarted with the panel reconnected
+- **THEN** the display SHALL initialise normally and the fault state SHALL be cleared
