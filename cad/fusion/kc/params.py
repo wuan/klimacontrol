@@ -12,9 +12,10 @@ P = {
     # ---- Gira System 55, Standard 55 cover frame -------------------------
     # 55x55 aperture is the System 55 standard.
     "aperture": 55.0,
-    "aperture_clear": 0.4,      # per-side gap of the plug in the aperture
-    "lip_overlap": 1.0,         # lip coverage onto the frame's front face
-    "lip_t": 0.8,
+    # Per-side gap of the plug in the aperture. With no lip this gap is
+    # VISIBLE from the front as a reveal all round, so it is now a cosmetic
+    # dimension as well as a fit one.
+    "aperture_clear": 0.4,
 
     # ---- Waveshare 1.54" e-Paper Module (V2, SSD1681) --------------------
     # The module's long side runs along X: 48 mm wide, 33 mm tall.
@@ -40,7 +41,7 @@ P = {
     # centred on the aperture — which means the PCB and glass pockets are the
     # things that end up off-centre. See the `kc.layout` module docstring.
     "fpc_side": "left",         # ribbon/FPC end, as seen from the front
-    "active_offset": 3.0,       # active-area centre, away from the ribbon end
+    "active_offset": 2.0,       # active-area centre, away from the ribbon end
     "active_offset_y": 0.0,     # MEASURE: same thing on the short side
     # How much of active_offset is absorbed by moving the module. Equal to
     # active_offset puts the image dead centre in the aperture, which is the
@@ -70,12 +71,12 @@ P = {
     #
     # How to measure: caliper hole centre to hole centre along the long side
     # (pitch_x) and the short side (pitch_y), and the hole diameter itself.
-    "disp_hole_pitch_x": 42.0,
-    "disp_hole_pitch_y": 27.0,
-    "disp_hole_dia": 2.2,
+    "disp_hole_pitch_x": 43.0,
+    "disp_hole_pitch_y": 28.0,
+    "disp_hole_dia": 2.5,
     "pin_clear": 0.25,          # diametral, pin to hole. A locating fit, so
                                 # much tighter than the generic `clear`.
-    "pin_h": 1.4,               # under disp_pcb_t (1.6) so a proud pin can
+    "pin_h": 2,                 # under disp_pcb_t (1.6) so a proud pin can
                                 # never hold the PCB off the plug face
 
     "clear": 0.4,               # generic print clearance, per side

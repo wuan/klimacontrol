@@ -8,9 +8,9 @@ from .primitives import CUT, JOIN, NEW, boxc, circ, rect
 
 
 def build(comp, p, g):
-    # Lip, proud of the frame's front face, then the plug filling the aperture.
-    boxc(comp, 0, 0, g["lip"], g["lip"], g["z_lip"], 0.0, NEW)
-    boxc(comp, 0, 0, g["plug"], g["plug"], 0.0, g["z_plug"], JOIN)
+    # The plug, filling the aperture. No lip: the front face sits flush with
+    # the frame's, so the plug is the whole outline.
+    boxc(comp, 0, 0, g["plug"], g["plug"], g["z_front"], g["z_plug"], NEW)
 
     # Pocket for the panel glass, cut into the plug's rear face. The module
     # drops in here glass-first.
@@ -26,7 +26,7 @@ def build(comp, p, g):
     # The viewport. Concentric with the active area by construction, not with
     # the aperture — see the "Centring" section in kc.layout.
     boxc(comp, g["window_dx"], g["window_dy"], p["window"], p["window"],
-         g["z_lip"] - 0.5, g["z_glass0"] + 0.05, CUT)
+         g["z_front"] - 0.5, g["z_glass0"] + 0.05, CUT)
 
     # Rib round the PCB edge, standing off the plug's rear face. Built from
     # whichever sides `_rib_sides` found room for — with the module carried

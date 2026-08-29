@@ -4,9 +4,11 @@ A two-part 3D-printable case that puts the KlimaControl hardware into a
 standard German flush-mount box behind a **Gira System 55** cover frame.
 
 > **Being rebuilt step by step.** `klimacontrol.py` + the `kc/` package is the
-> new, incremental model — currently **the front plate**: lip, plug, glass
-> pocket, ribbon relief, viewport, the PCB locating rib and four pins. Later
-> steps add the antenna pocket, clamp posts and vent grille, then the body.
+> new, incremental model — currently **the front plate**: plug, glass pocket,
+> ribbon relief, viewport, the PCB locating rib and four pins. Later steps add
+> the antenna pocket, clamp posts and vent grille, then the body. Sections 1–3
+> and 5–7 still describe the old one-shot design and disagree in places — the
+> lip, for one, is gone.
 > `klimacontrol_old.py` below is the earlier one-shot script; it stays as
 > reference until the package supersedes it. Where the two disagree the package
 > is right — notably it carries the measured 3 mm active-area offset, which the
@@ -302,8 +304,8 @@ the escape hatch if that turns out badly, at the cost of an off-centre window:
 
 ### Geometry it builds
 
-* Lip 0.8 mm thick, 57 × 57, proud of the frame's front face.
-* Plug 54.2 × 54.2, from the frame's front face to z = 2.20.
+* Plug 54.2 × 54.2 × 3.00, front face **flush** with the frame's at z = 0.
+  There is no lip — see below.
 * Glass pocket 38.2 × 32.6 × 1.4, cut into the plug's rear face, **centred at
   x = +3.00** so the image lands on the aperture centre.
 * Ribbon relief, 2 mm further out on the ribbon end, 26 mm wide.
@@ -318,6 +320,25 @@ the escape hatch if that turns out badly, at the cost of an off-centre window:
 There is deliberately **no pocket for the PCB**. It is 48 × 33 against a
 54.2 mm plug, so it lies flat on the plug's rear face with the glass
 protruding forward into the glass pocket.
+
+### No lip
+
+The plate is a plain plug, front face flush with the frame at z = 0. Nothing
+stands proud, nothing overlaps the frame. Two consequences, both left open for
+the retention/body step and both restated by the script on every run:
+
+* **Nothing holds the plate forward.** The lip used to sandwich the Gira frame
+  against the body flange; without it the plate can be pushed straight through
+  the aperture and there is currently nothing behind it to stop it. It needs a
+  shoulder on the body, a rear flange, or bonding.
+* **`aperture_clear` is now visible.** The 0.4 mm per-side fit gap used to hide
+  under the lip; now it reads as a 0.4 mm reveal all round the plate. It has
+  become a cosmetic dimension, not just a fit one — tighten it if the shadow
+  line bothers you, but remember it is also the insertion clearance.
+
+The Z stack shifted back by the old `lip_t` as a result: glass front face
+z = 1.60 (was 0.80), plug rear face z = 3.00 (was 2.20). Everything downstream
+— rib, pins, placeholders — is derived and moved with it.
 
 ### Rib and pins
 

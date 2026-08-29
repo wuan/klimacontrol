@@ -15,9 +15,11 @@ Coordinate system, used by every component builder:
 
 Z stack through the front plate, front to back:
 
-    z = -lip_t      front face of the lip, proud of the frame
-    z = 0           frame front face
-    z = z_glass0    front face of the panel glass  (front_wall behind the lip)
+    z = 0           frame front face == the plate's own front face. There is
+                    no lip: the plate is a plain plug, flush with the frame,
+                    so nothing of it stands proud and nothing overlaps the
+                    frame. Retention has to come from behind — see `checks`.
+    z = z_glass0    front face of the panel glass, front_wall behind that
     z = z_plug      rear face of the plug == glass pocket floor
 
 Centring
@@ -63,9 +65,8 @@ def geom(p):
     g["window_dy"] = g["active_dy"] + g["module_dy"]
 
     g["plug"] = p["aperture"] - 2 * p["aperture_clear"]
-    g["lip"] = p["aperture"] + 2 * p["lip_overlap"]
-    g["z_lip"] = -p["lip_t"]
-    g["z_glass0"] = g["z_lip"] + p["front_wall"]
+    g["z_front"] = 0.0
+    g["z_glass0"] = g["z_front"] + p["front_wall"]
     g["z_plug"] = g["z_glass0"] + p["disp_glass_t"]
 
     # The glass pocket, with clearance. Several components need it.
@@ -258,6 +259,25 @@ def checks(p, g):
             "module off the plug face"
             .format(p["pin_h"], p["disp_pcb_t"]))
 
+    # --- no lip -----------------------------------------------------------
+    # Worth restating on every run, because it is invisible in the Fusion
+    # viewport: with no lip there is nothing holding the plate forward. It
+    # can be pushed straight through the aperture until something behind it
+    # stops it, and there is nothing behind it yet.
+    out.append(
+        "no lip: nothing stops the plate being pushed into the aperture, and "
+        "the {:.2f} mm aperture_clear is a visible reveal all round. Both are "
+        "for the body/retention step to answer"
+        .format(p["aperture_clear"]))
+
+    # --- image centring ---------------------------------------------------
+    if abs(p["module_carry"] - p["active_offset"]) > 1e-9:
+        out.append(
+            "module_carry {:.2f} != active_offset {:.2f}, so the viewport is "
+            "{:.2f} mm off the aperture centre. Set them equal to centre the "
+            "image".format(p["module_carry"], p["active_offset"],
+                           abs(g["window_dx"])))
+
     # --- the rib ----------------------------------------------------------
     out.extend(g["rib_notes"])
     if len(g["rib_segments"]) < 2:
@@ -300,8 +320,11 @@ def report(p, g):
         .format(side, img,
                 g["plug"] / 2 + g["s"] * g["glass_cx"] - g["glass_w"] / 2,
                 g["plug"] / 2 - g["s"] * g["glass_cx"] - g["glass_w"] / 2),
-        "glass front face at z = {:.2f}, plug rear face at z = {:.2f}"
-        .format(g["z_glass0"], g["z_plug"]),
+        "plug {:.2f} square, front face flush at z = 0 (no lip), rear face at "
+        "z = {:.2f}".format(g["plug"], g["z_plug"]),
+        "visible reveal round the plate: {:.2f} mm per side"
+        .format(p["aperture_clear"]),
+        "glass front face at z = {:.2f}".format(g["z_glass0"]),
         "",
         "rib: {} of 4 sides, {:.2f} mm tall".format(
             len(g["rib_segments"]), p["rib_h"]),
