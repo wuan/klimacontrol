@@ -35,15 +35,17 @@ Three X positions, all derived from that one measurement:
 
     active_dx   where the image sits on the module. A property of the part.
     module_dx   where we put the module = -active_dx, so the image lands on
-                the aperture centre. Scaled by `module_carry`.
-    window_dx   where the hole goes = active_dx + module_dx, by construction,
-                so the window is always concentric with the image. Zero when
-                module_carry == active_offset.
+                the aperture centre.
+    window_dx   where the hole goes = active_dx + module_dx, which is zero.
+                Kept as a sum because it is the invariant the window is built
+                on: the hole goes wherever the image ends up.
 
-How much room the shift has: the module lives BEHIND the plug's rear face, so
-what bounds it is the 55 mm aperture, not the plug's 54.2 mm. At the full 3 mm
-the 48 mm PCB spans -21.0..27.0 against +/-27.5 — it fits, with 0.5 mm to
-spare, and that 0.5 mm is why the locating rib has to be one-sided.
+Y needs none of this: the active area is centred on the module on the short
+side, so active_dy, module_dy and window_dy are all zero.
+
+What the shift costs: the module is carried until its ribbon-side edge runs
+out of room against the rear wall's inner face, and that is why the locating
+rib comes out one-sided.
 """
 
 
@@ -56,11 +58,15 @@ def geom(p):
     g = {}
     g["s"] = s
     g["active_dx"] = s * p["active_offset"]
-    g["active_dy"] = p["active_offset_y"]
-    g["module_dx"] = -s * p["module_carry"]
-    g["module_dy"] = -p["active_offset_y"]
+    # Carry the module by exactly the offset, which is the whole point: the
+    # image ends up on the aperture centre and the pockets end up off it.
+    g["module_dx"] = -g["active_dx"]
+    # Left as a sum rather than a literal 0, because it states the invariant
+    # the window is built on: the hole goes wherever the image ends up.
     g["window_dx"] = g["active_dx"] + g["module_dx"]
-    g["window_dy"] = g["active_dy"] + g["module_dy"]
+
+    # The active area is centred on the module in Y, so nothing moves there.
+    g["active_dy"] = g["module_dy"] = g["window_dy"] = 0.0
 
     g["plug"] = p["aperture"] - 2 * p["aperture_clear"]
     g["z_front"] = 0.0
@@ -85,10 +91,14 @@ def geom(p):
     g["relief"] = (min(x_in, x_out), g["glass_cy"] - p["ribbon_gap"] / 2,
                    max(x_in, x_out), g["glass_cy"] + p["ribbon_gap"] / 2)
 
-    # Everything behind the plug's rear face has to pass through the aperture
-    # with the module already fitted, so this — not the plug — is what bounds
-    # the rib and anything else built back there.
-    g["envelope"] = p["aperture"] / 2 - p["clear"]
+    # Rear wall: the plug's outer face carried rearward as a skirt. Its inner
+    # face is the envelope for everything built behind the plug — module, rib,
+    # pins — which is a tighter and more real bound than the aperture, since
+    # the wall is physically there and the aperture is not.
+    g["wall_outer"] = g["plug"] / 2
+    g["wall_inner"] = g["plug"] / 2 - p["wall_t"]
+    g["z_wall"] = g["z_plug"] + p["wall_h"]
+    g["envelope"] = g["wall_inner"]
 
     # PCB edges with clearance: the rib's inner faces.
     g["pcb_hx"] = p["disp_pcb_w"] / 2 + p["clear"]
@@ -132,7 +142,7 @@ def _rib_sides(p, g):
             width = abs(outer - inner) if sgn * (outer - inner) > 0 else 0.0
             if width < MIN_WALL:
                 notes.append(
-                    "no rib on {}: {:.2f} mm to the aperture wall, need {:.1f}"
+                    "no rib on {}: {:.2f} mm to the rear wall, need {:.1f}"
                     .format(_side(sgn, axis), width, MIN_WALL))
                 continue
             if width < p["rib_w"] - 1e-9:
@@ -161,29 +171,29 @@ def checks(p, g):
     """Report clearances rather than fail, so a tight fit is a decision."""
     out = []
 
-    # --- the module, behind the plug's rear face --------------------------
-    # The reference here is the APERTURE, not the plug. The plug is 54.2 only
-    # because it needs a sliding fit in the 55 mm hole, and it ends at
-    # z_plug; the module sits behind that face, where the nearest thing it
-    # can foul is the aperture wall itself. Measuring the module against the
-    # plug width understates the room by 0.8 mm and wrongly rules out shifts
-    # that in fact fit.
+    # --- the module, inside the rear wall ---------------------------------
+    # The wall is what the module can actually hit, so it is what the module
+    # is measured against — not the aperture, which is 1 mm further out and
+    # no longer the nearest obstacle.
     for axis, ctr, size in (("X", g["module_dx"], p["disp_pcb_w"]),
                             ("Y", g["module_dy"], p["disp_pcb_h"])):
         for sgn in (-1, 1):
-            gap = p["aperture"] / 2 - sgn * ctr - size / 2
+            gap = g["wall_inner"] - sgn * ctr - size / 2
             if gap < 0:
                 out.append(
-                    "module fouls the aperture wall by {:.2f} mm on {}; the "
-                    "faceplate cannot be inserted with the module fitted"
-                    .format(-gap, _side(sgn, axis)))
+                    "module fouls the rear wall by {:.2f} mm on {}; it will "
+                    "not drop into the tray".format(-gap, _side(sgn, axis)))
             elif gap < p["clear"]:
                 out.append(
-                    "module edge is {:.2f} mm from the aperture wall on {} — "
-                    "effectively flush, with no clearance to insert it"
-                    .format(gap, _side(sgn, axis)))
+                    "module edge is {:.2f} mm from the rear wall on {}, less "
+                    "than the {:.2f} mm print clearance"
+                    .format(gap, _side(sgn, axis), p["clear"]))
             # Whether a rib fits in what is left is _rib_sides()' business,
             # reported through g["rib_notes"] below.
+
+    if p["wall_t"] < MIN_WALL:
+        out.append("wall_t {:.2f} is below the {:.1f} mm printable minimum"
+                   .format(p["wall_t"], MIN_WALL))
 
     # --- the glass pocket, cut into the plug ------------------------------
     # This one IS bounded by the plug, because it is a pocket in it.
@@ -257,14 +267,6 @@ def checks(p, g):
             "module off the plug face"
             .format(p["pin_h"], p["disp_pcb_t"]))
 
-    # --- image centring ---------------------------------------------------
-    if abs(p["module_carry"] - p["active_offset"]) > 1e-9:
-        out.append(
-            "module_carry {:.2f} != active_offset {:.2f}, so the viewport is "
-            "{:.2f} mm off the aperture centre. Set them equal to centre the "
-            "image".format(p["module_carry"], p["active_offset"],
-                           abs(g["window_dx"])))
-
     # --- the rib ----------------------------------------------------------
     out.extend(g["rib_notes"])
     if len(g["rib_segments"]) < 2:
@@ -288,27 +290,25 @@ def report(p, g):
         .format(g["module_dx"], g["module_dy"]),
         "viewport centre    x = {:+.2f}  y = {:+.2f}  (model)"
         .format(g["window_dx"], g["window_dy"]),
-        "viewport in the bezel: {}".format(
-            "centred" if abs(g["window_dx"]) < 5e-3 else
-            "{:.2f} mm to the {}".format(
-                abs(g["window_dx"]),
-                img if g["window_dx"] * g["s"] > 0 else side)),
         "bezel border, {} / {}: {:.2f} / {:.2f} mm"
         .format(side, img,
                 p["aperture"] / 2 + g["s"] * g["window_dx"] - p["window"] / 2,
                 p["aperture"] / 2 - g["s"] * g["window_dx"] - p["window"] / 2),
         "reveal round the active area: {:.2f} mm/side".format(reveal),
         "",
-        "module to aperture wall, {} / {}: {:.2f} / {:.2f} mm"
+        "module to rear wall, {} / {}: {:.2f} / {:.2f} mm"
         .format(side, img,
-                p["aperture"] / 2 + g["s"] * g["module_dx"] - p["disp_pcb_w"] / 2,
-                p["aperture"] / 2 - g["s"] * g["module_dx"] - p["disp_pcb_w"] / 2),
+                g["wall_inner"] + g["s"] * g["module_dx"] - p["disp_pcb_w"] / 2,
+                g["wall_inner"] - g["s"] * g["module_dx"] - p["disp_pcb_w"] / 2),
         "plug wall beside the glass pocket, {} / {}: {:.2f} / {:.2f} mm"
         .format(side, img,
                 g["plug"] / 2 + g["s"] * g["glass_cx"] - g["glass_w"] / 2,
                 g["plug"] / 2 - g["s"] * g["glass_cx"] - g["glass_w"] / 2),
         "plug {:.2f} square, front face flush at z = 0 (no lip), rear face at "
         "z = {:.2f}".format(g["plug"], g["z_plug"]),
+        "rear wall {:.2f} thick, z = {:.2f}..{:.2f}, clear interior {:.2f} "
+        "square".format(p["wall_t"], g["z_plug"], g["z_wall"],
+                        2 * g["wall_inner"]),
         "visible reveal round the plate: {:.2f} mm per side"
         .format(p["aperture_clear"]),
         "glass front face at z = {:.2f}".format(g["z_glass0"]),

@@ -12,6 +12,16 @@ def build(comp, p, g):
     # the frame's, so the plug is the whole outline.
     boxc(comp, 0, 0, g["plug"], g["plug"], g["z_front"], g["z_plug"], NEW)
 
+    # Rear wall: the plug's outer face carried rearward as a skirt, turning
+    # the plate into a shallow tray. Built as four rectangles rather than an
+    # outer box minus an inner cut, because that cut would span the whole
+    # interior and would swallow the rib and the pins if it ever ran after
+    # them. Four joins are order-independent.
+    o, i = g["wall_outer"], g["wall_inner"]
+    for x0, y0, x1, y1 in ((-o, i, o, o), (-o, -o, o, -i),
+                           (-o, -i, -i, i), (i, -i, o, i)):
+        rect(comp, x0, y0, x1, y1, g["z_plug"], g["z_wall"], JOIN)
+
     # Pocket for the panel glass, cut into the plug's rear face. The module
     # drops in here glass-first.
     boxc(comp, g["glass_cx"], g["glass_cy"], g["glass_w"], g["glass_h"],

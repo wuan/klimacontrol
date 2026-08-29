@@ -4,15 +4,16 @@ A two-part 3D-printable case that puts the KlimaControl hardware into a
 standard German flush-mount box behind a **Gira System 55** cover frame.
 
 > **Being rebuilt step by step.** `klimacontrol.py` + the `kc/` package is the
-> new, incremental model — currently **the front plate**: plug, glass pocket,
-> ribbon relief, viewport, the PCB locating rib and four pins. Later steps add
-> the antenna pocket, clamp posts and vent grille, then the body. Sections 1–3
-> and 5–7 still describe the old one-shot design and disagree in places — the
-> lip, for one, is gone.
-> `klimacontrol_old.py` below is the earlier one-shot script; it stays as
-> reference until the package supersedes it. Where the two disagree the package
-> is right — notably it carries the measured 3 mm active-area offset, which the
-> old script has as `0.0`.
+> new, incremental model — currently **the front plate**: plug, rear wall,
+> glass pocket, ribbon relief, viewport, the PCB locating rib and four pins.
+> Later steps add the antenna pocket, clamp posts and vent grille, then the
+> body.
+>
+> `klimacontrol_old.py` below is the earlier one-shot script, kept as
+> reference. Sections 1–3 and 5–7 still describe **its** design and disagree
+> with the package in places — the lip is gone, the frame is no longer clamped
+> by it, and the active-area offset the old script has as `0.0` is 2 mm.
+> Where the two disagree, the package is right.
 >
 > See [Installing into Fusion](#installing-into-fusion),
 > [§4a The front plate](#4a-the-front-plate) and
@@ -254,86 +255,83 @@ builds one component, `faceplate`, plus a `ph_display` stand-in when
 `PLACEHOLDERS = True`, and reports where everything landed in the completion
 dialog and in `~/klimacontrol_cad_log.txt`.
 
-### The measurement
+The plate is a shallow tray: a flush plug filling the aperture, a 1 mm skirt
+carried rearward from its edge, and the display module dropped in from behind.
+
+### Geometry it builds
+
+| Feature | Extent | z |
+|---|---|---|
+| Plug | 54.60 square | 0.00 … 3.00 |
+| Rear wall | 1.00 thick, interior 52.60 square | 3.00 … 13.00 |
+| Glass pocket | 38.2 × 32.6, centre x = **+2.00** | 1.60 … 3.00 |
+| Ribbon relief | 3.0 out past the pocket, 22.0 wide | 1.60 … 3.00 |
+| Viewport | 29 × 29, **centred** | through the 1.6 front wall |
+| Locating rib | 1.7 thick, **3 of 4 sides** | 3.00 … 5.40 |
+| Locating pins | 4 × Ø2.25 | 3.00 … 5.00 |
+
+There is deliberately **no pocket for the PCB**. It is 48 × 33 inside a
+52.60 mm tray, so it lies flat on the plug's rear face with the glass
+protruding forward into the glass pocket.
+
+### Centring the image
 
 The PCB and the panel glass are **centred on each other**. What is off-centre
-is the **active area on the glass**: it sits **3 mm away from the ribbon/FPC
-end**, along the module's **long (48 mm) side**.
+is the **active area on the glass**: `active_offset` (2 mm) away from the
+ribbon end, along the module's long side.
 
 The image is the only part of this build the room ever looks at, so the image
-is what gets centred on the aperture. That means **the pockets are the things
-that come out off-centre** — by exactly the same 3 mm, and in the opposite
-direction:
+is what gets centred. That means **the pockets are what come out off-centre**,
+by exactly the same amount and in the opposite direction:
 
 | | position | note |
 |---|---|---|
 | viewport | **centred**, border 13.00 mm all round | the visible result |
-| glass pocket | **3 mm off**, centre at x = +3.00 | 5.0 mm of plug wall left on the crowded side |
-| module PCB | **3 mm off**, centre at x = +3.00 | 0.5 mm to the aperture wall on the crowded side |
+| glass pocket | 2 mm off, centre x = +2.00 | 6.20 mm of plug wall on the crowded side |
+| module PCB | 2 mm off, centre x = +2.00 | 0.30 mm to the rear wall on the crowded side |
 
-With the ribbon end on the **left** as seen from the front, the image sits 3 mm
-to the *right* of module centre, so the module is carried 3 mm to the *left*
-and the crowded side is the left one. The script prints all of this on every
-run.
+With the ribbon end on the **left** as seen from the front, the image sits 2 mm
+to the *right* of module centre, so the module is carried 2 mm to the *left*
+and the crowded side is the left one.
 
-### How much room the shift has
-
-The module lives **behind** the plug's rear face (z = 2.20), so what bounds it
-is the **55 mm aperture**, not the plug's 54.2 mm — the plug is undersized only
-because *it* needs a sliding fit in the hole. At the full 3 mm the 48 mm PCB
-spans −21.0…27.0 against ±27.5: it fits, with **0.5 mm** to spare.
-
-The glass pocket is a different case — it *is* cut into the plug, so it is
-bounded by the 54.2 mm. At 37.4 + 0.8 mm wide and 3 mm off centre it leaves
-5.0 mm of wall, which is plenty.
-
-That 0.5 mm is the one real consequence, and the script warns about it:
-
-> 0.50 mm from the module to the aperture wall on +X — too little for a
-> printable rib (0.10 mm after clearance, need 0.8), so the module has to be
-> located from the other three sides
-
-Not an error — it is the constraint step 2 designs around. The rib will be
-one-sided: the roomy side plus top and bottom corner tabs. `module_carry` is
-the escape hatch if that turns out badly, at the cost of an off-centre window:
+**One parameter drives all of it.** `active_offset` describes the *part*; the
+module is carried by exactly its negative, and the viewport goes wherever the
+image ends up:
 
 ```python
-"module_carry": 3.0,   # == active_offset: image dead centre
-                       # 0.0: module centred instead, window 3 mm off
+g["active_dx"] = s * p["active_offset"]
+g["module_dx"] = -g["active_dx"]
+g["window_dx"] = g["active_dx"] + g["module_dx"]   # 0, by construction
 ```
 
-### Geometry it builds
+`window_dx` is kept as that sum rather than written as `0.0` because it states
+the invariant: change how the module is placed and the hole follows, instead of
+silently staying put. There is no Y equivalent — the active area is centred on
+the module on the short side, so `active_dy`, `module_dy` and `window_dy` are
+all zero.
 
-* Plug 54.2 × 54.2 × 3.00, front face **flush** with the frame's at z = 0.
-  There is no lip — see below.
-* Glass pocket 38.2 × 32.6 × 1.4, cut into the plug's rear face, **centred at
-  x = +3.00** so the image lands on the aperture centre.
-* Ribbon relief, 2 mm further out on the ribbon end, 26 mm wide.
-* Viewport 29 × 29, cut through the remaining **1.6 mm** front wall,
-  concentric with the active area by construction (`window_dx` is derived,
-  never typed) — which at `module_carry = 3.0` means dead centre.
-* **Locating rib**, 1.7 mm thick × 2.4 mm tall, standing off the plug's rear
-  face with `clear` (0.4 mm) per side to the PCB.
-* **Four locating pins**, Ø1.95 × 1.4 mm, through the module's own mounting
-  holes.
+### The rear wall
 
-There is deliberately **no pocket for the PCB**. It is 48 × 33 against a
-54.2 mm plug, so it lies flat on the plug's rear face with the glass
-protruding forward into the glass pocket.
+`wall_t` × `wall_h` = 1 × 10 mm, continuing the plug's outer face rearward from
+z = 3.00 to z = 13.00 — 1.6 mm past the frame's rear face, into the box. The
+height is provisional.
+
+Its **inner face is now the envelope** for everything built behind the plug —
+module, rib, pins. That is a tighter and more honest bound than the aperture,
+which is 1 mm further out and no longer the nearest thing anything can hit.
+
+It is built as **four rectangles, not an outer box minus an inner cut**. The
+inner cut would span the whole interior, so it would swallow the rib and the
+pins if feature order ever changed. Four joins are order-independent.
 
 ### No lip
 
 The plate is a plain plug, front face flush with the frame at z = 0. Nothing
-stands proud, nothing overlaps the frame. Retention comes from the body, not
-from the plate.
+stands proud, nothing overlaps the frame. Retention comes from the body.
 
-One dimension changed job: `aperture_clear` used to hide under the lip, and now
-reads as a 0.4 mm reveal all round the plate. It is cosmetic as well as a fit
-clearance.
-
-The Z stack shifted back by the old `lip_t`: glass front face z = 1.60 (was
-0.80), plug rear face z = 3.00 (was 2.20). Everything downstream — rib, pins,
-placeholders — is derived and moved with it.
+One dimension changed job: `aperture_clear` used to hide under the lip and now
+reads as a **0.20 mm reveal all round** the plate. It is cosmetic as well as a
+fit clearance.
 
 ### Rib and pins
 
@@ -347,53 +345,65 @@ The two do different jobs, and the split is deliberate:
   fighting the pins for the same job. Two features both trying to locate the
   same part to different tolerances is how printed parts crack.
 
-The pins are 1.4 mm tall against a 1.6 mm PCB — deliberately under, because a
-proud pin would hold the module off the plug face and let it rock. The rib at
-2.4 mm stands 0.8 mm past the PCB's rear face, which is what the body's
-standoff pads will press against later.
+The rib at 2.4 mm stands 0.8 mm past the PCB's rear face, which is what the
+body's standoff pads will press against later.
 
 **The rib is three-sided.** `_rib_sides()` drops any side with less than a
-printable wall (0.8 mm) between the PCB and the aperture, and at the full 3 mm
-shift the ribbon side has 0.00 mm. The script says so:
+printable wall (0.8 mm) between the PCB and the rear wall, and the ribbon side
+has 0.00 mm. That is the side the ribbon folds around anyway, so it costs
+nothing here.
 
-> no rib on +X: 0.00 mm to the aperture wall, need 0.8
+### ⚠ Open items
 
-That is the side the ribbon has to fold around anyway, so it costs nothing
-here. Lower `module_carry` and the side reappears — at the price of an
-off-centre window.
+Three warnings the script prints on every run. None is a bug in the script;
+each is a decision that has not been made yet.
+
+```
+- module edge is 0.30 mm from the rear wall on +X, less than the 0.40 mm print clearance
+- pin_h 2.00 >= PCB thickness 1.60; a proud pin will hold the module off the plug face
+- no rib on +X: 0.00 mm to the rear wall, need 0.8
+```
+
+1. **0.30 mm module-to-wall.** It physically fits, but with less slack than
+   anything else in the model is printed to. Buying room means a thinner
+   `wall_t` or a smaller `aperture_clear`.
+2. **`pin_h` 2.00 against a 1.6 mm PCB.** The pins stand 0.4 mm proud, so the
+   module rests on the pin tips and can rock. Either drop `pin_h` below 1.6, or
+   accept it if something else is going to clamp the board flat.
+3. **No rib on the ribbon side.** Expected, and harmless — see above.
 
 ### ⚠ The hole positions are estimates, not data
 
-`disp_hole_pitch_x`, `disp_hole_pitch_y` and `disp_hole_dia` are **guesses**
-(42.0 / 27.0 / 2.2 mm, i.e. 3 mm corner insets and M2 clearance). Waveshare
-does not dimension the mounting holes in the wiki drawing and I had nothing
-to measure against.
+`disp_hole_pitch_x`, `disp_hole_pitch_y` and `disp_hole_dia` are **guesses**.
+Waveshare does not dimension the mounting holes in the wiki drawing and there
+was nothing to measure against.
 
 Locating pins on the wrong pitch are **worse than no pins at all** — they hold
 the module off the plug face and it rocks on them. Caliper the real board and
 set all three before printing:
 
 ```python
-"disp_hole_pitch_x": 42.0,   # hole centre to hole centre, long side
-"disp_hole_pitch_y": 27.0,   # ditto, short side
-"disp_hole_dia":      2.2,   # the hole itself; pin is this minus pin_clear
+"disp_hole_pitch_x": 43.0,   # hole centre to hole centre, long side
+"disp_hole_pitch_y": 28.0,   # ditto, short side
+"disp_hole_dia":      2.5,   # the hole itself; pin is this minus pin_clear
 ```
 
 The script checks what it can — that each pin stands on solid plug rather than
 over the glass pocket (where there is no material at all and the pin would
-extrude into thin air), that the pins sit inside the PCB outline and the
-aperture, and that `pin_h < disp_pcb_t`. It cannot check the one thing that
-matters, which is whether the pitch matches your board.
+extrude into thin air), that the pins sit inside the PCB outline and the tray,
+and that `pin_h < disp_pcb_t`. It cannot check the one thing that matters,
+which is whether the pitch matches your board.
 
 ### Still MEASURE
 
 | Key | Default | What to measure |
 |---|---|---|
-| `disp_hole_pitch_x/y` | 42.0 / 27.0 | **Estimates.** Mounting-hole centres on the PCB. See the warning above. |
-| `disp_hole_dia` | 2.2 | **Estimate.** The mounting hole itself; the pin is this minus `pin_clear`. |
-| `disp_glass_dx/dy` | 0.0 | Glass centre relative to the PCB centre — believed to be 0, i.e. concentric. Only sizes and places the glass pocket; does not move the window. |
-| `active_offset_y` | 0.0 | Whether the active area is also off-centre on the module's **short** side. Y has 11.0 mm of module travel, so anything plausible fits. |
-| `front_wall` | 1.6 | Taste, not a measurement — it sets how deep the window reveal looks. |
+| `disp_hole_pitch_x/y` | 43.0 / 28.0 | **Estimates.** Mounting-hole centres on the PCB. See above. |
+| `disp_hole_dia` | 2.5 | **Estimate.** The hole itself; the pin is this minus `pin_clear`. |
+| `active_offset` | 2.0 | Active-area centre relative to the module centre, along the long side. Drives the whole centring chain. |
+| `disp_glass_dx/dy` | 0.0 | Glass centre relative to the PCB centre — believed concentric. Only places the glass pocket; does not move the window. |
+| `front_wall` | 1.6 | Taste, not a measurement — it sets how deep the viewport reveal looks. |
+| `wall_h` | 10.0 | Provisional. |
 
 ## 4b. Layout of the model
 

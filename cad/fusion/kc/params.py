@@ -40,14 +40,18 @@ P = {
     # side. The image is what the room looks at, so the image is what gets
     # centred on the aperture — which means the PCB and glass pockets are the
     # things that end up off-centre. See the `kc.layout` module docstring.
+    # The module is carried by exactly this much, in the opposite direction,
+    # so the image lands dead centre. There is no Y equivalent: the active
+    # area is centred on the module on the short side.
     "fpc_side": "left",         # ribbon/FPC end, as seen from the front
     "active_offset": 2.0,       # active-area centre, away from the ribbon end
-    "active_offset_y": 0.0,     # MEASURE: same thing on the short side
-    # How much of active_offset is absorbed by moving the module. Equal to
-    # active_offset puts the image dead centre in the aperture, which is the
-    # point of the exercise; lower it only to buy material back on the
-    # crowded side, at the cost of an off-centre window.
-    "module_carry": 2.0,
+
+    # ---- rear wall --------------------------------------------------------
+    # A skirt continuing the plug's outer face rearward, so the plate becomes
+    # a shallow tray rather than a flat disc. Its inner face is what now
+    # bounds everything behind the plug — module, rib, pins.
+    "wall_t": 1.0,
+    "wall_h": 10.0,             # provisional
 
     "window": 29.0,             # 27.6 active + 0.7 reveal per side
     "front_wall": 1.6,          # material between the room and the glass
