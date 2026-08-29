@@ -69,7 +69,6 @@ P = {
     "plug_wall": 1.7,           # plug thickness behind the lip
     "rib_h": 2.4,               # height of the PCB-locating rib
     "rib_w": 1.7,               # rib wall thickness
-    "header_gap": 30.0,         # rib omitted here for the 8-pin header
     "ribbon_gap": 32.0,         # rib omitted on -Y for the FPC fold, but
                                 # corner tabs remain so the module cannot
                                 # drop: gravity acts along -Y once installed
@@ -81,7 +80,16 @@ P = {
     "disp_header_h": 8.5,       # rearward: 2.5 body + 6 pin
     "disp_header_cy": 14.3,     # centre, near the PCB's +Y edge
 
-    # ---- Adafruit QT Py ESP32-S2 (5325) ---------------------------------
+    # ---- uFL antenna, Adafruit 2308 -------------------------------------
+    # The uFL board (5348) has NO onboard antenna, so this is mandatory.
+    # MEASURE if you use a different antenna: many are 45 x 7 or 21 x 7.
+    "ant_w": 40.0,              # flexible FPC antenna, 40 x 8 mm
+    "ant_h": 8.0,
+    "ant_clear": 0.4,
+    "ant_cy": 21.8,             # centred in the strip above the display
+    "ant_depth": 1.2,           # pocket depth: antenna + adhesive pad
+
+    # ---- Adafruit QT Py ESP32-S2 with uFL (5348) ------------------------
     "qt_w": 21.8,               # 21.8 x 17.9 x 5.7 mm, no mounting holes
     "qt_h": 17.9,
     "qt_t": 1.6,
@@ -124,7 +132,10 @@ P = {
     "divider_t": 2.0,
 
     # ---- clamp screws, faceplate <-> body --------------------------------
-    "clamp_xy": 23.0,           # posts at (+-23, +-23), clear of everything
+    # Pushed out in X so the antenna pocket clears the posts; Y is set by the
+    # display module, which the posts must miss.
+    "clamp_x": 23.8,
+    "clamp_y": 23.0,
     "post_od": 5.0,
     "post_tap": 2.05,           # M2.5 self-tapping pilot
     "post_tap_depth": 7.0,
@@ -197,6 +208,12 @@ def slot_x(comp, cx, cy, length, width, z0, z1, op):
     circ(comp, cx + flat / 2, cy, width, z0, z1, op)
 
 
+def clamp_points(p):
+    """The four faceplate/body clamp positions. Shared so they cannot drift."""
+    return [(sx * p["clamp_x"], sy * p["clamp_y"])
+            for sx in (-1, 1) for sy in (-1, 1)]
+
+
 def add_component(root, name):
     occ = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
     occ.component.name = name
@@ -235,10 +252,12 @@ def build_faceplate(comp, p):
     boxc(comp, p["disp_active_dx"], p["disp_active_dy"],
          p["window"], p["window"], z_lip - 0.5, z_win + 0.05, CUT)
 
-    # rib that locates the module PCB: two full long sides, a split top side
-    # leaving a gap for the 8-pin header, and two bottom corner tabs. The
-    # bottom tabs carry the module's weight, so the -Y edge cannot be left
-    # fully open even though the FPC folds around it.
+    # Rib locating the module PCB: two full long sides plus two bottom corner
+    # tabs. The bottom tabs carry the module's weight, so the -Y edge cannot
+    # be left fully open even though the FPC folds around it. There is
+    # deliberately no rib on +Y: gravity holds the module down onto the bottom
+    # tabs, so a top rib locates nothing, and the whole top strip is needed
+    # for the antenna pocket.
     pw = p["disp_pcb_w"] + 2 * p["clear"]
     ph = p["disp_pcb_h"] + 2 * p["clear"]
     rw = p["rib_w"]
@@ -247,19 +266,22 @@ def build_faceplate(comp, p):
         rect(comp, sx * (pw / 2), -ph / 2, sx * (pw / 2 + rw), ph / 2,
              z_plug, z_rib, JOIN)
     for sx in (-1, 1):
-        rect(comp, sx * p["header_gap"] / 2, ph / 2,
-             sx * (pw / 2 + rw), ph / 2 + rw, z_plug, z_rib, JOIN)
-    for sx in (-1, 1):
         rect(comp, sx * p["ribbon_gap"] / 2, -ph / 2,
              sx * (pw / 2 + rw), -ph / 2 - rw, z_plug, z_rib, JOIN)
 
+    # Pocket for the uFL antenna, in the rear face of the top strip. This is
+    # the best RF real estate in the build: ~2 mm of plastic to the room,
+    # clear of the module's ground plane, and outside the flush box. The
+    # cable drops into the flange's wire slot directly below.
+    boxc(comp, 0, p["ant_cy"], p["ant_w"] + 2 * p["ant_clear"],
+         p["ant_h"] + 2 * p["ant_clear"],
+         z_plug - p["ant_depth"], z_plug, CUT)
+
     # clamp posts, tapped for M2.5 from the rear
-    c = p["clamp_xy"]
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            circ(comp, sx * c, sy * c, p["post_od"], z_plug, z_frame_rear, JOIN)
-            circ(comp, sx * c, sy * c, p["post_tap"],
-                 z_frame_rear - p["post_tap_depth"], z_frame_rear + 0.05, CUT)
+    for cx, cy in clamp_points(p):
+        circ(comp, cx, cy, p["post_od"], z_plug, z_frame_rear, JOIN)
+        circ(comp, cx, cy, p["post_tap"],
+             z_frame_rear - p["post_tap_depth"], z_frame_rear + 0.05, CUT)
 
     # vent grille: vertical slots feeding the sensor duct behind the flange
     n = p["vent_slot_n"]
@@ -293,10 +315,8 @@ def build_body(comp, p):
 
     # M2.5 clamp holes, aligned with the faceplate posts. They sit outside
     # the shell, so the screws stay reachable from inside the box.
-    c = p["clamp_xy"]
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            circ(comp, sx * c, sy * c, p["clamp_free"], *through, CUT)
+    for cx, cy in clamp_points(p):
+        circ(comp, cx, cy, p["clamp_free"], *through, CUT)
 
     # grille into the sensor duct, x extent kept inside the shell bore
     for gy in p["grille_ys"]:
@@ -385,6 +405,11 @@ def build_placeholders(root, p):
     # the 8-pin header, the one feature that has to pass through the flange
     boxc(comp, 0, p["disp_header_cy"], p["disp_header_w"], p["disp_header_t"],
          z_pcb1, z_pcb1 + p["disp_header_h"], NEW)
+
+    # --- uFL antenna, in the faceplate pocket -----------------------------
+    comp = add_component(root, "ph_antenna")
+    boxc(comp, 0, p["ant_cy"], p["ant_w"], p["ant_h"],
+         z_plug - p["ant_depth"], z_plug - p["ant_depth"] + 0.4, NEW)
 
     # --- QT Py ESP32-S2, in its card slot --------------------------------
     comp = add_component(root, "ph_qtpy")
