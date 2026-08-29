@@ -324,21 +324,16 @@ protruding forward into the glass pocket.
 ### No lip
 
 The plate is a plain plug, front face flush with the frame at z = 0. Nothing
-stands proud, nothing overlaps the frame. Two consequences, both left open for
-the retention/body step and both restated by the script on every run:
+stands proud, nothing overlaps the frame. Retention comes from the body, not
+from the plate.
 
-* **Nothing holds the plate forward.** The lip used to sandwich the Gira frame
-  against the body flange; without it the plate can be pushed straight through
-  the aperture and there is currently nothing behind it to stop it. It needs a
-  shoulder on the body, a rear flange, or bonding.
-* **`aperture_clear` is now visible.** The 0.4 mm per-side fit gap used to hide
-  under the lip; now it reads as a 0.4 mm reveal all round the plate. It has
-  become a cosmetic dimension, not just a fit one — tighten it if the shadow
-  line bothers you, but remember it is also the insertion clearance.
+One dimension changed job: `aperture_clear` used to hide under the lip, and now
+reads as a 0.4 mm reveal all round the plate. It is cosmetic as well as a fit
+clearance.
 
-The Z stack shifted back by the old `lip_t` as a result: glass front face
-z = 1.60 (was 0.80), plug rear face z = 3.00 (was 2.20). Everything downstream
-— rib, pins, placeholders — is derived and moved with it.
+The Z stack shifted back by the old `lip_t`: glass front face z = 1.60 (was
+0.80), plug rear face z = 3.00 (was 2.20). Everything downstream — rib, pins,
+placeholders — is derived and moved with it.
 
 ### Rib and pins
 

@@ -15,7 +15,7 @@ P = {
     # Per-side gap of the plug in the aperture. With no lip this gap is
     # VISIBLE from the front as a reveal all round, so it is now a cosmetic
     # dimension as well as a fit one.
-    "aperture_clear": 0.4,
+    "aperture_clear": 0.2,
 
     # ---- Waveshare 1.54" e-Paper Module (V2, SSD1681) --------------------
     # The module's long side runs along X: 48 mm wide, 33 mm tall.
@@ -47,7 +47,7 @@ P = {
     # active_offset puts the image dead centre in the aperture, which is the
     # point of the exercise; lower it only to buy material back on the
     # crowded side, at the cost of an off-centre window.
-    "module_carry": 3.0,
+    "module_carry": 2.0,
 
     "window": 29.0,             # 27.6 active + 0.7 reveal per side
     "front_wall": 1.6,          # material between the room and the glass
@@ -79,5 +79,5 @@ P = {
     "pin_h": 2,                 # under disp_pcb_t (1.6) so a proud pin can
                                 # never hold the PCB off the plug face
 
-    "clear": 0.4,               # generic print clearance, per side
+    "clear": 0.4,               # generixc print clearance, per side
 }

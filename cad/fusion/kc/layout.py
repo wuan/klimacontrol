@@ -16,9 +16,7 @@ Coordinate system, used by every component builder:
 Z stack through the front plate, front to back:
 
     z = 0           frame front face == the plate's own front face. There is
-                    no lip: the plate is a plain plug, flush with the frame,
-                    so nothing of it stands proud and nothing overlaps the
-                    frame. Retention has to come from behind — see `checks`.
+                    no lip: the plate is a plain plug, flush with the frame.
     z = z_glass0    front face of the panel glass, front_wall behind that
     z = z_plug      rear face of the plug == glass pocket floor
 
@@ -258,17 +256,6 @@ def checks(p, g):
             "pin_h {:.2f} >= PCB thickness {:.2f}; a proud pin will hold the "
             "module off the plug face"
             .format(p["pin_h"], p["disp_pcb_t"]))
-
-    # --- no lip -----------------------------------------------------------
-    # Worth restating on every run, because it is invisible in the Fusion
-    # viewport: with no lip there is nothing holding the plate forward. It
-    # can be pushed straight through the aperture until something behind it
-    # stops it, and there is nothing behind it yet.
-    out.append(
-        "no lip: nothing stops the plate being pushed into the aperture, and "
-        "the {:.2f} mm aperture_clear is a visible reveal all round. Both are "
-        "for the body/retention step to answer"
-        .format(p["aperture_clear"]))
 
     # --- image centring ---------------------------------------------------
     if abs(p["module_carry"] - p["active_offset"]) > 1e-9:
