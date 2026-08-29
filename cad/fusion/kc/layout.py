@@ -78,6 +78,14 @@ def geom(p):
     # `s` points away from the image.
     g["fpc_sign"] = -s
 
+    # Ribbon relief: reaches from just inside the glass pocket's ribbon edge
+    # out past it, so the FPC can fold around the glass. Starting 0.1 inside
+    # makes the two cuts overlap rather than merely touch.
+    x_in = g["glass_cx"] + g["fpc_sign"] * (g["glass_w"] / 2 - 0.1)
+    x_out = x_in + g["fpc_sign"] * p["ribbon_relief"]
+    g["relief"] = (min(x_in, x_out), g["glass_cy"] - p["ribbon_gap"] / 2,
+                   max(x_in, x_out), g["glass_cy"] + p["ribbon_gap"] / 2)
+
     # Everything behind the plug's rear face has to pass through the aperture
     # with the module already fitted, so this — not the plug — is what bounds
     # the rib and anything else built back there.
@@ -192,6 +200,20 @@ def checks(p, g):
                 out.append(
                     "only {:.2f} mm of plug wall left beside the glass pocket "
                     "on {}".format(gap, _side(sgn, axis)))
+
+    # --- the ribbon relief ------------------------------------------------
+    # It is a pocket in the plug too, so it is bounded by the plug. Reaching
+    # the plug's edge would open the aperture wall and show a slot from the
+    # side of the installed plate.
+    rx0, ry0, rx1, ry1 = g["relief"]
+    for name, v in (("+X", rx1), ("-X", -rx0), ("+Y", ry1), ("-Y", -ry0)):
+        gap = g["plug"] / 2 - v
+        if gap < 0:
+            out.append("ribbon relief breaks out of the plug on {} by "
+                       "{:.2f} mm".format(name, -gap))
+        elif gap < MIN_WALL:
+            out.append("only {:.2f} mm of plug left beyond the ribbon relief "
+                       "on {}".format(gap, name))
 
     # The window is cut through the wall left by the glass pocket, so it has
     # to stay inside that pocket or it breaks out through the plug face.

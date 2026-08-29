@@ -50,8 +50,8 @@ P = {
 
     "window": 29.0,             # 27.6 active + 0.7 reveal per side
     "front_wall": 1.6,          # material between the room and the glass
-    "ribbon_relief": 2.0,       # extra pocket for the FPC fold
-    "ribbon_gap": 26.0,         # width of that relief, along the FPC edge
+    "ribbon_relief": 3.0,       # how far past the glass pocket it reaches
+    "ribbon_gap": 22.0,         # width of that relief, along the FPC edge
 
     # ---- locating the module PCB -----------------------------------------
     # A rib round the PCB edge, plus four pins through the module's own

@@ -18,14 +18,10 @@ def build(comp, p, g):
          g["z_glass0"], g["z_plug"], CUT)
 
     # Relief so the FPC can fold around the module's edge, on the same end as
-    # the header. Only as wide as ribbon_gap, so material is left further out
-    # for the locating features a later step adds.
-    fs = g["fpc_sign"]
-    x_edge = g["glass_cx"] + fs * (g["glass_w"] / 2 - 0.1)  # 0.1 back into the
-    # pocket, so the two cuts overlap instead of merely touching
-    rect(comp, x_edge, g["glass_cy"] - p["ribbon_gap"] / 2,
-         x_edge + fs * p["ribbon_relief"], g["glass_cy"] + p["ribbon_gap"] / 2,
-         g["z_glass0"], g["z_plug"], CUT)
+    # the ribbon. Only as wide as ribbon_gap, so material is left either side
+    # of it for the rib's corners. Extents come from kc.layout, which checks
+    # them against the plug.
+    rect(comp, *g["relief"], g["z_glass0"], g["z_plug"], CUT)
 
     # The viewport. Concentric with the active area by construction, not with
     # the aperture — see the "Centring" section in kc.layout.
