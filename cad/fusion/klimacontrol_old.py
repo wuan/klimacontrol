@@ -58,12 +58,37 @@ P = {
     "disp_glass_w": 37.4,       # panel glass outline
     "disp_glass_h": 31.8,
     "disp_glass_t": 1.4,        # pocket depth for the glass
-    # MEASURE: glass centre and active-area centre, both relative to the PCB
-    # centre. The FPC leaves one edge of the glass, so neither is centred.
-    "disp_glass_dx": 0.0,
+    # MEASURE: the module is off-centre twice over, and the two offsets are
+    # measured against DIFFERENT references. They chain:
+    #
+    #   PCB centre --disp_glass_d*--> glass centre
+    #               --disp_active_in_glass_d*--> active-area centre
+    #
+    # so the image sits at (disp_glass_d* + disp_active_in_glass_d*) from the
+    # PCB centre. That sum is what disp_active_offset() returns, and it is
+    # the only thing that decides where the module goes. Setting either one
+    # alone is meaningful: a glass that is off-centre on the PCB shifts the
+    # module even if the image is dead centre on the glass.
+    #
+    # None of this moves the viewing window. The window is what the room
+    # sees, so it stays square on the aperture centre; the *module* is
+    # carried by -disp_active_offset() until the image lands on that centre.
+    # Everything locating the module moves with it: glass pocket, FPC relief,
+    # rib, standoff pads, flange header slot. See disp_shift().
+    #
+    # Sign: model +X appears to the LEFT with the faceplate viewed from the
+    # front, because +Z runs rearward into the wall. An image sitting to the
+    # right in the bezel is therefore at a negative total offset, and the
+    # module gets carried towards +X to correct it.
+    #
+    # Measure disp_glass_d* as (left PCB-edge-to-glass gap minus the right
+    # one) / 2, and disp_active_in_glass_d* the same way from the glass edges
+    # to the image. Both default to 0, i.e. a perfectly centred module, which
+    # no real one is.
+    "disp_glass_dx": 2.0,
     "disp_glass_dy": 0.0,
-    "disp_active_dx": 0.0,
-    "disp_active_dy": 0.0,
+    "disp_active_in_glass_dx": 0.0,
+    "disp_active_in_glass_dy": 0.0,
     "window": 29.0,             # 27.6 active + 0.7 reveal per side
     "ribbon_relief": 2.0,       # extra pocket on -Y for the FPC fold
     "plug_wall": 1.7,           # plug thickness behind the lip
@@ -214,6 +239,119 @@ def clamp_points(p):
             for sx in (-1, 1) for sy in (-1, 1)]
 
 
+def disp_active_offset(p):
+    """Active-area centre relative to the module PCB centre.
+
+    The two measured offsets chain — PCB to glass, then glass to image — so
+    they add. Going through here rather than reading either parameter
+    directly is what stops the two from being set to contradictory things.
+    """
+    return (p["disp_glass_dx"] + p["disp_active_in_glass_dx"],
+            p["disp_glass_dy"] + p["disp_active_in_glass_dy"])
+
+
+def disp_shift(p):
+    """Where the module PCB centre goes, relative to the aperture centre.
+
+    The window stays on the origin, so the module has to move by the
+    negative of its active-area offset for the image to come out centred.
+    Every feature that locates the module is placed through this, and only
+    the window and the antenna pocket ignore it.
+    """
+    ax, ay = disp_active_offset(p)
+    return -ax, -ay
+
+
+def clip_to_plug(p, x, sx):
+    """Hold x inside the plug's outer face on side sx (-1 = -X, +1 = +X)."""
+    edge = sx * (p["aperture"] - 2 * p["aperture_clear"]) / 2
+    return min(x, edge) if sx > 0 else max(x, edge)
+
+
+def rib_widths(p):
+    """What is left of the rib on each side after clipping: (-X, +X)."""
+    mx, _ = disp_shift(p)
+    pw = p["disp_pcb_w"] + 2 * p["clear"]
+    out = []
+    for sx in (-1, 1):
+        inner = mx + sx * (pw / 2)
+        out.append(sx * (clip_to_plug(p, inner + sx * p["rib_w"], sx) - inner))
+    return tuple(out)
+
+
+def disp_shift_warnings(p):
+    """Room left for the module once disp_shift() has carried it.
+
+    The shift is cheap in the model and expensive on the print: the rib
+    already sits close to the plug wall, and the clamp posts stand in the
+    module's Z band without moving with it. Report rather than fail, so a
+    marginal shift is a decision and not a surprise found after four hours
+    of printing.
+    """
+    mx, my = disp_shift(p)
+    out = []
+
+    pw = p["disp_pcb_w"] + 2 * p["clear"]
+    ph = p["disp_pcb_h"] + 2 * p["clear"]
+    plug = p["aperture"] - 2 * p["aperture_clear"]
+
+    # The rib is clipped to the plug wall rather than allowed through it, so
+    # what matters is how much of it survived on the crowded side.
+    for sx, rw_left in zip((-1, 1), rib_widths(p)):
+        side = "-X" if sx < 0 else "+X"
+        if rw_left <= 0.0:
+            out.append(
+                "no rib left on {} (shift {:+.2f}): the PCB edge is at or "
+                "past the plug wall and nothing locates it there"
+                .format(side, mx))
+        elif rw_left < p["rib_w"] - 1e-9:
+            note = "" if rw_left >= 0.8 else ", too thin to print reliably"
+            out.append(
+                "rib clipped to {:.2f} mm on {} (from {:.2f}, shift {:+.2f}){}"
+                .format(rw_left, side, p["rib_w"], mx, note))
+
+    if abs(mx) + pw / 2 > plug / 2:
+        out.append(
+            "PCB itself overhangs the plug edge by {:.2f} mm in X "
+            "(shift {:+.2f}); the module will not sit in the aperture"
+            .format(abs(mx) + pw / 2 - plug / 2, mx))
+
+    # Nothing to check against the antenna pocket: it is cut forward of
+    # z_plug and the rib is joined rearward of it, so they share the top
+    # strip in XY but never in Z, at any shift.
+
+    # The clamp posts do NOT move with the module — they belong to the case,
+    # and they stand in the same Z band as the PCB and the rib. They already
+    # overlap the PCB's X extent, so all that keeps them apart is the gap in
+    # Y, and a Y shift spends it.
+    post_r = p["post_od"] / 2
+    mod_x0, mod_x1 = mx - pw / 2 - p["rib_w"], mx + pw / 2 + p["rib_w"]
+    mod_y0, mod_y1 = my - ph / 2 - p["rib_w"], my + ph / 2 + p["rib_w"]
+    for cx, cy in clamp_points(p):
+        ox = min(cx + post_r, mod_x1) - max(cx - post_r, mod_x0)
+        oy = min(cy + post_r, mod_y1) - max(cy - post_r, mod_y0)
+        if ox > 0 and oy > 0:
+            out.append(
+                "clamp post at ({:+.1f}, {:+.1f}) overlaps the module "
+                "footprint by {:.2f} x {:.2f} mm (shift {:+.2f}, {:+.2f}); "
+                "move clamp_y out".format(cx, cy, ox, oy, mx, my))
+            break
+
+    # The window is cut through the wall left by the glass pocket, so it has
+    # to stay inside that pocket or it breaks out through the plug face.
+    gx = mx + p["disp_glass_dx"]
+    gy = my + p["disp_glass_dy"]
+    gw = p["disp_glass_w"] + 2 * p["clear"]
+    gh = p["disp_glass_h"] + 2 * p["clear"]
+    if (abs(gx) + p["window"] / 2 > gw / 2
+            or abs(gy) + p["window"] / 2 > gh / 2):
+        out.append(
+            "window escapes the glass pocket (pocket centre {:+.2f}, {:+.2f})"
+            .format(gx, gy))
+
+    return out
+
+
 def add_component(root, name):
     occ = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
     occ.component.name = name
@@ -239,18 +377,21 @@ def build_faceplate(comp, p):
     # pocket for the panel glass, plus a relief on -Y for the FPC fold. The
     # relief is only as wide as the ribbon gap, so the rib's bottom corner
     # tabs further out still sit on solid material.
-    gx, gy = p["disp_glass_dx"], p["disp_glass_dy"]
+    mx, my = disp_shift(p)
+    gx = mx + p["disp_glass_dx"]
+    gy = my + p["disp_glass_dy"]
     gw = p["disp_glass_w"] + 2 * p["clear"]
     gh = p["disp_glass_h"] + 2 * p["clear"]
     z_pocket = z_plug - p["disp_glass_t"]
     boxc(comp, gx, gy, gw, gh, z_pocket, z_plug, CUT)
-    rect(comp, -p["ribbon_gap"] / 2, gy - gh / 2 - p["ribbon_relief"],
-         p["ribbon_gap"] / 2, gy - gh / 2 + 0.1, z_pocket, z_plug, CUT)
+    rect(comp, mx - p["ribbon_gap"] / 2, gy - gh / 2 - p["ribbon_relief"],
+         mx + p["ribbon_gap"] / 2, gy - gh / 2 + 0.1, z_pocket, z_plug, CUT)
 
-    # viewing window, through the remaining front wall
+    # Viewing window, through the remaining front wall. Deliberately on the
+    # origin: it is the one feature the room sees, so it is centred in the
+    # frame's aperture and the module is moved to meet it, not the reverse.
     z_win = z_plug - p["disp_glass_t"]
-    boxc(comp, p["disp_active_dx"], p["disp_active_dy"],
-         p["window"], p["window"], z_lip - 0.5, z_win + 0.05, CUT)
+    boxc(comp, 0, 0, p["window"], p["window"], z_lip - 0.5, z_win + 0.05, CUT)
 
     # Rib locating the module PCB: two full long sides plus two bottom corner
     # tabs. The bottom tabs carry the module's weight, so the -Y edge cannot
@@ -258,16 +399,23 @@ def build_faceplate(comp, p):
     # deliberately no rib on +Y: gravity holds the module down onto the bottom
     # tabs, so a top rib locates nothing, and the whole top strip is needed
     # for the antenna pocket.
+    # Once the module is shifted, the downwind rib would run out through the
+    # plug wall. Clip its outer face to the plug edge instead: a thinner rib
+    # on that side still locates the PCB, whereas a rib crossing the wall
+    # makes the faceplate unprintable. disp_shift_warnings() reports what the
+    # clip left, so a rib thinned past usefulness does not pass unnoticed.
     pw = p["disp_pcb_w"] + 2 * p["clear"]
     ph = p["disp_pcb_h"] + 2 * p["clear"]
     rw = p["rib_w"]
     z_rib = z_plug + p["rib_h"]
     for sx in (-1, 1):
-        rect(comp, sx * (pw / 2), -ph / 2, sx * (pw / 2 + rw), ph / 2,
-             z_plug, z_rib, JOIN)
+        inner = mx + sx * (pw / 2)
+        outer = clip_to_plug(p, inner + sx * rw, sx)
+        rect(comp, inner, my - ph / 2, outer, my + ph / 2, z_plug, z_rib, JOIN)
     for sx in (-1, 1):
-        rect(comp, sx * p["ribbon_gap"] / 2, -ph / 2,
-             sx * (pw / 2 + rw), -ph / 2 - rw, z_plug, z_rib, JOIN)
+        outer = clip_to_plug(p, mx + sx * (pw / 2 + rw), sx)
+        rect(comp, mx + sx * p["ribbon_gap"] / 2, my - ph / 2,
+             outer, my - ph / 2 - rw, z_plug, z_rib, JOIN)
 
     # Pocket for the uFL antenna, in the rear face of the top strip. This is
     # the best RF real estate in the build: ~2 mm of plastic to the room,
@@ -328,13 +476,14 @@ def build_body(comp, p):
     # module and the header needs ~8.5, so it passes through the flange and
     # the wires are landed on the MCU side.
     pad = p["wire_slot_pad"]
-    boxc(comp, 0, p["disp_header_cy"], p["disp_header_w"] + 2 * pad,
+    mx, my = disp_shift(p)
+    boxc(comp, mx, my + p["disp_header_cy"], p["disp_header_w"] + 2 * pad,
          p["disp_header_t"] + 2 * pad, *through, CUT)
 
     # standoff pads pressing the module PCB forward against the rib
     for sx in (-1, 1):
         for sy in (-1, 1):
-            boxc(comp, sx * 22.0, sy * 14.5, 4.0, 4.0,
+            boxc(comp, mx + sx * 22.0, my + sy * 14.5, 4.0, 4.0,
                  p["lip_t"] + p["plug_wall"] + p["disp_pcb_t"] + 0.2, z_f0, JOIN)
 
     # divider: seals the sensor duct off from the MCU bay so the ESP32's
@@ -395,15 +544,19 @@ def build_placeholders(root, p):
     comp = add_component(root, "ph_display")
     z_pcb0 = z_plug
     z_pcb1 = z_pcb0 + p["disp_pcb_t"]
-    boxc(comp, p["disp_glass_dx"], p["disp_glass_dy"],
+    mx, my = disp_shift(p)
+    boxc(comp, mx + p["disp_glass_dx"], my + p["disp_glass_dy"],
          p["disp_glass_w"], p["disp_glass_h"],
          z_plug - p["disp_glass_t"], z_plug, NEW)
-    boxc(comp, 0, 0, p["disp_pcb_w"], p["disp_pcb_h"], z_pcb0, z_pcb1, NEW)
-    # active area, as a thin witness pad to check window alignment
-    boxc(comp, p["disp_active_dx"], p["disp_active_dy"], 27.6, 27.6,
+    boxc(comp, mx, my, p["disp_pcb_w"], p["disp_pcb_h"], z_pcb0, z_pcb1, NEW)
+    # Active area, as a thin witness pad. With disp_shift() applied it lands
+    # on the origin by construction, so any visible mismatch against the
+    # window is a mistake in the window itself, not in the module placement.
+    boxc(comp, 0, 0, 27.6, 27.6,
          z_plug - p["disp_glass_t"] - 0.2, z_plug - p["disp_glass_t"], NEW)
     # the 8-pin header, the one feature that has to pass through the flange
-    boxc(comp, 0, p["disp_header_cy"], p["disp_header_w"], p["disp_header_t"],
+    boxc(comp, mx, my + p["disp_header_cy"],
+         p["disp_header_w"], p["disp_header_t"],
          z_pcb1, z_pcb1 + p["disp_header_h"], NEW)
 
     # --- uFL antenna, in the faceplate pocket -----------------------------
@@ -476,13 +629,18 @@ def run(context):
             step = "placeholders"
             build_placeholders(root, P)
 
-        _log("OK\nBuilt faceplate, body and placeholders.\n")
+        warnings = disp_shift_warnings(P)
+        warn_text = ("\n\nWARNING, display shift:\n- "
+                     + "\n- ".join(warnings)) if warnings else ""
+
+        _log("OK\nBuilt faceplate, body and placeholders.\n" + warn_text)
         ui.messageBox(
             "KlimaControl Gira 55 case built.\n\n"
             "Components: faceplate, body"
             + (", ph_display, ph_qtpy, ph_sht41" if PLACEHOLDERS else "")
             + ".\nCheck the MEASURE values in cad/fusion/README.md "
             "before printing."
+            + warn_text
         )
     except Exception:
         report = "FAILED while building: {}\n\n{}".format(

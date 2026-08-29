@@ -1,0 +1,11 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "script",
+    "author": "Andreas Würl",
+    "description": {
+        "": "KlimaControl — Gira System 55 case. Builds the faceplate and its component placeholders from the kc package."
+    },
+    "version": "",
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}
