@@ -1,11 +1,15 @@
 # display Specification
 
 ## Purpose
-TBD - created by archiving change add-eink-display. Update Purpose after archive.
+
+Allow visualizing basic sensor data like temperature and humidity from the sensor board.
+
+Possible future expansion to include more sensors and more complex visualizations.
+
 ## Requirements
 ### Requirement: Hardware target and wiring
 
-The firmware SHALL support a single Waveshare 1.54" V2 e-paper module (SSD1681
+The firmware SHALL support a single [Waveshare 1.54" V2 e-paper module](https://www.waveshare.com/wiki/1.54inch_e-Paper_Module_Manual) (SSD1681
 controller, 200×200 pixels, monochrome) connected over the board's hardware SPI
 bus. The panel SHALL be driven via the GxEPD2 panel class `GxEPD2_154_D67`.
 
