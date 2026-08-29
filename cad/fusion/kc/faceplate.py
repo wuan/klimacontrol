@@ -4,7 +4,7 @@ Step 1 of the rebuild: the viewport and nothing else. Later steps add the
 PCB-locating rib, the antenna pocket, the clamp posts and the vent grille.
 """
 
-from .primitives import CUT, JOIN, NEW, boxc, rect
+from .primitives import CUT, JOIN, NEW, boxc, circ, rect
 
 
 def build(comp, p, g):
@@ -31,3 +31,18 @@ def build(comp, p, g):
     # the aperture — see the "Centring" section in kc.layout.
     boxc(comp, g["window_dx"], g["window_dy"], p["window"], p["window"],
          g["z_lip"] - 0.5, g["z_glass0"] + 0.05, CUT)
+
+    # Rib round the PCB edge, standing off the plug's rear face. Built from
+    # whichever sides `_rib_sides` found room for — with the module carried
+    # the full 3 mm the ribbon side is dropped, so this comes out three-sided.
+    z_rib = g["z_plug"] + p["rib_h"]
+    for x0, y0, x1, y1 in g["rib_segments"]:
+        rect(comp, x0, y0, x1, y1, g["z_plug"], z_rib, JOIN)
+
+    # Locating pins through the module's own mounting holes. These, not the
+    # rib, are what actually position the module; the rib is a loose fence.
+    # They stop short of the PCB's rear face so they can never hold it off
+    # the plug.
+    for px, py in g["pins"]:
+        circ(comp, px, py, g["pin_dia"], g["z_plug"], g["z_plug"] + p["pin_h"],
+             JOIN)

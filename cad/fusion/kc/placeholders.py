@@ -5,7 +5,7 @@ features that can collide. Use them with Inspect -> Interference, then hide or
 delete the components before exporting anything for print.
 """
 
-from .primitives import NEW, boxc
+from .primitives import CUT, NEW, boxc, circ
 
 
 def display(comp, p, g):
@@ -16,6 +16,14 @@ def display(comp, p, g):
     # module PCB, immediately behind the plug
     boxc(comp, g["module_dx"], g["module_dy"], p["disp_pcb_w"], p["disp_pcb_h"],
          g["z_plug"], g["z_plug"] + p["disp_pcb_t"], NEW)
+
+    # Its four mounting holes, at full size. Without these the locating pins
+    # read as four interferences on every Inspect -> Interference run and the
+    # real collisions get lost in the noise. Cut at the true hole diameter,
+    # so what the check measures is the actual pin-to-hole fit.
+    for px, py in g["pins"]:
+        circ(comp, px, py, p["disp_hole_dia"],
+             g["z_plug"] - 0.05, g["z_plug"] + p["disp_pcb_t"] + 0.05, CUT)
 
     # Active area, as a thin witness pad in front of the glass. The window is
     # placed from the same numbers, so a visible mismatch between the two is a

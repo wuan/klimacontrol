@@ -26,25 +26,57 @@ P = {
     "disp_glass_t": 1.4,        # pocket depth for the glass
     "disp_active": 27.6,        # active area, square
 
-    # MEASURE: glass centre relative to the PCB centre. Only sizes the
-    # pocket; it does not move the viewport.
+    # The glass IS centred on the PCB. What is off-centre is the active area
+    # on the glass — see `active_offset` below. Left as parameters because the
+    # module is unmeasured in this respect; they only size and place the glass
+    # pocket, they do not move the viewport.
     "disp_glass_dx": 0.0,
     "disp_glass_dy": 0.0,
 
     # ---- centring the image ---------------------------------------------
-    # The active area is not centred on the PCB: it sits `active_offset` away
-    # from the FPC/header end, along the module's long side. See the module
-    # docstring of `kc.layout` for how the offset is split.
-    "fpc_side": "left",         # FPC/header end, as seen from the front
-    "active_offset": 3.0,       # active-area centre, away from the FPC end
+    # PCB and glass are centred on each other; the active area sits
+    # `active_offset` away from the ribbon/FPC end, along the module's long
+    # side. The image is what the room looks at, so the image is what gets
+    # centred on the aperture — which means the PCB and glass pockets are the
+    # things that end up off-centre. See the `kc.layout` module docstring.
+    "fpc_side": "left",         # ribbon/FPC end, as seen from the front
+    "active_offset": 3.0,       # active-area centre, away from the ribbon end
     "active_offset_y": 0.0,     # MEASURE: same thing on the short side
-    "module_carry": 2.5,        # of active_offset, absorbed by moving the
-                                # module; the rest moves the window
+    # How much of active_offset is absorbed by moving the module. Equal to
+    # active_offset puts the image dead centre in the aperture, which is the
+    # point of the exercise; lower it only to buy material back on the
+    # crowded side, at the cost of an off-centre window.
+    "module_carry": 3.0,
 
     "window": 29.0,             # 27.6 active + 0.7 reveal per side
     "front_wall": 1.6,          # material between the room and the glass
     "ribbon_relief": 2.0,       # extra pocket for the FPC fold
     "ribbon_gap": 26.0,         # width of that relief, along the FPC edge
+
+    # ---- locating the module PCB -----------------------------------------
+    # A rib round the PCB edge, plus four pins through the module's own
+    # mounting holes. The pins do the precise locating; the rib is a loose
+    # perimeter that stops the module wandering while you close the case, so
+    # it is deliberately built with `clear` per side rather than a press fit —
+    # two things fighting over the same location is how parts crack.
+    "rib_w": 1.7,
+    "rib_h": 2.4,               # 0.8 proud of the PCB's rear face
+
+    # MEASURE, ALL FOUR — these are ESTIMATES, not data. Waveshare does not
+    # dimension the mounting holes in the wiki drawing, so pitch and diameter
+    # below are read off the board photo assuming 3 mm corner insets and M2
+    # clearance holes. Locating pins on the wrong pitch are worse than no pins
+    # at all: they hold the module off the plug face and it rocks.
+    #
+    # How to measure: caliper hole centre to hole centre along the long side
+    # (pitch_x) and the short side (pitch_y), and the hole diameter itself.
+    "disp_hole_pitch_x": 42.0,
+    "disp_hole_pitch_y": 27.0,
+    "disp_hole_dia": 2.2,
+    "pin_clear": 0.25,          # diametral, pin to hole. A locating fit, so
+                                # much tighter than the generic `clear`.
+    "pin_h": 1.4,               # under disp_pcb_t (1.6) so a proud pin can
+                                # never hold the PCB off the plug face
 
     "clear": 0.4,               # generic print clearance, per side
 }

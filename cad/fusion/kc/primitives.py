@@ -49,6 +49,13 @@ def boxc(comp, cx, cy, w, h, z0, z1, op):
     return rect(comp, cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2, z0, z1, op)
 
 
+def circ(comp, cx, cy, dia, z0, z1, op):
+    """Extrude a circle between two z planes."""
+    sk = comp.sketches.add(comp.xYConstructionPlane)
+    sk.sketchCurves.sketchCircles.addByCenterRadius(pt(cx, cy), dia / 2 * MM)
+    return _extrude(comp, sk.profiles.item(0), z0, z1, op)
+
+
 def add_component(root, name):
     occ = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
     occ.component.name = name
