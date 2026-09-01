@@ -1,6 +1,6 @@
 # web-interface Specification Delta
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Symbol-based control state display
 
@@ -25,7 +25,7 @@ The dashboard SHALL display the temperature control state using visual symbols i
 
 - **WHEN** the `/api/status` response does not include `control_active`
 - **AND** `control_enabled` is `true`
-- **THEN** the dashboard SHALL display the hollow circle symbol (`\u25CB`) assuming active off state
+- **THEN** the dashboard SHALL display the hollow circle symbol (`\u25CB`) with the *active off* colour, reporting "enabled, output unknown" rather than claiming the device is actively heating
 
 #### Scenario: API fallback when field missing and disabled
 

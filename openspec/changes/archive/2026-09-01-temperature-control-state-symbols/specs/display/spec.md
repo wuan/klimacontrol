@@ -102,16 +102,16 @@ a stale setpoint indefinitely.
 
 ## MODIFIED Requirements
 
-### Requirement: Value layout
+### Requirement: Displayed content
 
-The display SHALL render the temperature and the relative humidity, and the
-footer described in *Two-line footer layout*. No other measurement type SHALL be
-rendered.
+The display SHALL show the current temperature and the current relative
+humidity, sourced from `SensorController` under a single consistent snapshot.
+No other measurement type SHALL be rendered.
 
 The layout SHALL place the temperature as the primary value and the humidity
-below it. The value block SHALL occupy the region `(0, 30)` to `(199, 139)`; the
-two-line footer SHALL occupy the region below it, from the rule at y=152 to the
-bottom of the panel.
+below it, with the two-line footer described in *Two-line footer layout*. The
+value block SHALL occupy the region `(0, 30)` to `(199, 139)`; the footer SHALL
+occupy the region below it, from the rule at y=152 to the bottom of the panel.
 
 When a value is unavailable — the sensor snapshot is invalid, or the accessor
 returns `NAN` — the firmware SHALL render a placeholder (`--.-` for temperature,
@@ -119,8 +119,18 @@ returns `NAN` — the firmware SHALL render a placeholder (`--.-` for temperatur
 
 #### Scenario: Both values available
 
-- **WHEN** the snapshot is valid and both measurements are present
-- **THEN** the panel SHALL show both values with their units
+- **WHEN** the sensor snapshot is valid and reports 21.4 °C and 47 %RH
+- **THEN** the panel SHALL show the temperature to one decimal place and the humidity as a whole number, with the temperature rendered in the larger font
+
+#### Scenario: No sensor attached
+
+- **WHEN** the display is enabled but no sensor is configured, so `getTemperature()` returns `NAN`
+- **THEN** the panel SHALL render the placeholder text rather than a numeric value
+
+#### Scenario: Values are read atomically
+
+- **WHEN** the display gathers the values to render
+- **THEN** it SHALL use `SensorController::getSnapshot()` (or an equivalent single-lock accessor) so temperature, humidity and the validity flag describe the same instant
 
 #### Scenario: Setpoint unavailable
 
