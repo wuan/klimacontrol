@@ -73,6 +73,15 @@ namespace Config {
         WiFiConfig() = default;
     };
 
+    // Accepted range for the temperature control setpoint, in degrees Celsius.
+    // Three layers enforce it for different reasons — the route handler rejects
+    // user input outside it, SensorController clamps non-HTTP callers, and
+    // ConfigManager falls back to the default for untrustworthy stored values —
+    // so the bounds live in one place rather than being restated at each.
+    constexpr float TARGET_TEMPERATURE_MIN_C = 10.0f;
+    constexpr float TARGET_TEMPERATURE_MAX_C = 30.0f;
+    constexpr float TARGET_TEMPERATURE_DEFAULT_C = 22.0f;
+
     /**
      * Device configuration structure
      */
@@ -82,7 +91,7 @@ namespace Config {
 
         // Sensor and temperature control configuration
         uint8_t sensor_i2c_address = DEFAULT_SENSOR_I2C_ADDRESS; // Default I2C address for sensors
-        float target_temperature = 22.0f; // Target temperature for control
+        float target_temperature = TARGET_TEMPERATURE_DEFAULT_C; // Target temperature for control
         bool temperature_control_enabled = false; // Temperature control enabled
         float elevation = 0.0f; // Meters above sea level, for sea-level pressure calculation
 
@@ -185,6 +194,16 @@ namespace Config {
         return state >> 1;
     }
 
+    // True when `key` fits NVS's 15-character limit. constexpr so callers can
+    // static_assert on it; see the ConfigManager key block for why.
+    constexpr bool nvsKeyFits(const char *key) {
+        size_t length = 0;
+        while (key[length] != '\0') {
+            ++length;
+        }
+        return length <= 15;
+    }
+
     /**
      * Configuration Manager
      * Handles persistent storage using ESP32 Preferences (NVS)
@@ -195,13 +214,30 @@ namespace Config {
         Preferences prefs;
 #endif
         static constexpr const char *NAMESPACE = "klima";
-        static constexpr const char *TARGET_TEMPERATURE = "target_temperature";
-        static constexpr const char *TEMPERATURE_CONTROL_ENABLED = "temperature_control_enabled";
+        static constexpr const char *TARGET_TEMPERATURE = "target_temp";
+        static constexpr const char *TEMPERATURE_CONTROL_ENABLED = "ctrl_enabled";
         static constexpr const char *ELEVATION = "elevation";
         static constexpr const char *ENERGY_WIFI_PW = "energy_wifi_pw";
-        static constexpr const char *ENERGY_WIFI_SLEEP = "energy_wifi_sleep";
-        static constexpr const char *SENSOR_I2C_ADDRESS = "sensor_i2c_address";
+        static constexpr const char *ENERGY_WIFI_SLEEP = "wifi_sleep";
+        static constexpr const char *SENSOR_I2C_ADDRESS = "sensor_i2c";
         static constexpr const char *TIMEZONE = "timezone";
+
+        // NVS keys are capped at 15 characters (NVS_KEY_NAME_MAX_SIZE is 16
+        // including the terminator). Preferences::putX() fails silently on a
+        // longer key and the matching getX() then hands back the supplied
+        // default, so an over-long key is indistinguishable at runtime from a
+        // setting that simply refuses to stick — which is exactly how
+        // `target_temperature` (18) and `temperature_control_enabled` (27)
+        // went unnoticed: nothing wrote to them until the control UI existed.
+        // A comment saying "keep keys short" was already present in
+        // PrefsKeys.h and did not prevent it, so the rule is enforced here.
+        static_assert(nvsKeyFits(TARGET_TEMPERATURE), "NVS key too long");
+        static_assert(nvsKeyFits(TEMPERATURE_CONTROL_ENABLED), "NVS key too long");
+        static_assert(nvsKeyFits(ELEVATION), "NVS key too long");
+        static_assert(nvsKeyFits(ENERGY_WIFI_PW), "NVS key too long");
+        static_assert(nvsKeyFits(ENERGY_WIFI_SLEEP), "NVS key too long");
+        static_assert(nvsKeyFits(SENSOR_I2C_ADDRESS), "NVS key too long");
+        static_assert(nvsKeyFits(TIMEZONE), "NVS key too long");
 
         // In-memory cache of device config — always read from here, never maintain separate copies
         DeviceConfig deviceConfig;

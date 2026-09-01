@@ -101,6 +101,20 @@ WebServerManager::WebServerManager(Config::ConfigManager &config, Network &netwo
       , server(80)
 #endif
 {
+#ifdef ARDUINO
+    // Registered here rather than in setMode() because AsyncWebServer::reset()
+    // clears rewrites and handlers but NOT middlewares (WebServer.cpp:197), and
+    // addMiddleware() appends without de-duplicating (Middleware.cpp:23). A
+    // per-mode registration would therefore stack a fresh copy on every mode
+    // flip and log each request once per flip.
+    //
+    // AccessLogger has existed since the class was written but was never wired
+    // up, so no request has ever been logged. That gap is what made the
+    // intermittent 501 on body-carrying POSTs so hard to pin down: a request
+    // that produces no response left no trace at all. run() reports
+    // "(no response)" for exactly that case.
+    server.addMiddleware(&logging);
+#endif
 }
 
 #ifdef ARDUINO

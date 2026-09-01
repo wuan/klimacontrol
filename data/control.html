@@ -17,6 +17,76 @@
         .control-symbol.inactive { color: #dc3545; }
         .control-symbol.active-off { color: #667eea; }
         .control-symbol.active-on { color: #28a745; }
+
+        /* Setpoint stepper. The value keeps a fixed width so the buttons do
+           not shuffle sideways as it moves between 9.5 and 30.0. */
+        .setpoint-stepper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .setpoint-stepper .control-value {
+            min-width: 62px;
+        }
+
+        .step-btn {
+            width: 34px;
+            height: 34px;
+            flex: none;
+            border: none;
+            border-radius: 50%;
+            background-color: #667eea;
+            color: #fff;
+            font-size: 20px;
+            font-weight: bold;
+            line-height: 1;
+            cursor: pointer;
+            transition: background-color 0.15s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .step-btn:hover:not(:disabled) { background-color: #5568d3; }
+        .step-btn:active:not(:disabled) { background-color: #4a5bc0; }
+
+        /* At a rail there is nothing further to request, so the button says so
+           rather than accepting a tap that would do nothing. */
+        .step-btn:disabled {
+            background-color: #c5c9e0;
+            cursor: default;
+        }
+
+        .control-toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        /* The 60x34 switch from common.css is sized for the settings page and
+           overwhelms a control-bar cell. */
+        .toggle-switch.toggle-sm { width: 44px; height: 24px; }
+        .toggle-switch.toggle-sm .slider:before {
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+        }
+        .toggle-switch.toggle-sm input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        .control-error {
+            display: none;
+            margin: -12px 0 16px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            background-color: #f8d7da;
+            color: #721c24;
+            font-size: 13px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -49,13 +119,27 @@
             <div class="control-bar">
                 <div class="control-item">
                     <div class="control-label-sm">Target</div>
-                    <div class="control-value" id="targetTemp">-</div>
+                    <div class="setpoint-stepper">
+                        <button type="button" class="step-btn" id="setpointDown"
+                                aria-label="Lower target temperature by 0.5 degrees" disabled>&minus;</button>
+                        <div class="control-value" id="targetTemp">-</div>
+                        <button type="button" class="step-btn" id="setpointUp"
+                                aria-label="Raise target temperature by 0.5 degrees" disabled>+</button>
+                    </div>
                 </div>
                 <div class="control-item">
                     <div class="control-label-sm">Control</div>
-                    <div class="control-value" id="controlStatus">-</div>
+                    <div class="control-toggle-row">
+                        <label class="toggle-switch toggle-sm">
+                            <input type="checkbox" id="controlEnabled" aria-label="Enable temperature control">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="control-symbol" id="controlStatus">-</span>
+                    </div>
                 </div>
             </div>
+
+            <div id="controlError" class="control-error" role="alert"></div>
 
             <div id="measurementOverview" class="measurement-section">
                 <button class="btn btn-primary btn-sm" onclick="showMeasurements()">Show Measurements</button>
@@ -86,6 +170,26 @@
         let lastSuccessfulFetch = Date.now();
         let measurementsVisible = false;
 
+        const SETPOINT_MIN = 10.0;
+        const SETPOINT_MAX = 30.0;
+        const SETPOINT_STEP = 0.5;
+        const SETPOINT_DEBOUNCE_MS = 400;
+
+        // Ownership of the two interactive fields. While the user is mid-gesture
+        // the local value wins; once the request resolves, polling takes the
+        // field back. Without this a poll landing between a tap and its response
+        // would render the device's not-yet-updated value and the setpoint would
+        // visibly jump backwards under the user's finger.
+        let pendingSetpoint = null;   // non-null while an edit is uncommitted
+        let setpointInFlight = false;
+        let setpointTimer = null;
+        let toggleInFlight = false;
+
+        const CSRF_HEADERS = {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'KlimaControl'
+        };
+
         function esc(s) {
             const d = document.createElement('div');
             d.textContent = s;
@@ -113,6 +217,150 @@
             if (!enabled) return 'inactive';
             if (active) return 'active-on';
             return 'active-off';
+        }
+
+        // --- Setpoint stepper ---
+
+        function showControlError(message) {
+            const el = document.getElementById('controlError');
+            if (!el) return;
+            el.textContent = message;
+            el.style.display = 'block';
+        }
+
+        function clearControlError() {
+            const el = document.getElementById('controlError');
+            if (!el) return;
+            el.style.display = 'none';
+            el.textContent = '';
+        }
+
+        // The device reports a float; snapping to the step keeps the stepper on
+        // a predictable grid even if the stored value came from elsewhere.
+        function snapToStep(value) {
+            return Math.round(value / SETPOINT_STEP) * SETPOINT_STEP;
+        }
+
+        function renderSetpoint(value) {
+            const el = document.getElementById('targetTemp');
+            const down = document.getElementById('setpointDown');
+            const up = document.getElementById('setpointUp');
+
+            if (value === undefined || value === null || Number.isNaN(value)) {
+                if (el) el.textContent = '-';
+                if (down) down.disabled = true;
+                if (up) up.disabled = true;
+                return;
+            }
+
+            if (el) el.textContent = `${value.toFixed(1)}°C`;
+            if (down) down.disabled = value <= SETPOINT_MIN;
+            if (up) up.disabled = value >= SETPOINT_MAX;
+        }
+
+        // The value the UI currently considers authoritative: the user's
+        // uncommitted edit if there is one, otherwise the device's.
+        function effectiveSetpoint() {
+            if (pendingSetpoint !== null) return pendingSetpoint;
+            if (typeof currentStatus.target_temperature === 'number') {
+                return snapToStep(currentStatus.target_temperature);
+            }
+            return null;
+        }
+
+        function adjustSetpoint(delta) {
+            const base = effectiveSetpoint();
+            if (base === null) return;
+
+            const next = Math.min(SETPOINT_MAX, Math.max(SETPOINT_MIN, snapToStep(base + delta)));
+            if (next === base) return;  // at a rail: nothing to send
+
+            clearControlError();
+            pendingSetpoint = next;
+            renderSetpoint(next);
+
+            // Coalesce a burst of taps into one request, so three taps write
+            // NVS once rather than three times and the device is not asked to
+            // chase intermediate values it will never hold.
+            if (setpointTimer !== null) clearTimeout(setpointTimer);
+            setpointTimer = setTimeout(commitSetpoint, SETPOINT_DEBOUNCE_MS);
+        }
+
+        async function commitSetpoint() {
+            setpointTimer = null;
+            if (pendingSetpoint === null) return;
+
+            const value = pendingSetpoint;
+            setpointInFlight = true;
+            try {
+                const response = await fetch('/api/temperature/target', {
+                    method: 'POST',
+                    headers: CSRF_HEADERS,
+                    body: JSON.stringify({value: value})
+                });
+
+                if (!response.ok) {
+                    // The device kept its old setpoint, so the screen must stop
+                    // claiming otherwise.
+                    showControlError('Target temperature rejected by device.');
+                    pendingSetpoint = null;
+                    renderSetpoint(effectiveSetpoint());
+                    return;
+                }
+
+                // Only release the field if no further tap arrived while this
+                // request was in flight; otherwise the later value is still
+                // uncommitted and must keep ownership.
+                if (pendingSetpoint === value) {
+                    pendingSetpoint = null;
+                    if (typeof currentStatus.target_temperature === 'number') {
+                        currentStatus.target_temperature = value;
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to set target temperature:', error);
+                showControlError('Could not reach device. Target temperature unchanged.');
+                pendingSetpoint = null;
+                renderSetpoint(effectiveSetpoint());
+            } finally {
+                // Cleared on every path, including the early returns above, so
+                // a failed request cannot leave polling permanently locked out.
+                setpointInFlight = false;
+            }
+        }
+
+        // --- Control enable toggle ---
+
+        function renderControlToggle(enabled) {
+            const el = document.getElementById('controlEnabled');
+            if (!el) return;
+            el.disabled = enabled === undefined;
+            el.checked = enabled === true;
+        }
+
+        async function setControlEnabled(enabled) {
+            clearControlError();
+            toggleInFlight = true;
+            try {
+                const response = await fetch(enabled ? '/api/control/enable' : '/api/control/disable', {
+                    method: 'POST',
+                    headers: CSRF_HEADERS
+                });
+
+                if (!response.ok) {
+                    showControlError('Device rejected the control change.');
+                    renderControlToggle(currentStatus.control_enabled);
+                    return;
+                }
+
+                currentStatus.control_enabled = enabled;
+            } catch (error) {
+                console.error('Failed to change control state:', error);
+                showControlError('Could not reach device. Control state unchanged.');
+                renderControlToggle(currentStatus.control_enabled);
+            } finally {
+                toggleInFlight = false;
+            }
         }
 
         // Update device info display
@@ -163,6 +411,13 @@
 
         // Initialize
         async function init() {
+            document.getElementById('setpointDown')
+                .addEventListener('click', () => adjustSetpoint(-SETPOINT_STEP));
+            document.getElementById('setpointUp')
+                .addEventListener('click', () => adjustSetpoint(SETPOINT_STEP));
+            document.getElementById('controlEnabled')
+                .addEventListener('change', (event) => setControlEnabled(event.target.checked));
+
             await updateStatus();
         }
         init();
@@ -201,12 +456,18 @@
                     dewPointElement.textContent = currentStatus.dew_point.toFixed(1);
                 }
                 
-                // Update target temperature display
-                const targetTempElement = document.getElementById('targetTemp');
-                if (targetTempElement && currentStatus.target_temperature !== undefined) {
-                    targetTempElement.textContent = `${currentStatus.target_temperature.toFixed(1)}°C`;
+                // Update target temperature display. Skipped only while the
+                // user owns the field — every other field above and below still
+                // refreshes, so a slow request never freezes the whole page.
+                if (pendingSetpoint === null && !setpointInFlight) {
+                    renderSetpoint(effectiveSetpoint());
                 }
-                
+
+                // Update the enable toggle, subject to the same ownership rule
+                if (!toggleInFlight) {
+                    renderControlToggle(currentStatus.control_enabled);
+                }
+
                 // Update control status with symbol
                 const controlStatusElement = document.getElementById('controlStatus');
                 if (controlStatusElement) {

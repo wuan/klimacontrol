@@ -6,6 +6,7 @@
 #include "sensor/Sensor.h"
 #include "Config.h"
 #include "StatusLed.h"
+#include "control/PidController.h"
 
 #ifdef ARDUINO
 #include <freertos/semphr.h>
@@ -45,6 +46,16 @@ private:
     // Temperature control state
     uint32_t lastReadingTime;
     float lastControlOutput = 0.0f;
+
+    // Owns the PID accumulators. An instance member rather than the
+    // function-local statics this used to keep, which were shared by every
+    // SensorController in the process — harmless on the firmware with its
+    // single instance, but it leaked state between cases in the native tests.
+    //
+    // Written only by updateControl(), i.e. only from the Sensor Monitor task.
+    // setControlEnabled() runs on the web-server task and deliberately does not
+    // touch it; see PidController's class comment.
+    Control::PidController pid;
 
     // Consecutive read cycles in which I2C sensors are present but none returned
     // valid data. After I2C_RECOVERY_FAILURE_STREAK cycles the bus is assumed

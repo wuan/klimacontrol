@@ -2,7 +2,7 @@
 
 A two-part 3D-printable case that puts the KlimaControl hardware into a
 standard German flush-mount box behind a **Gira System 55** cover frame.
-
+Thi
 > **Being rebuilt step by step.** `klimacontrol.py` + the `kc/` package is the
 > new, incremental model — currently **the front plate**: plug, rear wall,
 > glass pocket, ribbon relief, viewport, the PCB locating rib and four pins.

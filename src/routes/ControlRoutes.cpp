@@ -4,6 +4,8 @@
 #include "Config.h"
 #include "SensorController.h"
 
+#include <cmath>
+
 #ifdef ARDUINO
 #include <ArduinoJson.h>
 #endif
@@ -36,6 +38,24 @@ void WebServerManager::setupControlRoutes() {
                       }
 
                       float targetTemp = doc[JSON_KEY_VALUE];
+
+                      // Reject rather than clamp. Answering {"success":true}
+                      // after quietly storing a different setpoint than the one
+                      // requested tells the caller its request was honoured when
+                      // it was not; a UI built on that reports a value the
+                      // device is not holding until the next poll corrects it.
+                      // isfinite() also screens NaN, which the clamp downstream
+                      // would otherwise map to 30.0 — std::min(30.0f, NAN)
+                      // returns 30.0f.
+                      if (!std::isfinite(targetTemp) ||
+                          targetTemp < Config::TARGET_TEMPERATURE_MIN_C ||
+                          targetTemp > Config::TARGET_TEMPERATURE_MAX_C) {
+                          request->send(
+                              400, CONTENT_TYPE_JSON,
+                              R"({"success":false,"error":"Value out of range 10.0-30.0"})");
+                          return;
+                      }
+
                       sensorController.setTargetTemperature(targetTemp);
 
                       request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);

@@ -22,9 +22,11 @@ static const char* TAG = "sensor";
 
 namespace {
     // Simple PID controller parameters (will be configurable later)
-    constexpr float Kp = 2.0f;    // Proportional gain
-    constexpr float Ki = 0.1f;   // Integral gain
-    constexpr float Kd = 0.5f;   // Derivative gain
+    constexpr Control::PidGains PID_GAINS = {
+        2.0f, // Kp — proportional gain
+        0.1f, // Ki — integral gain
+        0.5f  // Kd — derivative gain
+    };
     constexpr float MaxOutput = 1.0f; // Maximum control output
     constexpr float MinOutput = 0.0f; // Minimum control output
 
@@ -44,7 +46,8 @@ SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused
       statusLed(statusLed),
 #endif
       lastReadingTime(0),
-      lastControlOutput(0.0f) {
+      lastControlOutput(0.0f),
+      pid(PID_GAINS, MinOutput, MaxOutput) {
 #ifdef ARDUINO
     // xSemaphoreCreateMutex() returns nullptr if the heap is exhausted at boot.
     // Previously this just logged a warning and continued, which let the
@@ -422,8 +425,15 @@ Sensor::Sensor *SensorController::getSensor(size_t index) {
 }
 
 void SensorController::setTargetTemperature(float temperature) {
-    // Clamp to reasonable range for room temperature control
-    float clamped = std::max(10.0f, std::min(30.0f, temperature));
+    // Last line of defence for callers that do not come through HTTP — chiefly
+    // main.cpp restoring the persisted value at boot. Requests arriving via
+    // POST /api/temperature/target are range-checked and *rejected* by the
+    // route handler before they get here, because silently substituting a
+    // different setpoint than the one asked for is not an acceptable answer to
+    // a user. See spec `temperature-control` → "Setpoint range" for the three
+    // validation layers and what each is for.
+    float clamped = std::max(Config::TARGET_TEMPERATURE_MIN_C,
+                             std::min(Config::TARGET_TEMPERATURE_MAX_C, temperature));
     ESP_LOGI(TAG, "Target temperature set to %.1f C", clamped);
 
     // Persist to NVS using partial update (also updates in-memory cache)
@@ -431,6 +441,10 @@ void SensorController::setTargetTemperature(float temperature) {
 }
 
 void SensorController::setControlEnabled(bool enabled) {
+    // Configuration write only. This runs on the web-server task, while the PID
+    // accumulators are owned by the Sensor Monitor task; resetting them from
+    // here would race a control tick that is mid read-modify-write and could
+    // silently lose the reset. updateControl() detects the resumption itself.
     if (config.getDeviceConfig().temperature_control_enabled != enabled) {
         ESP_LOGI(TAG, "Temperature control %s", enabled ? "enabled" : "disabled");
 
@@ -442,6 +456,12 @@ void SensorController::setControlEnabled(bool enabled) {
 float SensorController::updateControl() {
     float currentTemp = getTemperature();
     if (!config.getDeviceConfig().temperature_control_enabled || !isDataValid() || std::isnan(currentTemp)) {
+        // Tell the PID it skipped a tick, so the next one that does run
+        // restarts bumplessly instead of charging its integral with the whole
+        // elapsed gap. All three of the disabled, no-valid-data and NaN cases
+        // land here, and all three leave the same stale-timestamp trap.
+        pid.suspend();
+
         // The stored output must reflect reality on every call, otherwise
         // isControlActive() keeps reporting the last positive output after the
         // sensor drops out or control is switched off.
@@ -449,41 +469,20 @@ float SensorController::updateControl() {
         return 0.0f;
     }
 
-    // Simple PID controller implementation
-    static float integral = 0.0f;
-    static float previousError = 0.0f;
-    static uint32_t lastControlTime = 0;
-
-    uint32_t now = millis();
-    float dt = (now - lastControlTime) / 1000.0f;
-    lastControlTime = now;
+    const bool restarting = !pid.isRunning();
 
     float targetTemperature = config.getDeviceConfig().target_temperature;
     float error = targetTemperature - currentTemp;
-
-    // Proportional term
-    float proportional = Kp * error;
-
-    // Integral term (with anti-windup)
-    integral += Ki * error * dt;
-    integral = std::max(MinOutput, std::min(MaxOutput, integral));
-
-    // Derivative term
-    float derivative = 0.0f;
-    if (dt > 0.0f) {
-        derivative = Kd * (error - previousError) / dt;
-    }
-    previousError = error;
-
-    // Calculate control output
-    float output = proportional + integral + derivative;
-    output = std::max(MinOutput, std::min(MaxOutput, output));
+    float output = pid.update(error, millis());
 
     lastControlOutput = output;
 
-    if (dt > 0.0f) {
-        ESP_LOGD(TAG, "PID: T=%.1f C (target=%.1f C), output=%.2f, P=%.2f, I=%.2f, D=%.2f",
-                 currentTemp, targetTemperature, output, proportional, integral, derivative);
+    if (restarting) {
+        ESP_LOGD(TAG, "PID restart: T=%.1f C (target=%.1f C), output=%.2f (proportional only)",
+                 currentTemp, targetTemperature, output);
+    } else {
+        ESP_LOGD(TAG, "PID: T=%.1f C (target=%.1f C), output=%.2f, I=%.2f", currentTemp,
+                 targetTemperature, output, pid.getIntegral());
     }
 
     return output;

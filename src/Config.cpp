@@ -99,8 +99,10 @@ namespace Config {
     }
 
     void validateDeviceConfig(DeviceConfig &config) {
-        if (std::isnan(config.target_temperature) || config.target_temperature < 10.0f || config.target_temperature > 30.0f) {
-            config.target_temperature = 22.0f;
+        if (std::isnan(config.target_temperature) ||
+            config.target_temperature < TARGET_TEMPERATURE_MIN_C ||
+            config.target_temperature > TARGET_TEMPERATURE_MAX_C) {
+            config.target_temperature = TARGET_TEMPERATURE_DEFAULT_C;
         }
         if (std::isnan(config.elevation) || config.elevation < -500.0f || config.elevation > 9000.0f) {
             config.elevation = 0.0f;
@@ -132,7 +134,8 @@ namespace Config {
         }
 
         // Load other device settings
-        deviceConfig.target_temperature = guard.get().getFloat(TARGET_TEMPERATURE, 22.0f);
+        deviceConfig.target_temperature =
+            guard.get().getFloat(TARGET_TEMPERATURE, TARGET_TEMPERATURE_DEFAULT_C);
         deviceConfig.temperature_control_enabled = guard.get().getBool(TEMPERATURE_CONTROL_ENABLED, false);
         deviceConfig.elevation = guard.get().getFloat(ELEVATION, 0.0f);
         guard.get().getString(TIMEZONE, deviceConfig.timezone, sizeof(deviceConfig.timezone));
@@ -173,9 +176,15 @@ namespace Config {
     }
 
     void ConfigManager::updateTargetTemperature([[maybe_unused]] float temperature) {
+        // Guards against a corrupt or absent NVS value, not against user input:
+        // out of range here means "the stored setpoint is not trustworthy", and
+        // the honest response is the documented default rather than whichever
+        // bound happens to be nearer. User-supplied setpoints are rejected
+        // outright by the route handler and never reach this fallback.
         // Validate — same logic as validateDeviceConfig()
-        if (std::isnan(temperature) || temperature < 10.0f || temperature > 30.0f) {
-            temperature = 22.0f;
+        if (std::isnan(temperature) || temperature < TARGET_TEMPERATURE_MIN_C ||
+            temperature > TARGET_TEMPERATURE_MAX_C) {
+            temperature = TARGET_TEMPERATURE_DEFAULT_C;
         }
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, NAMESPACE, false);
