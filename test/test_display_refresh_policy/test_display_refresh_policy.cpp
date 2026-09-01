@@ -7,6 +7,7 @@
 #include "display/RefreshPolicy.h"
 
 using Display::RefreshKind;
+using Display::ControlState;
 using Display::RefreshPolicy;
 
 // Default interval used by most tests, matching Config::DEFAULT_DISPLAY_INTERVAL.
@@ -350,6 +351,73 @@ void test_clock_trigger_advances_the_ghosting_counter() {
                       static_cast<int>(policy.evaluate(21.0f, 47.0f, true, t, 1013)));
 }
 
+// --- setpoint / control symbol ---
+
+void test_setpoint_change_triggers_refresh() {
+    // The setpoint is footer content the user changes from the web UI. Without
+    // it as an input, a stable sensor with an unsynced clock would keep showing
+    // the old target indefinitely.
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
+                                                       22.5f, ControlState::ACTIVE_OFF)));
+}
+
+void test_unchanged_setpoint_does_not_trigger_refresh() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
+                                                       21.5f, ControlState::ACTIVE_OFF)));
+}
+
+void test_setpoint_change_below_rendered_precision_is_suppressed() {
+    // Rendered with one decimal, so a 0.01 K move is the same picture.
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
+                                                       21.51f, ControlState::ACTIVE_OFF)));
+}
+
+void test_control_state_change_triggers_refresh() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
+                                                       21.5f, ControlState::ACTIVE_ON)));
+}
+
+void test_setpoint_nan_transition_triggers_refresh() {
+    // NAN renders as a placeholder; gaining or losing a real value is visible.
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
+                                                       21.5f, ControlState::INACTIVE)));
+}
+
+void test_setpoint_nan_to_nan_does_not_trigger_refresh() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
+                                                       NAN, ControlState::INACTIVE)));
+}
+
+void test_setpoint_change_still_respects_the_interval_floor() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS - 1,
+                                                       0, 22.5f, ControlState::ACTIVE_OFF)));
+    // Still outstanding: it fires once the floor passes.
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
+                                                       22.5f, ControlState::ACTIVE_OFF)));
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     // First paint
@@ -386,6 +454,14 @@ int runUnityTests() {
     RUN_TEST(test_clock_refresh_still_respects_the_interval_floor);
     RUN_TEST(test_ntp_sync_populates_the_clock);
     RUN_TEST(test_clock_trigger_advances_the_ghosting_counter);
+    // Setpoint and control symbol
+    RUN_TEST(test_setpoint_change_triggers_refresh);
+    RUN_TEST(test_unchanged_setpoint_does_not_trigger_refresh);
+    RUN_TEST(test_setpoint_change_below_rendered_precision_is_suppressed);
+    RUN_TEST(test_control_state_change_triggers_refresh);
+    RUN_TEST(test_setpoint_nan_transition_triggers_refresh);
+    RUN_TEST(test_setpoint_nan_to_nan_does_not_trigger_refresh);
+    RUN_TEST(test_setpoint_change_still_respects_the_interval_floor);
     // Formatting
     RUN_TEST(test_format_temperature_one_decimal);
     RUN_TEST(test_format_temperature_negative);

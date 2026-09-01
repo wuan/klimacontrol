@@ -190,6 +190,72 @@ void test_control_output_saturation() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 1.0f, output);
 }
 
+// Mirrors SensorController::updateControl()'s handling of the *stored* output,
+// which is what isControlActive() (and /api/status control_active, and the
+// panel's control symbol) reads. The early-return paths must clear it, or a
+// device that was heating keeps claiming to heat after the sensor drops out.
+struct StoredOutput {
+    float lastControlOutput = 0.0f;
+    float integral = 0.0f;
+    float previousError = 0.0f;
+
+    bool isControlActive() const { return lastControlOutput > 0.0f; }
+
+    float updateControl(bool controlEnabled, bool dataValid, float currentTemp, float targetTemp,
+                        uint32_t lastControlTime, uint32_t nowMs) {
+        if (!controlEnabled || !dataValid || std::isnan(currentTemp)) {
+            lastControlOutput = 0.0f;
+            return 0.0f;
+        }
+        lastControlOutput = computePidOutput(currentTemp, targetTemp, 2.0f, 0.1f, 0.5f, integral,
+                                             previousError, lastControlTime, nowMs, 1.0f, 0.0f);
+        return lastControlOutput;
+    }
+};
+
+void test_stored_output_is_positive_while_heating() {
+    StoredOutput c;
+    c.updateControl(true, true, 18.0f, 22.0f, 1000, 2000);
+    c.updateControl(true, true, 18.0f, 22.0f, 2000, 3000);
+
+    TEST_ASSERT_TRUE(c.isControlActive());
+}
+
+void test_stored_output_cleared_when_data_becomes_invalid() {
+    StoredOutput c;
+    c.updateControl(true, true, 18.0f, 22.0f, 1000, 2000);
+    c.updateControl(true, true, 18.0f, 22.0f, 2000, 3000);
+    TEST_ASSERT_TRUE(c.isControlActive());
+
+    // Sensor drops off the bus: the real output is zero, so control must stop
+    // reporting itself as active.
+    c.updateControl(true, false, 18.0f, 22.0f, 3000, 4000);
+
+    TEST_ASSERT_FALSE(c.isControlActive());
+}
+
+void test_stored_output_cleared_when_control_disabled() {
+    StoredOutput c;
+    c.updateControl(true, true, 18.0f, 22.0f, 1000, 2000);
+    c.updateControl(true, true, 18.0f, 22.0f, 2000, 3000);
+    TEST_ASSERT_TRUE(c.isControlActive());
+
+    c.updateControl(false, true, 18.0f, 22.0f, 3000, 4000);
+
+    TEST_ASSERT_FALSE(c.isControlActive());
+}
+
+void test_stored_output_cleared_on_nan_reading() {
+    StoredOutput c;
+    c.updateControl(true, true, 18.0f, 22.0f, 1000, 2000);
+    c.updateControl(true, true, 18.0f, 22.0f, 2000, 3000);
+    TEST_ASSERT_TRUE(c.isControlActive());
+
+    c.updateControl(true, true, NAN, 22.0f, 3000, 4000);
+
+    TEST_ASSERT_FALSE(c.isControlActive());
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_pid_proportional_term_only);
@@ -205,6 +271,10 @@ int runUnityTests() {
     RUN_TEST(test_control_disabled_returns_zero);
     RUN_TEST(test_nan_sensor_reading_returns_zero);
     RUN_TEST(test_control_output_saturation);
+    RUN_TEST(test_stored_output_is_positive_while_heating);
+    RUN_TEST(test_stored_output_cleared_when_data_becomes_invalid);
+    RUN_TEST(test_stored_output_cleared_when_control_disabled);
+    RUN_TEST(test_stored_output_cleared_on_nan_reading);
     return UNITY_END();
 }
 

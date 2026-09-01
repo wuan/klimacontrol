@@ -1,4 +1,5 @@
 #include "display/DisplayManager.h"
+#include "display/EPaperDisplay.h"
 
 #ifdef ARDUINO
 
@@ -84,7 +85,7 @@ namespace Display {
         }
     }
 
-    void DisplayManager::formatClock(char *out, size_t n) const {
+    void DisplayManager::formatDateTime(char *out, size_t n) const {
         if (out == nullptr || n == 0) {
             return;
         }
@@ -92,10 +93,10 @@ namespace Display {
         if (network == nullptr) {
             return;
         }
-        // Local time, daylight saving included. formatLocalHhMm() leaves the
-        // buffer empty for epoch 0 (NTP not synced), so the footer field stays
-        // blank rather than claiming a time.
-        Support::formatLocalHhMm(out, n, network->getCurrentEpoch());
+        // Local time, daylight saving included. Leaves the buffer empty for
+        // epoch 0 (NTP not synced), so the footer line stays blank rather than
+        // claiming a date and time.
+        Support::formatLocalDateHhMm(out, n, network->getCurrentEpoch());
     }
 
     void DisplayManager::update() {
@@ -129,8 +130,22 @@ namespace Display {
             const uint32_t epoch = network != nullptr ? network->getCurrentEpoch() : 0;
             const uint32_t clockMinute = epoch / 60u;
 
-            const RefreshKind kind =
-                policy.evaluate(temperature, humidity, snapshot.valid, millis(), clockMinute);
+            // Determine control state
+            Display::ControlState controlState;
+            if (!controller.isControlEnabled()) {
+                controlState = Display::ControlState::INACTIVE;
+            } else if (controller.isControlActive()) {
+                controlState = Display::ControlState::ACTIVE_ON;
+            } else {
+                controlState = Display::ControlState::ACTIVE_OFF;
+            }
+
+            // Both are footer content the user can change from the web UI, so
+            // they are inputs to the refresh decision, not just to the paint.
+            const float target = controller.getTargetTemperature();
+
+            const RefreshKind kind = policy.evaluate(temperature, humidity, snapshot.valid,
+                                                     millis(), clockMinute, target, controlState);
             if (kind != RefreshKind::None) {
                 const bool available =
                     snapshot.valid && !std::isnan(temperature) && !std::isnan(humidity);
@@ -140,13 +155,22 @@ namespace Display {
                 formatTemperature(tempStr, sizeof(tempStr), temperature, available);
                 formatHumidity(humStr, sizeof(humStr), humidity, available);
 
-                char clock[8];
-                formatClock(clock, sizeof(clock));
+                char dateTime[16];
+                formatDateTime(dateTime, sizeof(dateTime));
+
+                // Format setpoint
+                char setpointStr[8];
+                if (std::isnan(target)) {
+                    snprintf(setpointStr, sizeof(setpointStr), "--");
+                } else {
+                    snprintf(setpointStr, sizeof(setpointStr), "%.1f", static_cast<double>(target));
+                }
 
                 // Bare numbers: EPaperDisplay owns the unit decoration, because
                 // the degree mark has to be drawn geometrically (the GFX fonts
                 // only carry glyphs 0x20-0x7E) rather than printed.
-                panel.render(tempStr, humStr, deviceName, clock, kind);
+                panel.render(tempStr, humStr, deviceName, dateTime, controlState, setpointStr,
+                             kind);
             }
         }
 

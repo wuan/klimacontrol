@@ -44,6 +44,7 @@ private:
 
     // Temperature control state
     uint32_t lastReadingTime;
+    float lastControlOutput = 0.0f;
 
     // Consecutive read cycles in which I2C sensors are present but none returned
     // valid data. After I2C_RECOVERY_FAILURE_STREAK cycles the bus is assumed
@@ -174,6 +175,7 @@ public:
 
     void setControlEnabled(bool enabled);
     bool isControlEnabled() const { return config.getDeviceConfig().temperature_control_enabled; }
+    bool isControlActive() const { return lastControlOutput > 0.0f; }
 
     float updateControl();
     uint32_t getTimeSinceLastReading() const;

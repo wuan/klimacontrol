@@ -6,6 +6,18 @@
     <title>KlimaControl</title>
     <link rel="stylesheet" href="/common.css">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <style>
+        .control-symbol {
+            font-size: 20px;
+            font-weight: bold;
+            display: inline-block;
+            min-width: 24px;
+            text-align: center;
+        }
+        .control-symbol.inactive { color: #dc3545; }
+        .control-symbol.active-off { color: #667eea; }
+        .control-symbol.active-on { color: #28a745; }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -78,6 +90,29 @@
             const d = document.createElement('div');
             d.textContent = s;
             return d.innerHTML;
+        }
+
+        // Helper functions for control symbol.
+        //
+        // control_active is absent on firmware older than this feature. In that
+        // case control_enabled is all we know, so an enabled device renders as
+        // "enabled, output unknown" — hollow circle, active-off colour. Claiming
+        // active-on there would paint a device that never reports output as if it
+        // were actively heating.
+        function getControlSymbol(enabled, active) {
+            if (enabled === undefined) return '-';
+            if (active === undefined) return enabled ? '\u25CB' : '\u2212';
+            if (!enabled) return '\u2212';
+            if (active) return '\u25CF';
+            return '\u25CB';
+        }
+
+        function getControlSymbolClass(enabled, active) {
+            if (enabled === undefined) return 'inactive';
+            if (active === undefined) return enabled ? 'active-off' : 'inactive';
+            if (!enabled) return 'inactive';
+            if (active) return 'active-on';
+            return 'active-off';
         }
 
         // Update device info display
@@ -172,11 +207,13 @@
                     targetTempElement.textContent = `${currentStatus.target_temperature.toFixed(1)}°C`;
                 }
                 
-                // Update control status
+                // Update control status with symbol
                 const controlStatusElement = document.getElementById('controlStatus');
                 if (controlStatusElement) {
-                    controlStatusElement.textContent = currentStatus.control_enabled ? 'Active' : 'Off';
-                    controlStatusElement.style.color = currentStatus.control_enabled ? '#28a745' : '#dc3545';
+                    const symbol = getControlSymbol(currentStatus.control_enabled, currentStatus.control_active);
+                    const symbolClass = getControlSymbolClass(currentStatus.control_enabled, currentStatus.control_active);
+                    controlStatusElement.textContent = symbol;
+                    controlStatusElement.className = 'control-symbol ' + symbolClass;
                 }
 
                 // Mark data as fresh

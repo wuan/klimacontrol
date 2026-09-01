@@ -13,6 +13,16 @@ namespace Display {
         bool readingAvailable(float temperature, float humidity, bool valid) {
             return valid && !std::isnan(temperature) && !std::isnan(humidity);
         }
+
+        // The setpoint is rendered with one decimal, so anything below half a
+        // digit is invisible. NAN (unknown setpoint) renders as a placeholder,
+        // and two placeholders are the same picture.
+        bool setpointChanged(float current, float previous) {
+            if (std::isnan(current) || std::isnan(previous)) {
+                return std::isnan(current) != std::isnan(previous);
+            }
+            return std::fabs(current - previous) >= 0.05f;
+        }
     } // namespace
 
     RefreshPolicy::RefreshPolicy(uint16_t minIntervalSec)
@@ -26,17 +36,22 @@ namespace Display {
         lastHumidity = 0.0f;
         lastRefreshMs = 0;
         lastClockMinute = 0;
+        lastSetpoint = NAN;
+        lastControlState = ControlState::INACTIVE;
         partialsSinceFull = 0;
     }
 
     RefreshKind RefreshPolicy::commit(RefreshKind kind, float temperature, float humidity,
-                                      bool valid, uint32_t nowMs, uint32_t clockMinute) {
+                                      bool valid, uint32_t nowMs, uint32_t clockMinute,
+                                      float setpoint, ControlState controlState) {
         everPainted = true;
         lastValid = valid;
         lastTemperature = temperature;
         lastHumidity = humidity;
         lastRefreshMs = nowMs;
         lastClockMinute = clockMinute;
+        lastSetpoint = setpoint;
+        lastControlState = controlState;
 
         if (kind == RefreshKind::Full) {
             partialsSinceFull = 0;
@@ -48,14 +63,16 @@ namespace Display {
     }
 
     RefreshKind RefreshPolicy::evaluate(float temperature, float humidity, bool valid,
-                                        uint32_t nowMs, uint32_t clockMinute) {
+                                        uint32_t nowMs, uint32_t clockMinute, float setpoint,
+                                        ControlState controlState) {
         const bool available = readingAvailable(temperature, humidity, valid);
 
         // 1. First paint after boot is always a full refresh: the panel may be
         //    holding an arbitrary image from a previous run, since e-paper
         //    retains its contents unpowered.
         if (!everPainted) {
-            return commit(RefreshKind::Full, temperature, humidity, available, nowMs, clockMinute);
+            return commit(RefreshKind::Full, temperature, humidity, available, nowMs, clockMinute,
+                          setpoint, controlState);
         }
 
         // 2. Hysteresis. A validity transition in either direction bypasses the
@@ -82,6 +99,15 @@ namespace Display {
             changed = true;
         }
 
+        // The setpoint and the control symbol are footer content the user can
+        // change from the web UI at any time. Without this they would only
+        // appear once a reading happened to move past hysteresis or the minute
+        // rolled over — and with NTP unsynced the minute never rolls over, so a
+        // stable sensor could hold the stale value indefinitely.
+        if (setpointChanged(setpoint, lastSetpoint) || controlState != lastControlState) {
+            changed = true;
+        }
+
         if (!changed) {
             return RefreshKind::None;
         }
@@ -101,7 +127,8 @@ namespace Display {
                                      ? RefreshKind::Full
                                      : RefreshKind::Partial;
 
-        return commit(kind, temperature, humidity, available, nowMs, clockMinute);
+        return commit(kind, temperature, humidity, available, nowMs, clockMinute, setpoint,
+                      controlState);
     }
 
     size_t formatTemperature(char *out, size_t n, float value, bool valid) {

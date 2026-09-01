@@ -72,6 +72,17 @@ namespace Support {
      */
     size_t formatLocalDate(char *out, size_t n, uint32_t epoch);
 
+    /**
+     * Format `epoch` as "YY-MM-DD HH:MM" in the configured zone — a two-digit
+     * year, for places where the full date and time have to share a line with
+     * other content. Same sentinel and null-safety behaviour as
+     * formatLocalHhMm().
+     *
+     * Needs a 15-byte buffer. A shorter one truncates rather than overflowing,
+     * as with the other formatters here.
+     */
+    size_t formatLocalDateHhMm(char *out, size_t n, uint32_t epoch);
+
 } // namespace Support
 
 #endif // KLIMACONTROL_SUPPORT_LOCALTIME_H

@@ -1,6 +1,7 @@
 #ifndef KLIMACONTROL_DISPLAY_REFRESHPOLICY_H
 #define KLIMACONTROL_DISPLAY_REFRESHPOLICY_H
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 
@@ -20,6 +21,17 @@ namespace Display {
         None,    // Nothing to do; do not touch the SPI bus
         Partial, // Rewrite the value window only (~0.3 s, no flash)
         Full     // Rewrite the whole panel (~2 s, black/white flash, clears ghosting)
+    };
+
+    /**
+     * What the footer's control symbol shows. Lives here rather than in
+     * EPaperDisplay.h because the refresh decision depends on it and this header
+     * is the Arduino-free half of the display code.
+     */
+    enum class ControlState {
+        INACTIVE,
+        ACTIVE_OFF,
+        ACTIVE_ON
     };
 
     // A reading must move by at least this much before a refresh is considered.
@@ -57,10 +69,16 @@ namespace Display {
          *                    so the footer timestamp advances on its own.
          *                    Defaults to 0 so callers with no clock — and the
          *                    value-only unit tests — are unaffected.
+         * @param setpoint     Target temperature shown in the footer; NAN when
+         *                     unknown. A change is a change worth showing, so
+         *                     retargeting from the web UI repaints on the next
+         *                     tick instead of waiting for the reading to move.
+         * @param controlState Control symbol shown in the footer; same reasoning.
          * @return What kind of refresh to perform, if any
          */
         RefreshKind evaluate(float temperature, float humidity, bool valid, uint32_t nowMs,
-                             uint32_t clockMinute = 0);
+                             uint32_t clockMinute = 0, float setpoint = NAN,
+                             ControlState controlState = ControlState::INACTIVE);
 
         /**
          * Forget all history, as if the device had just booted. The next
@@ -88,13 +106,16 @@ namespace Display {
         float lastHumidity = 0.0f;
         uint32_t lastRefreshMs = 0;
         uint32_t lastClockMinute = 0; // wall-clock minute at the last refresh
+        float lastSetpoint = NAN;     // setpoint at the last refresh
+        ControlState lastControlState = ControlState::INACTIVE;
         uint8_t partialsSinceFull = 0;
 
         // Records the values a refresh is about to render and returns `kind`.
         // Only called when a refresh actually happens, so a change suppressed
         // by the interval floor stays outstanding and fires on a later tick.
         RefreshKind commit(RefreshKind kind, float temperature, float humidity,
-                           bool valid, uint32_t nowMs, uint32_t clockMinute);
+                           bool valid, uint32_t nowMs, uint32_t clockMinute,
+                           float setpoint, ControlState controlState);
     };
 
     /**

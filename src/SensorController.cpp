@@ -43,7 +43,8 @@ SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused
       dataMutex(xSemaphoreCreateMutex()),
       statusLed(statusLed),
 #endif
-      lastReadingTime(0) {
+      lastReadingTime(0),
+      lastControlOutput(0.0f) {
 #ifdef ARDUINO
     // xSemaphoreCreateMutex() returns nullptr if the heap is exhausted at boot.
     // Previously this just logged a warning and continued, which let the
@@ -441,6 +442,10 @@ void SensorController::setControlEnabled(bool enabled) {
 float SensorController::updateControl() {
     float currentTemp = getTemperature();
     if (!config.getDeviceConfig().temperature_control_enabled || !isDataValid() || std::isnan(currentTemp)) {
+        // The stored output must reflect reality on every call, otherwise
+        // isControlActive() keeps reporting the last positive output after the
+        // sensor drops out or control is switched off.
+        lastControlOutput = 0.0f;
         return 0.0f;
     }
 
@@ -473,6 +478,8 @@ float SensorController::updateControl() {
     // Calculate control output
     float output = proportional + integral + derivative;
     output = std::max(MinOutput, std::min(MaxOutput, output));
+
+    lastControlOutput = output;
 
     if (dt > 0.0f) {
         ESP_LOGD(TAG, "PID: T=%.1f C (target=%.1f C), output=%.2f, P=%.2f, I=%.2f, D=%.2f",

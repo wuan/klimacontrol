@@ -6,6 +6,7 @@
 
 using Support::applyTimezone;
 using Support::formatLocalDate;
+using Support::formatLocalDateHhMm;
 using Support::formatLocalHhMm;
 using Support::isPlausibleTimezone;
 
@@ -160,6 +161,38 @@ void test_format_date_respects_zone_rollover() {
     TEST_ASSERT_EQUAL_STRING("2026-01-16", buf);
 }
 
+// --- combined date and time ---
+
+void test_format_date_hh_mm_two_digit_year() {
+    applyTimezone(TZ_BERLIN);
+    char buf[16];
+    // 2026-01-15T12:00Z is 13:00 in CET (winter, no DST).
+    TEST_ASSERT_EQUAL(14, formatLocalDateHhMm(buf, sizeof(buf), E_2026_01_15_1200Z));
+    TEST_ASSERT_EQUAL_STRING("26-01-15 13:00", buf);
+}
+
+void test_format_date_hh_mm_applies_daylight_saving() {
+    applyTimezone(TZ_BERLIN);
+    char buf[16];
+    // Same wall-clock offset problem as the HH:MM formatter: summer is CEST.
+    formatLocalDateHhMm(buf, sizeof(buf), E_2026_07_15_1200Z);
+    TEST_ASSERT_EQUAL_STRING("26-07-15 14:00", buf);
+}
+
+void test_format_date_hh_mm_respects_zone_rollover() {
+    applyTimezone(TZ_SYDNEY);
+    char buf[16];
+    formatLocalDateHhMm(buf, sizeof(buf), E_2026_01_15_1200Z + 7200);
+    TEST_ASSERT_EQUAL_STRING("26-01-16 01:00", buf);
+}
+
+void test_format_date_hh_mm_epoch_zero_renders_empty() {
+    applyTimezone(TZ_BERLIN);
+    char buf[16];
+    TEST_ASSERT_EQUAL(0, formatLocalDateHhMm(buf, sizeof(buf), 0));
+    TEST_ASSERT_EQUAL_STRING("", buf);
+}
+
 // --- buffer safety ---
 
 void test_null_and_zero_length_buffers() {
@@ -170,6 +203,9 @@ void test_null_and_zero_length_buffers() {
     TEST_ASSERT_EQUAL_STRING("keepme", buf);
     TEST_ASSERT_EQUAL(0, formatLocalDate(nullptr, 16, E_2026_01_15_1200Z));
     TEST_ASSERT_EQUAL(0, formatLocalDate(buf, 0, E_2026_01_15_1200Z));
+    TEST_ASSERT_EQUAL_STRING("keepme", buf);
+    TEST_ASSERT_EQUAL(0, formatLocalDateHhMm(nullptr, 16, E_2026_01_15_1200Z));
+    TEST_ASSERT_EQUAL(0, formatLocalDateHhMm(buf, 0, E_2026_01_15_1200Z));
     TEST_ASSERT_EQUAL_STRING("keepme", buf);
 }
 
@@ -229,6 +265,10 @@ int runUnityTests() {
     RUN_TEST(test_format_date);
     RUN_TEST(test_format_date_respects_zone_rollover);
     // Buffer safety
+    RUN_TEST(test_format_date_hh_mm_two_digit_year);
+    RUN_TEST(test_format_date_hh_mm_applies_daylight_saving);
+    RUN_TEST(test_format_date_hh_mm_respects_zone_rollover);
+    RUN_TEST(test_format_date_hh_mm_epoch_zero_renders_empty);
     RUN_TEST(test_null_and_zero_length_buffers);
     // Validation
     RUN_TEST(test_plausible_timezones_accepted);
