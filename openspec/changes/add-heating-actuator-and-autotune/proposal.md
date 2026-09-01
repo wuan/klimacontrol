@@ -1,3 +1,48 @@
+> **STATUS: ON HOLD — output transport changed to MQTT (2026-09-02)**
+>
+> The decision is to drive a **boolean actuator over MQTT** rather than a local
+> GPIO relay, and to pick this up later. Nothing here has been implemented
+> (0/30 tasks). This document is kept for the parts that survive the change of
+> transport, but **it must not be implemented as written** — re-propose when the
+> work is picked up.
+>
+> **Void — all of it GPIO-specific:**
+> - Stage 0 pin selection, strapping-pin avoidance, GPIO37/`SPI.begin()` caveat
+> - The relay/SSR module choice and the active-high requirement
+> - `ActuatorPins.h`, boot-safe pin-LOW initialisation, the wiring document
+> - The `heating-actuator` spec's "Physical output pin" and "Boot-safe and
+>   failsafe output state" requirements
+> - The mains-wiring impact note
+>
+> **Still correct and still wanted:**
+> - Time-proportional output — a boolean actuator over MQTT needs duty-to-on/off
+>   conversion exactly as a relay does, including the cycle time and the
+>   minimum-dwell rule tied to actuator travel time
+> - Redefining `isControlActive()` as "actuator commanded on"
+> - The over-temperature shutoff (already an unimplemented spec requirement)
+> - Decimating the control loop to ~60 s
+> - Tunable, persisted PID gains (also already an unimplemented requirement)
+> - The whole autotune design: relay method, hysteresis-corrected `Ku`,
+>   Tyreus-Luyben PI, `Kd = 0`, the state machine, the safety envelope, and
+>   abort-rather-than-resume
+>
+> **New questions MQTT introduces, none of them answered here:**
+> - **PubSubClient publishes at QoS 0 only.** There is no delivery guarantee, so
+>   a dropped "off" leaves the actuator on. For a heating output that is the
+>   central safety question of this design, and it has no equivalent in the
+>   GPIO version.
+> - **Failsafe moves from wiring to the broker.** An undriven pin closing a
+>   normally-closed valve is replaced by an MQTT Last Will and Testament, plus a
+>   decision about retained messages. A retained "on" command replayed after a
+>   broker restart could open the actuator with nobody asking.
+> - **Control now depends on the network and the broker.** The behaviour when
+>   MQTT is unreachable has to be specified, where a GPIO could not fail that
+>   way.
+> - MQTT is disabled by default (`mqtt_enabled = false`), so enabling control
+>   would gain a dependency on MQTT configuration being valid.
+> - Topic design: command topic, state topic, and whether to emit Home Assistant
+>   discovery.
+
 # Close the control loop: actuator output, then relay autotune
 
 ## Why
