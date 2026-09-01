@@ -50,6 +50,13 @@ namespace Display {
         constexpr int16_t TEMP_BASELINE_Y = 85;
         constexpr int16_t HUMIDITY_BASELINE_Y = 128;
 
+        // Boot splash: a 12pt title over two 9pt lines. The 9pt pair is 22 px
+        // apart, matching the footer's line spacing and FreeSans9pt7b's
+        // yAdvance, with a wider gap below the title so it reads as a heading.
+        constexpr int16_t SPLASH_TITLE_Y = 86;
+        constexpr int16_t SPLASH_NAME_Y = 120;
+        constexpr int16_t SPLASH_STATUS_Y = 142;
+
         // Two-line footer, two columns:
         //
         //   ---------------------------------------------  <- FOOTER_RULE_Y
@@ -400,13 +407,20 @@ namespace Display {
             display.fillScreen(GxEPD_WHITE);
 
             display.setFont(&FreeSans12pt7b);
-            drawCentered("KlimaControl", 90);
+            drawCentered("KlimaControl", SPLASH_TITLE_Y);
 
-            display.setFont(nullptr);
+            display.setFont(&FreeSans9pt7b);
             if (deviceName != nullptr && deviceName[0] != '\0') {
-                drawCentered(deviceName, 115);
+                // Centred, so it only has to fit between the margins — but
+                // device_name allows 31 characters, which in this font can be
+                // wider than the panel.
+                char name[40];
+                fitToWidth(deviceName, PANEL_W - 2 * FOOTER_MARGIN_X, name, sizeof(name));
+                if (name[0] != '\0') {
+                    drawCentered(name, SPLASH_NAME_Y);
+                }
             }
-            drawCentered("starting...", 135);
+            drawCentered("starting...", SPLASH_STATUS_Y);
         } while (display.nextPage());
         feedWatchdog();
         noteDuration(millis() - start, "Splash");

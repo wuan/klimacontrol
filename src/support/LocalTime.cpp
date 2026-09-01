@@ -77,4 +77,20 @@ namespace Support {
         return written < 0 ? 0 : static_cast<size_t>(written);
     }
 
+    size_t formatLocalDateHhMm(char *out, size_t n, uint32_t epoch) {
+        if (!prepareBuffer(out, n)) {
+            return 0;
+        }
+        struct tm lt;
+        if (!localBrokenDown(epoch, lt)) {
+            return 0;
+        }
+        // Two-digit year: the panel's footer line has to hold the date, the
+        // time and still leave the device name room beside it.
+        const int written = snprintf(out, n, "%02d-%02d-%02d %02d:%02d",
+                                     (lt.tm_year + 1900) % 100, lt.tm_mon + 1, lt.tm_mday,
+                                     lt.tm_hour, lt.tm_min);
+        return written < 0 ? 0 : static_cast<size_t>(written);
+    }
+
 } // namespace Support

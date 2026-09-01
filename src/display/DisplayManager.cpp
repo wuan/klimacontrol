@@ -93,17 +93,10 @@ namespace Display {
         if (network == nullptr) {
             return;
         }
-        // Local time, daylight saving included. Both formatters leave their
-        // buffer empty for epoch 0 (NTP not synced); the date is checked because
-        // a bare time with no date would be the misleading half of the pair.
-        const uint32_t epoch = network->getCurrentEpoch();
-        char date[12];
-        char clock[8];
-        if (Support::formatLocalDate(date, sizeof(date), epoch) == 0 ||
-            Support::formatLocalHhMm(clock, sizeof(clock), epoch) == 0) {
-            return;
-        }
-        snprintf(out, n, "%s %s", date, clock);
+        // Local time, daylight saving included. Leaves the buffer empty for
+        // epoch 0 (NTP not synced), so the footer line stays blank rather than
+        // claiming a date and time.
+        Support::formatLocalDateHhMm(out, n, network->getCurrentEpoch());
     }
 
     void DisplayManager::update() {
@@ -162,7 +155,7 @@ namespace Display {
                 formatTemperature(tempStr, sizeof(tempStr), temperature, available);
                 formatHumidity(humStr, sizeof(humStr), humidity, available);
 
-                char dateTime[20];
+                char dateTime[16];
                 formatDateTime(dateTime, sizeof(dateTime));
 
                 // Format setpoint

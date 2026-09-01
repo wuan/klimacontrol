@@ -85,7 +85,7 @@ namespace Display {
         // corrupting the transfer or leaving a BUSY wait hanging.
         SemaphoreHandle_t panelMutex = nullptr;
 
-        // Renders the current local date and time as "YYYY-MM-DD HH:MM" into
+        // Renders the current local date and time as "YY-MM-DD HH:MM" into
         // `out`, or an empty string when NTP has not synced (or no Network is
         // wired in) — the footer then stays blank rather than claiming a time.
         void formatDateTime(char *out, size_t n) const;
