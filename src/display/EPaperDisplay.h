@@ -9,12 +9,6 @@
 
 namespace Display {
 
-    enum class ControlState {
-        INACTIVE,
-        ACTIVE_OFF,
-        ACTIVE_ON
-    };
-
     /**
      * Thin wrapper over the GxEPD2 driver for the Waveshare 1.54" V2 panel.
      *
@@ -46,17 +40,23 @@ namespace Display {
         /**
          * Paint the current values.
          *
+         * The footer is two lines in two columns: the device name over the
+         * date/time on the left, the setpoint over the control symbol on the
+         * right. Left-column fields are truncated to whatever the right column
+         * leaves free, so a long device name cannot overrun the setpoint.
+         *
          * @param tempStr     Preformatted temperature (no unit suffix)
          * @param humStr      Preformatted humidity (no unit suffix)
-         * @param footerLeft  Footer text, left aligned (device name)
-         * @param footerRight Footer text, right aligned (clock); may be empty
-         * @param controlState Control state for symbol display
-         * @param setpointStr Preformatted setpoint temperature string
-         * @param kind        Partial repaints the value window only; Full also
-         *                    repaints the footer and clears ghosting
+         * @param footerName  Footer line 1, left column (device name)
+         * @param footerDateTime Footer line 2, left column (date and time);
+         *                    may be empty while NTP is unsynced
+         * @param controlState Control state, drawn as footer line 2, right column
+         * @param setpointStr Preformatted setpoint, footer line 1, right column
+         * @param kind        Partial repaints the value+footer window; Full also
+         *                    clears ghosting
          */
         void render(const char *tempStr, const char *humStr,
-                    const char *footerLeft, const char *footerRight,
+                    const char *footerName, const char *footerDateTime,
                     ControlState controlState, const char *setpointStr,
                     RefreshKind kind);
 
@@ -85,11 +85,11 @@ namespace Display {
         uint8_t consecutiveTimeouts = 0;
 
         // Runs the paged draw loop for the current window. The footer is drawn
-        // unconditionally: it carries the timestamp of the reading above it and
-        // lies inside the partial-refresh window, so it stays in step with the
-        // values on every refresh.
+        // unconditionally: it carries a live clock and lies entirely inside the
+        // partial-refresh window, so it stays in step with the values on every
+        // refresh.
         void runPagedDraw(const char *tempStr, const char *humStr,
-                          const char *footerLeft, const char *footerRight,
+                          const char *footerName, const char *footerDateTime,
                           ControlState controlState, const char *setpointStr);
 
         // Records the duration of a completed panel operation and trips the

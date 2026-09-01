@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <cstdio>
+#include <cstring>
 #include <esp_task_wdt.h>
 
 #include <GxEPD2_BW.h>
@@ -36,20 +37,50 @@ namespace Display {
 
         // Layout (rotation 0; GFX transforms these for other rotations).
         //
-        // The partial-refresh window spans the values AND the footer. The
-        // footer's clock is not a wall clock — it is the timestamp of the
-        // reading above it, so it has to be repainted whenever that reading is.
-        // Leaving it outside the window (values only) froze it between full
-        // refreshes, which on a stable sensor could be indefinitely.
-        constexpr int16_t REFRESH_WINDOW_Y = 30;
-        constexpr int16_t REFRESH_WINDOW_H = 160; // y 30..189, includes the footer
+        // The partial-refresh window spans the values AND the whole footer. The
+        // footer's date/time is a live wall clock, so it has to be repainted
+        // whenever the values are. Leaving any of it outside the window froze it
+        // between full refreshes, which on a stable sensor could be indefinitely
+        // — hence the window reaching to the bottom of the panel now that the
+        // footer is two lines tall.
         constexpr int16_t PANEL_W = GxEPD2_154_D67::WIDTH;
         constexpr int16_t PANEL_H = GxEPD2_154_D67::HEIGHT;
+        constexpr int16_t REFRESH_WINDOW_Y = 30;
+        constexpr int16_t REFRESH_WINDOW_H = PANEL_H - REFRESH_WINDOW_Y; // y 30..199
         constexpr int16_t TEMP_BASELINE_Y = 85;
         constexpr int16_t HUMIDITY_BASELINE_Y = 128;
-        constexpr int16_t FOOTER_RULE_Y = 160;
-        constexpr int16_t FOOTER_TEXT_Y = 178;
+
+        // Two-line footer, two columns:
+        //
+        //   ---------------------------------------------  <- FOOTER_RULE_Y
+        //   device-name                        22.0 (o)     <- FOOTER_LINE1_Y
+        //   2026-09-01 12:34                        (*)     <- FOOTER_LINE2_Y
+        //
+        // Everything is either flush left at FOOTER_MARGIN_X or flush right at
+        // FOOTER_RIGHT_X, so neither column drifts as its content changes width.
+        // Baselines are 22 px apart, matching FreeSans9pt7b's yAdvance: ink runs
+        // 12 px above the baseline and descenders 4 px below, so consecutive
+        // lines clear each other by 6 px.
+        constexpr int16_t FOOTER_RULE_Y = 152;
+        constexpr int16_t FOOTER_LINE1_Y = 170; // baseline: name | setpoint
+        constexpr int16_t FOOTER_LINE2_Y = 192; // baseline: date/time | symbol
         constexpr int16_t FOOTER_MARGIN_X = 6;
+        constexpr int16_t FOOTER_RIGHT_X = PANEL_W - FOOTER_MARGIN_X;
+        // Clear space kept between the left column's text and the right column,
+        // i.e. the amount the left field is truncated to stay out of.
+        constexpr int16_t FOOTER_COLUMN_GAP = 6;
+
+        // Right column. The setpoint is clamped to 10..30 C, so it is never
+        // negative and the symbol below it cannot read as a minus sign.
+        constexpr int16_t SETPOINT_DEGREE_RADIUS = 2;
+        constexpr int16_t SETPOINT_DEGREE_GAP = 4; // digits -> degree ring
+        // The ring sits at the digits' cap height (their ink starts 12 px above
+        // the baseline), like a real degree mark. Centring it on the digits
+        // instead makes it read as a lowercase 'o'.
+        constexpr int16_t SETPOINT_DEGREE_CY = FOOTER_LINE1_Y - 10;
+        constexpr int16_t CONTROL_SYMBOL_RADIUS = 6;    // 12 px diameter circle
+        constexpr int16_t CONTROL_SYMBOL_HALF_LINE = 5; // 10 px line for INACTIVE
+        constexpr int16_t CONTROL_SYMBOL_CY = FOOTER_LINE2_Y - 5;
 
         // Geometry of the degree mark. The Adafruit GFX free fonts only carry
         // glyphs 0x20-0x7E, so U+00B0 (and the Latin-1 0xB0 byte) renders as
@@ -76,13 +107,14 @@ namespace Display {
         void drawControlSymbol(int16_t x, int16_t y, Display::ControlState state) {
             switch (state) {
                 case Display::ControlState::INACTIVE:
-                    display.drawFastHLine(x - 5, y, 10, GxEPD_BLACK);
+                    display.drawFastHLine(x - CONTROL_SYMBOL_HALF_LINE, y,
+                                          2 * CONTROL_SYMBOL_HALF_LINE, GxEPD_BLACK);
                     break;
                 case Display::ControlState::ACTIVE_OFF:
-                    display.drawCircle(x, y, 6, GxEPD_BLACK);
+                    display.drawCircle(x, y, CONTROL_SYMBOL_RADIUS, GxEPD_BLACK);
                     break;
                 case Display::ControlState::ACTIVE_ON:
-                    display.fillCircle(x, y, 6, GxEPD_BLACK);
+                    display.fillCircle(x, y, CONTROL_SYMBOL_RADIUS, GxEPD_BLACK);
                     break;
             }
         }
@@ -118,6 +150,52 @@ namespace Display {
             display.drawCircle(ringCx, ringCy, DEGREE_RADIUS + 1, GxEPD_BLACK);
             display.drawCircle(ringCx, ringCy, DEGREE_RADIUS, GxEPD_BLACK);
             display.drawCircle(ringCx, ringCy, DEGREE_RADIUS - 1, GxEPD_BLACK);
+        }
+
+        // Advance width of `text` in the currently selected font.
+        int16_t textWidth(const char *text) {
+            int16_t x1 = 0;
+            int16_t y1 = 0;
+            uint16_t w = 0;
+            uint16_t h = 0;
+            display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+            return static_cast<int16_t>(w);
+        }
+
+        // Copy as much of `text` into `out` as fits within `maxWidth` pixels in
+        // the current font, marking a cut with a trailing '.'.
+        //
+        // setTextWrap(false) means an over-long string is not clipped, it just
+        // keeps drawing — a 31-character device_name in the 9pt font runs across
+        // the centred setpoint group and paints over it. Truncating here is what
+        // keeps the three footer fields from colliding. ('…' is not an option:
+        // the GFX free fonts only carry glyphs 0x20-0x7E.)
+        void fitToWidth(const char *text, int16_t maxWidth, char *out, size_t outSize) {
+            if (out == nullptr || outSize == 0) {
+                return;
+            }
+            out[0] = '\0';
+            if (text == nullptr || maxWidth <= 0) {
+                return;
+            }
+            strlcpy(out, text, outSize);
+            if (textWidth(out) <= maxWidth) {
+                return;
+            }
+            size_t len = strlen(out);
+            while (len > 0) {
+                len--;
+                out[len] = '\0';
+                if (len == 0) {
+                    return; // not even one character plus the marker fits
+                }
+                const char cut = out[len - 1];
+                out[len - 1] = '.';
+                if (textWidth(out) <= maxWidth) {
+                    return;
+                }
+                out[len - 1] = cut;
+            }
         }
 
         void drawRightAligned(const char *text, int16_t rightX, int16_t baselineY) {
@@ -193,7 +271,7 @@ namespace Display {
     }
 
     void EPaperDisplay::runPagedDraw(const char *tempStr, const char *humStr,
-                                     const char *footerLeft, const char *footerRight,
+                                     const char *footerName, const char *footerDateTime,
                                      Display::ControlState controlState, const char *setpointStr) {
         display.firstPage();
         do {
@@ -207,55 +285,56 @@ namespace Display {
             snprintf(humLine, sizeof(humLine), "%s %%rH", humStr);
             drawCentered(humLine, HUMIDITY_BASELINE_Y);
 
-            // Drawn on every refresh, partial included: the footer's right-hand
-            // field timestamps the reading above it, so it must never be older
-            // than that reading.
+            // Drawn on every refresh, partial included: the footer carries a
+            // live clock, so it must never be older than the values above it.
             display.drawFastHLine(FOOTER_MARGIN_X, FOOTER_RULE_Y,
                                   PANEL_W - 2 * FOOTER_MARGIN_X, GxEPD_BLACK);
-            
-            // Draw setpoint, degree symbol, and control symbol in footer center
-            // Layout: [22.0][°][symbol] centered at x=100
-            // Symbol to the right avoids confusion with negative numbers
+
             display.setFont(&FreeSans9pt7b);
-            int16_t x1 = 0, y1 = 0;
-            uint16_t w = 0, h = 0;
-            display.getTextBounds(setpointStr, 0, FOOTER_TEXT_Y, &x1, &y1, &w, &h);
-            
-            // Measure total width: setpoint + degree circle + symbol
-            // Symbol width: 12px for circle (diameter), 10px for line
-            int16_t symbolWidth = 12; // All symbols fit within 12px
-            int16_t degreeWidth = 4;  // Degree circle diameter
-            int16_t spacing = 4;      // Space between elements
-            int16_t totalWidth = w + degreeWidth + symbolWidth + 2 * spacing;
-            
-            // Center the group at x=100
-            int16_t groupStartX = 100 - totalWidth / 2;
-            
-            // Draw setpoint text
-            display.setCursor(groupStartX, FOOTER_TEXT_Y);
-            display.print(setpointStr);
-            
-            // Draw degree circle to the right of setpoint (higher position for better alignment)
-            int16_t degreeX = groupStartX + w - x1 + spacing;
-            display.drawCircle(degreeX, 173, 2, GxEPD_BLACK); // y=173 is higher than 175
-            
-            // Draw control symbol to the right of degree circle
-            int16_t symbolX = degreeX + degreeWidth + spacing;
-            drawControlSymbol(symbolX, 175, controlState);
-            
-            // Draw device name and clock with same 9pt font
-            if (footerLeft != nullptr && footerLeft[0] != '\0') {
-                display.setCursor(FOOTER_MARGIN_X, FOOTER_TEXT_Y);
-                display.print(footerLeft);
+
+            // --- right column, drawn first: it fixes how much room the left
+            // column has, and it is the field that must never be truncated ---
+
+            // Line 1: setpoint, then the degree ring flush with the right margin.
+            const int16_t ringCx = static_cast<int16_t>(FOOTER_RIGHT_X - SETPOINT_DEGREE_RADIUS);
+            display.drawCircle(ringCx, SETPOINT_DEGREE_CY, SETPOINT_DEGREE_RADIUS, GxEPD_BLACK);
+
+            const int16_t setpointRightX =
+                static_cast<int16_t>(ringCx - SETPOINT_DEGREE_RADIUS - SETPOINT_DEGREE_GAP);
+            drawRightAligned(setpointStr, setpointRightX, FOOTER_LINE1_Y);
+            const int16_t setpointLeftX =
+                static_cast<int16_t>(setpointRightX - textWidth(setpointStr));
+
+            // Line 2: control symbol, also flush with the right margin.
+            const int16_t symbolCx = static_cast<int16_t>(FOOTER_RIGHT_X - CONTROL_SYMBOL_RADIUS);
+            drawControlSymbol(symbolCx, CONTROL_SYMBOL_CY, controlState);
+            const int16_t symbolLeftX = static_cast<int16_t>(symbolCx - CONTROL_SYMBOL_RADIUS);
+
+            // --- left column, each line truncated to what its own row leaves ---
+            char footerField[40];
+            if (footerName != nullptr && footerName[0] != '\0') {
+                const int16_t maxWidth = static_cast<int16_t>(setpointLeftX - FOOTER_COLUMN_GAP -
+                                                              FOOTER_MARGIN_X);
+                fitToWidth(footerName, maxWidth, footerField, sizeof(footerField));
+                if (footerField[0] != '\0') {
+                    display.setCursor(FOOTER_MARGIN_X, FOOTER_LINE1_Y);
+                    display.print(footerField);
+                }
             }
-            if (footerRight != nullptr && footerRight[0] != '\0') {
-                drawRightAligned(footerRight, PANEL_W - FOOTER_MARGIN_X, FOOTER_TEXT_Y);
+            if (footerDateTime != nullptr && footerDateTime[0] != '\0') {
+                const int16_t maxWidth = static_cast<int16_t>(symbolLeftX - FOOTER_COLUMN_GAP -
+                                                              FOOTER_MARGIN_X);
+                fitToWidth(footerDateTime, maxWidth, footerField, sizeof(footerField));
+                if (footerField[0] != '\0') {
+                    display.setCursor(FOOTER_MARGIN_X, FOOTER_LINE2_Y);
+                    display.print(footerField);
+                }
             }
         } while (display.nextPage());
     }
 
     void EPaperDisplay::render(const char *tempStr, const char *humStr,
-                               const char *footerLeft, const char *footerRight,
+                               const char *footerName, const char *footerDateTime,
                                Display::ControlState controlState, const char *setpointStr,
                                RefreshKind kind) {
         if (!initialised || faulted || kind == RefreshKind::None) {
@@ -266,9 +345,9 @@ namespace Display {
         if (full) {
             display.setFullWindow();
         } else {
-            // Everything that changes between refreshes — the values and the
-            // footer timestamp — lives inside this window. Only the top margin
-            // is excluded, which is blank.
+            // Everything that changes between refreshes — the values and both
+            // footer lines — lives inside this window. Only the top margin is
+            // excluded, which is blank.
             display.setPartialWindow(0, REFRESH_WINDOW_Y, PANEL_W, REFRESH_WINDOW_H);
         }
 
@@ -278,7 +357,7 @@ namespace Display {
         // "blocking external call" requirement.
         const uint32_t start = millis();
         feedWatchdog();
-        runPagedDraw(tempStr, humStr, footerLeft, footerRight, controlState, setpointStr);
+        runPagedDraw(tempStr, humStr, footerName, footerDateTime, controlState, setpointStr);
         feedWatchdog();
         const uint32_t elapsed = millis() - start;
 

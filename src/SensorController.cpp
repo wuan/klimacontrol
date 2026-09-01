@@ -442,6 +442,10 @@ void SensorController::setControlEnabled(bool enabled) {
 float SensorController::updateControl() {
     float currentTemp = getTemperature();
     if (!config.getDeviceConfig().temperature_control_enabled || !isDataValid() || std::isnan(currentTemp)) {
+        // The stored output must reflect reality on every call, otherwise
+        // isControlActive() keeps reporting the last positive output after the
+        // sensor drops out or control is switched off.
+        lastControlOutput = 0.0f;
         return 0.0f;
     }
 

@@ -154,7 +154,7 @@ function getControlSymbol(enabled, active) {
 
 function getControlSymbolClass(enabled, active) {
     if (enabled === undefined) return 'inactive';
-    if (active === undefined) return enabled ? 'active-on' : 'inactive';
+    if (active === undefined) return enabled ? 'active-off' : 'inactive';
     if (!enabled) return 'inactive';
     if (active) return 'active-on';
     return 'active-off';
@@ -174,114 +174,84 @@ if (controlStatusElement) {
 **File:** `src/generated/control_gz.h`
 - Will need to be regenerated after control.html changes via `scripts/compress_web.py`
 
-**Rationale:** Unicode symbols provide clear visual distinction. Fallback logic ensures compatibility with old API versions that don't include `control_active`. CSS classes provide color coding matching the existing scheme.
+**Rationale:** Unicode symbols provide clear visual distinction. Fallback logic ensures compatibility with old API versions that don't include `control_active`; that path reports "enabled, output unknown" (hollow circle, `active-off`) rather than claiming the device is actively heating. CSS classes provide color coding matching the existing scheme.
 
 ### 4. E-Paper Display
 
-**File:** `src/display/EPaperDisplay.h`
+**File:** `src/display/RefreshPolicy.h`
 
-Add enum for control state:
+`ControlState` lives here, not in `EPaperDisplay.h`: the refresh policy needs it
+as an input, and `RefreshPolicy` is the deliberately Arduino-free half of the
+display code so it stays testable in the `native` environment.
+
 ```cpp
 enum class ControlState {
     INACTIVE,    // Control disabled
-    ACTIVE_OFF,   // Control enabled, output = 0
-    ACTIVE_ON     // Control enabled, output > 0
+    ACTIVE_OFF,  // Control enabled, output = 0
+    ACTIVE_ON    // Control enabled, output > 0
 };
 ```
 
-Update render signature:
+`evaluate()` gains the setpoint and the control state as trailing defaulted
+parameters, and treats a change in either as a change worth showing. Both are
+footer content the user can change from the web UI, so without this they would
+only reach the panel when a measured value crossed hysteresis or the wall-clock
+minute rolled over — and the minute never rolls over while NTP is unsynced.
+Setpoint comparison uses a 0.05 K threshold, half the rendered precision, and
+treats `NAN` (unknown) as its own state.
+
+**File:** `src/display/EPaperDisplay.h`
+
 ```cpp
 void render(const char *tempStr, const char *humStr,
-            const char *footerLeft, const char *footerRight,
+            const char *footerName, const char *footerDateTime,
             ControlState controlState, const char *setpointStr,
             RefreshKind kind);
 ```
 
 **File:** `src/display/EPaperDisplay.cpp`
 
-Add header include:
-```cpp
-#include <Fonts/FreeSans9pt7b.h>
+Two-line, two-column footer. Everything is flush left at `FOOTER_MARGIN_X` or
+flush right at `FOOTER_RIGHT_X`, so neither column drifts as its content changes
+width:
+
+```
+--------------------------------------------  <- FOOTER_RULE_Y  = 152
+klimacontrol                       22.0 (o)   <- FOOTER_LINE1_Y = 170
+2026-09-01 12:34                        (*)   <- FOOTER_LINE2_Y = 192
 ```
 
-Add helper function:
-```cpp
-namespace {
-    void drawControlSymbol(int16_t x, int16_t y, ControlState state) {
-        switch (state) {
-            case ControlState::INACTIVE:
-                display.drawFastHLine(x - 5, y, 10, GxEPD_BLACK);
-                break;
-            case ControlState::ACTIVE_OFF:
-                display.drawCircle(x, y, 6, GxEPD_BLACK);
-                break;
-            case ControlState::ACTIVE_ON:
-                display.fillCircle(x, y, 6, GxEPD_BLACK);
-                break;
-        }
-    }
-}
-```
+Key points of the implementation:
 
-Update runPagedDraw:
-```cpp
-void EPaperDisplay::runPagedDraw(const char *tempStr, const char *humStr,
-                                 const char *footerLeft, const char *footerRight,
-                                 ControlState controlState, const char *setpointStr) {
-    display.firstPage();
-    do {
-        display.fillScreen(GxEPD_WHITE);
-
-        // ... existing temperature/humidity drawing ...
-
-        // Footer rule
-        display.drawFastHLine(FOOTER_MARGIN_X, FOOTER_RULE_Y,
-                              PANEL_W - 2 * FOOTER_MARGIN_X, GxEPD_BLACK);
-
-        // Set 9pt font for setpoint
-        display.setFont(&FreeSans9pt7b);
-
-        // Measure setpoint text
-        int16_t x1 = 0, y1 = 0;
-        uint16_t w = 0, h = 0;
-        display.getTextBounds(setpointStr, 0, FOOTER_TEXT_Y, &x1, &y1, &w, &h);
-
-        // Center setpoint at x=100
-        int16_t setpointX = 100 - (w + x1) / 2;
-
-        // Draw control symbol 8px left of setpoint
-        int16_t symbolX = setpointX + x1 - 8;
-        drawControlSymbol(symbolX, 175, controlState);
-
-        // Draw setpoint text
-        display.setCursor(setpointX, FOOTER_TEXT_Y);
-        display.print(setpointStr);
-
-        // Draw degree circle 4px right of setpoint
-        int16_t degreeX = setpointX + w - x1 + 4;
-        display.drawCircle(degreeX, 175, 2, GxEPD_BLACK);
-
-        // Reset to built-in font for footer left/right
-        display.setFont(nullptr);
-
-        // Draw device name and clock
-        // ... existing code ...
-    } while (display.nextPage());
-}
-
-void EPaperDisplay::render(const char *tempStr, const char *humStr,
-                           const char *footerLeft, const char *footerRight,
-                           ControlState controlState, const char *setpointStr,
-                           RefreshKind kind) {
-    // ... existing window setup ...
-    runPagedDraw(tempStr, humStr, footerLeft, footerRight, controlState, setpointStr);
-    // ... existing duration tracking ...
-}
-```
+- Baselines are 22 px apart, matching `FreeSans9pt7b`'s `yAdvance`. Ink runs 12 px
+  above the baseline with 4 px descenders, so consecutive lines clear by 6 px.
+- The **right column is drawn first**. It is the field that must never be
+  truncated, and its extents fix how much room the left column has.
+- The left column is truncated **per line** by `fitToWidth()`, against the width
+  that row actually leaves free (`setpointLeftX` for line 1, `symbolLeftX` for
+  line 2). `setTextWrap(false)` does not clip, it just keeps drawing, so an
+  untruncated 31-character `device_name` would paint straight over the setpoint.
+  The cut is marked with a trailing `.` — `…` is not available, the GFX free
+  fonts only carry glyphs 0x20-0x7E.
+- `getTextBounds()` returns `x1` as the **absolute** left edge of the ink for the
+  cursor passed in, so ink spans `[cursor + x1, cursor + x1 + w]`. Every edge is
+  derived from that identity; getting the sign of `x1` wrong is what pushed the
+  degree ring into the last digit in an earlier revision.
+- `REFRESH_WINDOW_H` is 170 rather than 160, i.e. down to the bottom edge of the
+  panel, so both footer lines are inside the partial-refresh window. A field left
+  outside it freezes between full refreshes.
+- The degree ring sits at the digits' cap height (`FOOTER_LINE1_Y - 10`).
+  Centring it on the digits makes it read as a lowercase `o`.
+- All placement constants are named and derived (`PANEL_W / 2`, offsets from the
+  line baselines) rather than literal, so the columns cannot silently
+  desynchronise if the geometry changes.
 
 **File:** `src/display/DisplayManager.h`
 
-No changes needed to header (already has render method).
+`formatClock()` becomes `formatDateTime()`, rendering `"YYYY-MM-DD HH:MM"` from
+`Support::formatLocalDate()` + `Support::formatLocalHhMm()`. Both leave their
+buffer empty for epoch 0, and the pair is emitted only if both succeed — a bare
+time with no date would be the misleading half.
 
 **File:** `src/display/DisplayManager.cpp`
 
