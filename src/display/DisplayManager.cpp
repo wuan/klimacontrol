@@ -1,4 +1,5 @@
 #include "display/DisplayManager.h"
+#include "display/EPaperDisplay.h"
 
 #ifdef ARDUINO
 
@@ -143,10 +144,29 @@ namespace Display {
                 char clock[8];
                 formatClock(clock, sizeof(clock));
 
+                // Determine control state
+                Display::ControlState controlState;
+                if (!controller.isControlEnabled()) {
+                    controlState = Display::ControlState::INACTIVE;
+                } else if (controller.isControlActive()) {
+                    controlState = Display::ControlState::ACTIVE_ON;
+                } else {
+                    controlState = Display::ControlState::ACTIVE_OFF;
+                }
+
+                // Format setpoint
+                char setpointStr[8];
+                float target = controller.getTargetTemperature();
+                if (std::isnan(target)) {
+                    snprintf(setpointStr, sizeof(setpointStr), "--");
+                } else {
+                    snprintf(setpointStr, sizeof(setpointStr), "%.1f", static_cast<double>(target));
+                }
+
                 // Bare numbers: EPaperDisplay owns the unit decoration, because
                 // the degree mark has to be drawn geometrically (the GFX fonts
                 // only carry glyphs 0x20-0x7E) rather than printed.
-                panel.render(tempStr, humStr, deviceName, clock, kind);
+                panel.render(tempStr, humStr, deviceName, clock, controlState, setpointStr, kind);
             }
         }
 

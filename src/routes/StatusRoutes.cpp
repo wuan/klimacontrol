@@ -51,6 +51,7 @@ void WebServerManager::setupStatusRoutes() {
         // Temperature control info
         doc["target_temperature"] = sensorController.getTargetTemperature();
         doc["control_enabled"] = sensorController.isControlEnabled();
+        doc["control_active"] = sensorController.isControlActive();
 
         // Network info
         doc["wifi_connected"] = WiFiClass::status() == WL_CONNECTED;

@@ -43,7 +43,8 @@ SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused
       dataMutex(xSemaphoreCreateMutex()),
       statusLed(statusLed),
 #endif
-      lastReadingTime(0) {
+      lastReadingTime(0),
+      lastControlOutput(0.0f) {
 #ifdef ARDUINO
     // xSemaphoreCreateMutex() returns nullptr if the heap is exhausted at boot.
     // Previously this just logged a warning and continued, which let the
@@ -473,6 +474,8 @@ float SensorController::updateControl() {
     // Calculate control output
     float output = proportional + integral + derivative;
     output = std::max(MinOutput, std::min(MaxOutput, output));
+
+    lastControlOutput = output;
 
     if (dt > 0.0f) {
         ESP_LOGD(TAG, "PID: T=%.1f C (target=%.1f C), output=%.2f, P=%.2f, I=%.2f, D=%.2f",

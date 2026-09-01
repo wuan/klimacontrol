@@ -8,6 +8,7 @@
 #include <esp_task_wdt.h>
 
 #include <GxEPD2_BW.h>
+#include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSans12pt7b.h>
 #include <Fonts/FreeSansBold24pt7b.h>
 
@@ -69,6 +70,21 @@ namespace Display {
             const int16_t x = static_cast<int16_t>((PANEL_W - static_cast<int16_t>(w)) / 2 - x1);
             display.setCursor(x, baselineY);
             display.print(text);
+        }
+
+        // Draw control state symbol at given position
+        void drawControlSymbol(int16_t x, int16_t y, Display::ControlState state) {
+            switch (state) {
+                case Display::ControlState::INACTIVE:
+                    display.drawFastHLine(x - 5, y, 10, GxEPD_BLACK);
+                    break;
+                case Display::ControlState::ACTIVE_OFF:
+                    display.drawCircle(x, y, 6, GxEPD_BLACK);
+                    break;
+                case Display::ControlState::ACTIVE_ON:
+                    display.fillCircle(x, y, 6, GxEPD_BLACK);
+                    break;
+            }
         }
 
         // Draw the temperature digits followed by a drawn degree ring, with the
@@ -177,7 +193,8 @@ namespace Display {
     }
 
     void EPaperDisplay::runPagedDraw(const char *tempStr, const char *humStr,
-                                     const char *footerLeft, const char *footerRight) {
+                                     const char *footerLeft, const char *footerRight,
+                                     Display::ControlState controlState, const char *setpointStr) {
         display.firstPage();
         do {
             display.fillScreen(GxEPD_WHITE);
@@ -195,7 +212,38 @@ namespace Display {
             // than that reading.
             display.drawFastHLine(FOOTER_MARGIN_X, FOOTER_RULE_Y,
                                   PANEL_W - 2 * FOOTER_MARGIN_X, GxEPD_BLACK);
-            display.setFont(nullptr); // built-in 6x8 font
+            
+            // Draw setpoint, degree symbol, and control symbol in footer center
+            // Layout: [22.0][°][symbol] centered at x=100
+            // Symbol to the right avoids confusion with negative numbers
+            display.setFont(&FreeSans9pt7b);
+            int16_t x1 = 0, y1 = 0;
+            uint16_t w = 0, h = 0;
+            display.getTextBounds(setpointStr, 0, FOOTER_TEXT_Y, &x1, &y1, &w, &h);
+            
+            // Measure total width: setpoint + degree circle + symbol
+            // Symbol width: 12px for circle (diameter), 10px for line
+            int16_t symbolWidth = 12; // All symbols fit within 12px
+            int16_t degreeWidth = 4;  // Degree circle diameter
+            int16_t spacing = 4;      // Space between elements
+            int16_t totalWidth = w + degreeWidth + symbolWidth + 2 * spacing;
+            
+            // Center the group at x=100
+            int16_t groupStartX = 100 - totalWidth / 2;
+            
+            // Draw setpoint text
+            display.setCursor(groupStartX, FOOTER_TEXT_Y);
+            display.print(setpointStr);
+            
+            // Draw degree circle to the right of setpoint (higher position for better alignment)
+            int16_t degreeX = groupStartX + w - x1 + spacing;
+            display.drawCircle(degreeX, 173, 2, GxEPD_BLACK); // y=173 is higher than 175
+            
+            // Draw control symbol to the right of degree circle
+            int16_t symbolX = degreeX + degreeWidth + spacing;
+            drawControlSymbol(symbolX, 175, controlState);
+            
+            // Draw device name and clock with same 9pt font
             if (footerLeft != nullptr && footerLeft[0] != '\0') {
                 display.setCursor(FOOTER_MARGIN_X, FOOTER_TEXT_Y);
                 display.print(footerLeft);
@@ -208,6 +256,7 @@ namespace Display {
 
     void EPaperDisplay::render(const char *tempStr, const char *humStr,
                                const char *footerLeft, const char *footerRight,
+                               Display::ControlState controlState, const char *setpointStr,
                                RefreshKind kind) {
         if (!initialised || faulted || kind == RefreshKind::None) {
             return;
@@ -229,7 +278,7 @@ namespace Display {
         // "blocking external call" requirement.
         const uint32_t start = millis();
         feedWatchdog();
-        runPagedDraw(tempStr, humStr, footerLeft, footerRight);
+        runPagedDraw(tempStr, humStr, footerLeft, footerRight, controlState, setpointStr);
         feedWatchdog();
         const uint32_t elapsed = millis() - start;
 
