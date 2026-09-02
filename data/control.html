@@ -77,6 +77,43 @@
             transform: translateX(20px);
         }
 
+        .param-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        .param-table td { padding: 6px 4px; border-bottom: 1px solid #eef0fb; }
+        .param-table td:first-child { color: #6c757d; width: 45%; }
+        .param-table td:last-child { text-align: right; font-weight: 600; color: #333; }
+        .param-table .param-group td { color: #333; font-weight: 600; }
+
+        /* A saturated controller sitting at 100% should be instantly
+           distinguishable from one modulating at 40%; the number alone is
+           easy to misread at a glance. */
+        .demand-bar {
+            display: inline-block;
+            width: 90px;
+            height: 8px;
+            border-radius: 4px;
+            background-color: #e4e7f5;
+            margin-left: 8px;
+            vertical-align: middle;
+            overflow: hidden;
+        }
+        .demand-bar > span {
+            display: block;
+            height: 100%;
+            background-color: #667eea;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        .autotune-box { margin-top: 14px; padding: 10px 12px; background-color: #f6f7fc; border-radius: 8px; }
+        .autotune-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+        .autotune-state { font-size: 13px; font-weight: 600; color: #333; }
+        .autotune-note { font-size: 12px; color: #6c757d; margin-top: 8px; line-height: 1.45; }
+        .autotune-note strong { color: #856404; }
+        .autotune-result { margin-top: 10px; font-size: 13px; }
+        .autotune-result table { width: 100%; border-collapse: collapse; }
+        .autotune-result td { padding: 4px; border-bottom: 1px solid #e4e7f5; }
+        .autotune-result td:last-child { text-align: right; font-weight: 600; }
+
         .control-error {
             display: none;
             margin: -12px 0 16px;
@@ -141,6 +178,25 @@
 
             <div id="controlError" class="control-error" role="alert"></div>
 
+            <div id="controlParams" class="measurement-section">
+                <button class="btn btn-primary btn-sm" onclick="showControlParams()">Show Control Parameters</button>
+                <button class="btn btn-danger btn-sm" id="clearParamsBtn" onclick="hideControlParams()" style="display: none; margin-left: 8px;">Hide</button>
+                <table id="paramTable" class="param-table" style="display: none;">
+                    <tbody id="paramTableBody"></tbody>
+                </table>
+                <div id="autotuneBox" class="autotune-box" style="display: none;">
+                    <div class="autotune-row">
+                        <span class="autotune-state" id="autotuneState">Autotune: idle</span>
+                        <span>
+                            <button class="btn btn-primary btn-sm" id="autotuneStartBtn" onclick="startAutotune()">Start autotune</button>
+                            <button class="btn btn-danger btn-sm" id="autotuneAbortBtn" onclick="abortAutotune()" style="display:none;">Abort</button>
+                        </span>
+                    </div>
+                    <div id="autotuneResult" class="autotune-result" style="display:none;"></div>
+                    <div class="autotune-note" id="autotuneNote"></div>
+                </div>
+            </div>
+
             <div id="measurementOverview" class="measurement-section">
                 <button class="btn btn-primary btn-sm" onclick="showMeasurements()">Show Measurements</button>
                 <button class="btn btn-danger btn-sm" id="clearMeasurementsBtn" onclick="clearMeasurements()" style="display: none; margin-left: 8px;">Clear</button>
@@ -169,6 +225,7 @@
         let currentStatus = {};
         let lastSuccessfulFetch = Date.now();
         let measurementsVisible = false;
+        let controlParamsVisible = false;
 
         const SETPOINT_MIN = 10.0;
         const SETPOINT_MAX = 30.0;
@@ -426,6 +483,7 @@
         setInterval(function() {
             updateStatus();
             if (measurementsVisible) refreshMeasurements();
+            if (controlParamsVisible) { refreshControlParams(); refreshAutotune(); }
         }, 10000);
 
         // Fetch and update device status
@@ -524,6 +582,170 @@
         async function showMeasurements() {
             measurementsVisible = true;
             await refreshMeasurements();
+        }
+
+        // Control parameters panel. Fetched on demand rather than on the poll,
+        // so a client that never opens it costs the device nothing.
+        function fmt(v, digits, unit) {
+            if (typeof v !== 'number' || Number.isNaN(v)) return '&mdash;';
+            return `${v.toFixed(digits)}${unit || ''}`;
+        }
+
+        async function refreshControlParams() {
+            try {
+                const response = await fetch('/api/control');
+                const d = await response.json();
+                const tbody = document.getElementById('paramTableBody');
+                const table = document.getElementById('paramTable');
+                if (!tbody || !table) return;
+
+                // Demand as a percentage of the clamp range. This is the honest
+                // reading of the controller's output: the three-state symbol in
+                // the control bar only says "non-zero", so it looks the same at
+                // 1% and at 100%.
+                const lo = typeof d.output_min === 'number' ? d.output_min : 0;
+                const hi = typeof d.output_max === 'number' ? d.output_max : 1;
+                const span = (hi - lo) || 1;
+                const pct = typeof d.output === 'number'
+                    ? Math.max(0, Math.min(100, ((d.output - lo) / span) * 100))
+                    : null;
+
+                const state = d.enabled === false
+                    ? 'Disabled'
+                    : (d.running ? 'Enabled, running' : 'Enabled, not yet running');
+
+                const demandCell = pct === null ? '&mdash;'
+                    : `${pct.toFixed(0)} %<span class="demand-bar"><span style="width:${pct.toFixed(0)}%"></span></span>`;
+
+                tbody.innerHTML = `
+                    <tr><td>State</td><td>${esc(state)}</td></tr>
+                    <tr><td>Demand</td><td>${demandCell}</td></tr>
+                    <tr><td>Setpoint</td><td>${fmt(d.setpoint, 1, ' °C')}</td></tr>
+                    <tr><td>Temperature</td><td>${fmt(d.temperature, 2, ' °C')}</td></tr>
+                    <tr><td>Error</td><td>${fmt(d.error, 2, ' K')}</td></tr>
+                    <tr><td>Integral term</td><td>${fmt(d.integral, 3)}</td></tr>
+                    <tr class="param-group"><td colspan="2">Gains</td></tr>
+                    <tr><td>Kp (proportional)</td><td>${fmt(d.kp, 3)}</td></tr>
+                    <tr><td>Ki (integral)</td><td>${fmt(d.ki, 3)}</td></tr>
+                    <tr><td>Kd (derivative)</td><td>${fmt(d.kd, 3)}</td></tr>`;
+                table.style.display = 'table';
+                const btn = document.getElementById('clearParamsBtn');
+                if (btn) btn.style.display = 'inline-block';
+            } catch (error) {
+                console.error('Failed to fetch control parameters:', error);
+            }
+        }
+
+        // --- Autotune ---
+
+        const ABORT_TEXT = {
+            none: '',
+            user_requested: 'aborted at your request',
+            ceiling_breached: 'aborted \u2014 temperature went above the run ceiling',
+            floor_breached: 'aborted \u2014 temperature went below the run floor',
+            sensor_lost: 'aborted \u2014 sensor data became unavailable',
+            run_timeout: 'stopped \u2014 no limit cycle formed within the time budget',
+            settling_timeout: 'stopped \u2014 the temperature never settled enough to start',
+            amplitude_too_small: 'aborted \u2014 the oscillation never cleared the hysteresis band',
+            derived_gains_invalid: 'aborted \u2014 the derived gains were not usable'
+        };
+
+        function renderAutotune(a) {
+            const box = document.getElementById('autotuneBox');
+            const stateEl = document.getElementById('autotuneState');
+            const startBtn = document.getElementById('autotuneStartBtn');
+            const abortBtn = document.getElementById('autotuneAbortBtn');
+            const resultEl = document.getElementById('autotuneResult');
+            const noteEl = document.getElementById('autotuneNote');
+            if (!box) return;
+            box.style.display = 'block';
+
+            const secs = Math.round((a.elapsed_ms || 0) / 1000);
+            const mins = Math.floor(secs / 60);
+            const elapsed = mins > 0 ? `${mins} min ${secs % 60} s` : `${secs} s`;
+
+            let label = `Autotune: ${esc(a.state || 'unknown')}`;
+            if (a.active) label += ` \u2014 ${elapsed}, ${a.cycles || 0} cycle(s)`;
+            if (a.state === 'aborted') {
+                const reason = ABORT_TEXT[a.abort_reason] || esc(a.abort_reason || '');
+                if (reason) label += ` \u2014 ${reason}`;
+            }
+            stateEl.textContent = label;
+
+            startBtn.style.display = a.active ? 'none' : 'inline-block';
+            abortBtn.style.display = a.active ? 'inline-block' : 'none';
+
+            if (a.state === 'done') {
+                resultEl.style.display = 'block';
+                resultEl.innerHTML = `
+                    <table>
+                        <tr><td>Ku / Tu</td><td>${(a.ku || 0).toFixed(3)} / ${(a.tu || 0).toFixed(0)} s</td></tr>
+                        <tr><td>Derived Kp</td><td>${(a.derived_kp || 0).toFixed(3)} <small>(now ${(a.kp || 0).toFixed(3)})</small></td></tr>
+                        <tr><td>Derived Ki</td><td>${(a.derived_ki || 0).toFixed(4)} <small>(now ${(a.ki || 0).toFixed(4)})</small></td></tr>
+                        <tr><td>Derived Kd</td><td>${(a.derived_kd || 0).toFixed(3)} <small>(now ${(a.kd || 0).toFixed(3)})</small></td></tr>
+                    </table>
+                    <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="acceptAutotune()">Apply these gains</button>`;
+            } else {
+                resultEl.style.display = 'none';
+                resultEl.innerHTML = '';
+            }
+
+            // Driven by the firmware, not hard-coded, so the warnings disappear
+            // by themselves once the device can actually drive a heater.
+            const notes = [];
+            if (a.can_converge === false) {
+                notes.push('<strong>No heating output is wired yet</strong>, so the room cannot respond to the test. A run will exercise the machinery and then stop on a timeout \u2014 that is expected, not a fault.');
+            }
+            if (a.gains_persisted === false) {
+                notes.push('Applied gains are held in memory only and are lost on restart.');
+            }
+            noteEl.innerHTML = notes.join('<br>');
+        }
+
+        async function refreshAutotune() {
+            try {
+                const r = await fetch('/api/autotune/status');
+                renderAutotune(await r.json());
+            } catch (e) {
+                console.error('Failed to fetch autotune status:', e);
+            }
+        }
+
+        async function autotunePost(path, failMsg) {
+            clearControlError();
+            try {
+                const r = await fetch(path, {method: 'POST', headers: CSRF_HEADERS});
+                if (!r.ok) {
+                    const body = await r.json().catch(() => ({}));
+                    showControlError(body.error || failMsg);
+                }
+            } catch (e) {
+                console.error(path, e);
+                showControlError('Could not reach device.');
+            }
+            await refreshAutotune();
+        }
+
+        const startAutotune = () => autotunePost('/api/autotune/start', 'Could not start autotune.');
+        const abortAutotune = () => autotunePost('/api/autotune/abort', 'Could not abort autotune.');
+        const acceptAutotune = () => autotunePost('/api/autotune/accept', 'Could not apply gains.');
+
+        async function showControlParams() {
+            controlParamsVisible = true;
+            await refreshControlParams();
+            await refreshAutotune();
+        }
+
+        function hideControlParams() {
+            controlParamsVisible = false;
+            const box = document.getElementById('autotuneBox');
+            if (box) box.style.display = 'none';
+            const table = document.getElementById('paramTable');
+            const tbody = document.getElementById('paramTableBody');
+            const btn = document.getElementById('clearParamsBtn');
+            if (table) table.style.display = 'none';
+            if (tbody) tbody.innerHTML = '';
+            if (btn) btn.style.display = 'none';
         }
 
         function clearMeasurements() {

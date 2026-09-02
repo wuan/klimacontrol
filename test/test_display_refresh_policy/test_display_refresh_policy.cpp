@@ -418,6 +418,98 @@ void test_setpoint_change_still_respects_the_interval_floor() {
                                                        22.5f, ControlState::ACTIVE_OFF)));
 }
 
+// --- demand bar bucketing ---
+//
+// The bar exists instead of a percentage because the panel repaints on any
+// visible change: a live number would hold refreshes at the interval floor
+// forever. These tests pin down the two properties that makes that true —
+// coarse buckets, and hysteresis at the boundaries.
+
+void test_demand_bucket_zero_and_full() {
+    TEST_ASSERT_EQUAL_UINT8(0, Display::nextDemandBucket(0.0f, 0));
+    TEST_ASSERT_EQUAL_UINT8(0, Display::nextDemandBucket(-0.5f, 3));
+    TEST_ASSERT_EQUAL_UINT8(Display::DEMAND_BUCKETS, Display::nextDemandBucket(1.0f, 0));
+    TEST_ASSERT_EQUAL_UINT8(Display::DEMAND_BUCKETS, Display::nextDemandBucket(2.0f, 0));
+}
+
+void test_demand_bucket_nan_reads_as_zero() {
+    TEST_ASSERT_EQUAL_UINT8(0, Display::nextDemandBucket(NAN, 4));
+}
+
+void test_demand_bucket_rising_from_zero() {
+    // Five buckets, so boundaries at 0.2/0.4/0.6/0.8.
+    TEST_ASSERT_EQUAL_UINT8(1, Display::nextDemandBucket(0.10f, 0));
+    TEST_ASSERT_EQUAL_UINT8(2, Display::nextDemandBucket(0.30f, 0));
+    TEST_ASSERT_EQUAL_UINT8(3, Display::nextDemandBucket(0.50f, 0));
+    TEST_ASSERT_EQUAL_UINT8(4, Display::nextDemandBucket(0.70f, 0));
+    TEST_ASSERT_EQUAL_UINT8(5, Display::nextDemandBucket(0.90f, 0));
+}
+
+void test_demand_bucket_holds_on_a_boundary() {
+    // Exactly on the 0.4 edge: whichever side it was showing, it stays there.
+    // This is the case that would otherwise repaint the panel every tick.
+    TEST_ASSERT_EQUAL_UINT8(2, Display::nextDemandBucket(0.40f, 2));
+    TEST_ASSERT_EQUAL_UINT8(3, Display::nextDemandBucket(0.40f, 3));
+}
+
+void test_demand_bucket_dithering_does_not_flip() {
+    // A demand jittering by a percent either side of a boundary must not move
+    // the bar at all.
+    uint8_t bucket = 2;
+    for (int i = 0; i < 20; ++i) {
+        const float f = (i % 2 == 0) ? 0.395f : 0.405f;
+        bucket = Display::nextDemandBucket(f, bucket);
+        TEST_ASSERT_EQUAL_UINT8(2, bucket);
+    }
+}
+
+void test_demand_bucket_moves_once_hysteresis_is_cleared() {
+    uint8_t bucket = Display::nextDemandBucket(0.40f, 2);
+    TEST_ASSERT_EQUAL_UINT8(2, bucket);
+    bucket = Display::nextDemandBucket(0.45f, bucket); // clears 0.4 + 0.03
+    TEST_ASSERT_EQUAL_UINT8(3, bucket);
+    bucket = Display::nextDemandBucket(0.30f, bucket); // clears 0.4 - 0.03 downward
+    TEST_ASSERT_EQUAL_UINT8(2, bucket);
+}
+
+// --- demand bar drives refreshes ---
+
+void test_demand_bucket_change_triggers_refresh() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 1);
+
+    // Same readings, same setpoint, same state — only the bar moved.
+    const RefreshKind kind = policy.evaluate(21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f,
+                                             ControlState::ACTIVE_ON, 3);
+
+    TEST_ASSERT_NOT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
+}
+
+void test_unchanged_demand_bucket_does_not_trigger_refresh() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 3);
+
+    // Nothing visible changed, so the panel must stay put even though the
+    // interval floor has passed. This is the property that keeps the bar from
+    // costing refreshes.
+    const RefreshKind kind = policy.evaluate(21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f,
+                                             ControlState::ACTIVE_ON, 3);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
+}
+
+void test_demand_bucket_change_respects_the_interval_floor() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 1);
+
+    // Too soon: the change is real but the floor still applies, exactly as it
+    // does for a setpoint change.
+    const RefreshKind kind =
+        policy.evaluate(21.0f, 50.0f, true, 1500, 0, 22.0f, ControlState::ACTIVE_ON, 4);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     // First paint
@@ -471,6 +563,15 @@ int runUnityTests() {
     RUN_TEST(test_format_humidity_placeholder_when_invalid);
     RUN_TEST(test_format_humidity_placeholder_when_nan);
     RUN_TEST(test_format_handles_null_and_zero_length);
+    RUN_TEST(test_demand_bucket_zero_and_full);
+    RUN_TEST(test_demand_bucket_nan_reads_as_zero);
+    RUN_TEST(test_demand_bucket_rising_from_zero);
+    RUN_TEST(test_demand_bucket_holds_on_a_boundary);
+    RUN_TEST(test_demand_bucket_dithering_does_not_flip);
+    RUN_TEST(test_demand_bucket_moves_once_hysteresis_is_cleared);
+    RUN_TEST(test_demand_bucket_change_triggers_refresh);
+    RUN_TEST(test_unchanged_demand_bucket_does_not_trigger_refresh);
+    RUN_TEST(test_demand_bucket_change_respects_the_interval_floor);
     return UNITY_END();
 }
 

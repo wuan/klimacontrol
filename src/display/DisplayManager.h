@@ -76,6 +76,12 @@ namespace Display {
         EPaperDisplay panel;
         RefreshPolicy policy;
 
+        // Currently displayed demand bar segments. Held here rather than in
+        // RefreshPolicy because nextDemandBucket() needs the previous value to
+        // apply its hysteresis, and the policy should only ever be asked
+        // "did this change?".
+        uint8_t demandBucket = 0;
+
         bool enabled = false;
         char deviceName[32] = "";
 

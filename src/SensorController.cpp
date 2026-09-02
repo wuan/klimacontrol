@@ -21,14 +21,11 @@ static const char* TAG = "sensor";
 #endif
 
 namespace {
-    // Simple PID controller parameters (will be configurable later)
-    constexpr Control::PidGains PID_GAINS = {
-        2.0f, // Kp — proportional gain
-        0.1f, // Ki — integral gain
-        0.5f  // Kd — derivative gain
-    };
-    constexpr float MaxOutput = 1.0f; // Maximum control output
-    constexpr float MinOutput = 0.0f; // Minimum control output
+    // Defined in control/PidController.h so the API can report them; see the
+    // note there about why they are not in an anonymous namespace any more.
+    constexpr Control::PidGains PID_GAINS = Control::DEFAULT_GAINS;
+    constexpr float MaxOutput = Control::DEFAULT_MAX_OUTPUT;
+    constexpr float MinOutput = Control::DEFAULT_MIN_OUTPUT;
 
     // Upper bound on measurements per sensor in a single read cycle. Used
     // to pre-reserve `currentMeasurements` capacity at boot so the per-cycle
@@ -47,7 +44,8 @@ SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused
 #endif
       lastReadingTime(0),
       lastControlOutput(0.0f),
-      pid(PID_GAINS, MinOutput, MaxOutput) {
+      pid(PID_GAINS, MinOutput, MaxOutput),
+      autotuner(Control::AutotuneLimits{}) {
 #ifdef ARDUINO
     // xSemaphoreCreateMutex() returns nullptr if the heap is exhausted at boot.
     // Previously this just logged a warning and continued, which let the
@@ -453,9 +451,88 @@ void SensorController::setControlEnabled(bool enabled) {
     }
 }
 
+bool SensorController::requestAutotuneStart() {
+    // Early refusal on the web task so the API can answer immediately. The
+    // control loop re-checks both conditions, because it is authoritative and
+    // the state can move between here and the next tick.
+    if (!config.getDeviceConfig().temperature_control_enabled) {
+        return false;
+    }
+    if (isAutotuneActive()) {
+        return false;
+    }
+    autotuneStartRequested.store(true);
+    return true;
+}
+
+void SensorController::requestAutotuneCancel() {
+    autotuneCancelRequested.store(true);
+}
+
+bool SensorController::acceptAutotuneResult() {
+    if (autotuner.state() != Control::AutotuneState::Done) {
+        return false;
+    }
+    // In memory only: DeviceConfig has no gain fields, so a restart returns the
+    // compiled-in defaults. setGains() suspends, so the next tick restarts
+    // bumplessly rather than carrying an integral accumulated under the old
+    // gains into the new ones.
+    pid.setGains(autotuner.getResultGains());
+    ESP_LOGI(TAG, "Autotune gains applied (not persisted): Kp=%.4f Ki=%.5f Kd=%.1f",
+             static_cast<double>(autotuner.result().gains.kp),
+             static_cast<double>(autotuner.result().gains.ki),
+             static_cast<double>(autotuner.result().gains.kd));
+    return true;
+}
+
 float SensorController::updateControl() {
+    const uint32_t now = millis();
+
+    // Cross-task requests are consumed here, on the only task allowed to mutate
+    // autotuner state. Cancel first, so a cancel and a start arriving in the
+    // same tick mean "stop the old run, begin a new one" rather than resolving
+    // by arrival order.
+    if (autotuneCancelRequested.exchange(false)) {
+        autotuner.cancel();
+    }
+    if (autotuneStartRequested.exchange(false)) {
+        if (config.getDeviceConfig().temperature_control_enabled && !isAutotuneActive()) {
+            ESP_LOGI(TAG, "Autotune starting around %.1f C",
+                     static_cast<double>(config.getDeviceConfig().target_temperature));
+            autotuner.start(config.getDeviceConfig().target_temperature, now);
+        }
+    }
+
+    if (isAutotuneActive()) {
+        // A run switched off underneath itself would be driving an output
+        // nobody enabled.
+        if (!config.getDeviceConfig().temperature_control_enabled) {
+            autotuner.cancel();
+            pid.suspend();
+            lastControlOutput = 0.0f;
+            return 0.0f;
+        }
+
+        // The autotuner owns the output for the duration. Suspending the PID is
+        // what makes the handover back correct: the run is exactly the kind of
+        // gap the bumpless-restart path was built for.
+        pid.suspend();
+        const float currentTemp = getTemperature();
+        const bool valid = isDataValid() && !std::isnan(currentTemp);
+        lastControlOutput = autotuner.update(currentTemp, valid, now);
+
+        if (!isAutotuneActive()) {
+            ESP_LOGI(TAG, "Autotune finished: state=%d reason=%d cycles=%u",
+                     static_cast<int>(autotuner.state()),
+                     static_cast<int>(autotuner.abortReason()),
+                     static_cast<unsigned>(autotuner.completedCycles()));
+        }
+        return lastControlOutput;
+    }
+
     float currentTemp = getTemperature();
-    if (!config.getDeviceConfig().temperature_control_enabled || !isDataValid() || std::isnan(currentTemp)) {
+    if (!config.getDeviceConfig().temperature_control_enabled || !isDataValid() ||
+        std::isnan(currentTemp)) {
         // Tell the PID it skipped a tick, so the next one that does run
         // restarts bumplessly instead of charging its integral with the whole
         // elapsed gap. All three of the disabled, no-valid-data and NaN cases
@@ -473,7 +550,7 @@ float SensorController::updateControl() {
 
     float targetTemperature = config.getDeviceConfig().target_temperature;
     float error = targetTemperature - currentTemp;
-    float output = pid.update(error, millis());
+    float output = pid.update(error, now);
 
     lastControlOutput = output;
 

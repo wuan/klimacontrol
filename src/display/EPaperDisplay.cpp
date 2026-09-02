@@ -85,6 +85,17 @@ namespace Display {
         // the baseline), like a real degree mark. Centring it on the digits
         // instead makes it read as a lowercase 'o'.
         constexpr int16_t SETPOINT_DEGREE_CY = FOOTER_LINE1_Y - 10;
+        // Demand bar, footer line 2, immediately left of the control symbol.
+        // Sized so the date/time beside it still fits: 5 segments of 6 px with
+        // 2 px gaps is 38 px, leaving the left column ~126 px for a
+        // "2026-09-02 14:07" that measures about 112 px at 9 pt.
+        constexpr int16_t DEMAND_SEG_W = 6;
+        constexpr int16_t DEMAND_SEG_H = 9;
+        constexpr int16_t DEMAND_SEG_GAP = 2;
+        constexpr int16_t DEMAND_BAR_GAP = 6; // bar -> control symbol
+        constexpr int16_t DEMAND_BAR_W =
+            Display::DEMAND_BUCKETS * DEMAND_SEG_W + (Display::DEMAND_BUCKETS - 1) * DEMAND_SEG_GAP;
+
         constexpr int16_t CONTROL_SYMBOL_RADIUS = 6;    // 12 px diameter circle
         constexpr int16_t CONTROL_SYMBOL_HALF_LINE = 5; // 10 px line for INACTIVE
         constexpr int16_t CONTROL_SYMBOL_CY = FOOTER_LINE2_Y - 5;
@@ -277,9 +288,27 @@ namespace Display {
         return !faulted;
     }
 
+    void EPaperDisplay::drawDemandBar(int16_t leftX, uint8_t filledSegments) {
+        // Outlined segments for the empty part, solid for the filled part. An
+        // outline rather than nothing so the scale is legible: five boxes make
+        // it obvious that three filled means roughly 60 %, where three floating
+        // blobs would not.
+        const int16_t top = static_cast<int16_t>(FOOTER_LINE2_Y - DEMAND_SEG_H);
+        for (uint8_t i = 0; i < Display::DEMAND_BUCKETS; ++i) {
+            const int16_t x =
+                static_cast<int16_t>(leftX + i * (DEMAND_SEG_W + DEMAND_SEG_GAP));
+            if (i < filledSegments) {
+                display.fillRect(x, top, DEMAND_SEG_W, DEMAND_SEG_H, GxEPD_BLACK);
+            } else {
+                display.drawRect(x, top, DEMAND_SEG_W, DEMAND_SEG_H, GxEPD_BLACK);
+            }
+        }
+    }
+
     void EPaperDisplay::runPagedDraw(const char *tempStr, const char *humStr,
                                      const char *footerName, const char *footerDateTime,
-                                     Display::ControlState controlState, const char *setpointStr) {
+                                     Display::ControlState controlState, const char *setpointStr,
+                                     uint8_t demandSegments) {
         display.firstPage();
         do {
             display.fillScreen(GxEPD_WHITE);
@@ -317,6 +346,19 @@ namespace Display {
             drawControlSymbol(symbolCx, CONTROL_SYMBOL_CY, controlState);
             const int16_t symbolLeftX = static_cast<int16_t>(symbolCx - CONTROL_SYMBOL_RADIUS);
 
+            // Demand bar, left of the symbol. Only drawn while control is
+            // enabled: when it is off the minus symbol already says everything,
+            // and an empty bar would just be clutter. When enabled the bar is
+            // drawn even at zero demand, because "enabled but asking for
+            // nothing" is worth distinguishing from "switched off".
+            int16_t rightColumnLeftX = symbolLeftX;
+            if (controlState != Display::ControlState::INACTIVE) {
+                const int16_t barRightX = static_cast<int16_t>(symbolLeftX - DEMAND_BAR_GAP);
+                const int16_t barLeftX = static_cast<int16_t>(barRightX - DEMAND_BAR_W);
+                drawDemandBar(barLeftX, demandSegments);
+                rightColumnLeftX = barLeftX;
+            }
+
             // --- left column, each line truncated to what its own row leaves ---
             char footerField[40];
             if (footerName != nullptr && footerName[0] != '\0') {
@@ -329,8 +371,8 @@ namespace Display {
                 }
             }
             if (footerDateTime != nullptr && footerDateTime[0] != '\0') {
-                const int16_t maxWidth = static_cast<int16_t>(symbolLeftX - FOOTER_COLUMN_GAP -
-                                                              FOOTER_MARGIN_X);
+                const int16_t maxWidth = static_cast<int16_t>(rightColumnLeftX -
+                                                              FOOTER_COLUMN_GAP - FOOTER_MARGIN_X);
                 fitToWidth(footerDateTime, maxWidth, footerField, sizeof(footerField));
                 if (footerField[0] != '\0') {
                     display.setCursor(FOOTER_MARGIN_X, FOOTER_LINE2_Y);
@@ -343,6 +385,7 @@ namespace Display {
     void EPaperDisplay::render(const char *tempStr, const char *humStr,
                                const char *footerName, const char *footerDateTime,
                                Display::ControlState controlState, const char *setpointStr,
+                               uint8_t demandSegments,
                                RefreshKind kind) {
         if (!initialised || faulted || kind == RefreshKind::None) {
             return;
@@ -364,7 +407,8 @@ namespace Display {
         // "blocking external call" requirement.
         const uint32_t start = millis();
         feedWatchdog();
-        runPagedDraw(tempStr, humStr, footerName, footerDateTime, controlState, setpointStr);
+        runPagedDraw(tempStr, humStr, footerName, footerDateTime, controlState, setpointStr,
+                     demandSegments);
         feedWatchdog();
         const uint32_t elapsed = millis() - start;
 

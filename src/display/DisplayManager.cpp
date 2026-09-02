@@ -144,8 +144,21 @@ namespace Display {
             // they are inputs to the refresh decision, not just to the paint.
             const float target = controller.getTargetTemperature();
 
+            // Bucket the controller demand before it reaches the refresh
+            // decision. Quantising here rather than in RefreshPolicy keeps the
+            // hysteresis with the value it smooths, and leaves the policy a
+            // plain equality test. Without it a live output would change on
+            // every tick and hold the panel at its minimum-interval floor
+            // permanently.
+            const float outLo = SensorController::getControlOutputMin();
+            const float outHi = SensorController::getControlOutputMax();
+            const float span = (outHi - outLo) != 0.0f ? (outHi - outLo) : 1.0f;
+            const float demandFraction = (controller.getControlOutput() - outLo) / span;
+            demandBucket = Display::nextDemandBucket(demandFraction, demandBucket);
+
             const RefreshKind kind = policy.evaluate(temperature, humidity, snapshot.valid,
-                                                     millis(), clockMinute, target, controlState);
+                                                     millis(), clockMinute, target, controlState,
+                                                     demandBucket);
             if (kind != RefreshKind::None) {
                 const bool available =
                     snapshot.valid && !std::isnan(temperature) && !std::isnan(humidity);
@@ -170,7 +183,7 @@ namespace Display {
                 // the degree mark has to be drawn geometrically (the GFX fonts
                 // only carry glyphs 0x20-0x7E) rather than printed.
                 panel.render(tempStr, humStr, deviceName, dateTime, controlState, setpointStr,
-                             kind);
+                             demandBucket, kind);
             }
         }
 

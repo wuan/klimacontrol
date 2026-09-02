@@ -22,6 +22,22 @@ namespace Control {
         float kd;
     };
 
+    // The gains and clamps the firmware ships. They lived in an anonymous
+    // namespace in SensorController.cpp, which made them not merely private but
+    // invisible outside that translation unit — so nothing could report what
+    // the controller was actually using.
+    //
+    // Still compile-time. Making them editable needs DeviceConfig, NVS,
+    // validation and a write endpoint; that is the separate, already-specified
+    // "PID parameter configurability" requirement.
+    constexpr PidGains DEFAULT_GAINS = {
+        2.0f, // Kp — proportional gain
+        0.1f, // Ki — integral gain
+        0.5f  // Kd — derivative gain
+    };
+    constexpr float DEFAULT_MIN_OUTPUT = 0.0f;
+    constexpr float DEFAULT_MAX_OUTPUT = 1.0f;
+
     /**
      * A PID controller that restarts bumplessly.
      *
@@ -91,6 +107,23 @@ namespace Control {
          * proportional term".
          */
         float getIntegral() const { return integral; }
+
+        /** The gains in force, so the API can report what is actually running. */
+        PidGains getGains() const { return gains; }
+
+        /**
+         * Replace the gains and suspend.
+         *
+         * Suspending is not optional housekeeping: an integral accumulated
+         * under the old gains means something different under the new ones, so
+         * carrying it across would apply a term nobody asked for. Treating the
+         * change as a discontinuity reuses the bumpless-restart path rather
+         * than inventing a second way to reset.
+         */
+        void setGains(PidGains newGains) {
+            gains = newGains;
+            running = false;
+        }
 
     private:
         float clamp(float value) const;
