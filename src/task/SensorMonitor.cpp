@@ -64,9 +64,13 @@ namespace Task {
             auto startTime = millis();
             controller.readSensors();
 
-            if (controller.isControlEnabled()) {
-                controller.updateControl();
-            }
+            // Called unconditionally. updateControl() gates on
+            // temperature_control_enabled itself, and it has to run even while
+            // disabled so it can mark the tick as skipped — an outer guard here
+            // would leave the PID thinking it was still running, and the first
+            // tick after re-enabling would charge its integral with the entire
+            // disabled duration.
+            controller.updateControl();
 
             // Periodic stack high-water mark logging for this task
             if (startTime - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {

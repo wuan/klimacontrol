@@ -99,8 +99,10 @@ namespace Config {
     }
 
     void validateDeviceConfig(DeviceConfig &config) {
-        if (std::isnan(config.target_temperature) || config.target_temperature < 10.0f || config.target_temperature > 30.0f) {
-            config.target_temperature = 22.0f;
+        if (std::isnan(config.target_temperature) ||
+            config.target_temperature < TARGET_TEMPERATURE_MIN_C ||
+            config.target_temperature > TARGET_TEMPERATURE_MAX_C) {
+            config.target_temperature = TARGET_TEMPERATURE_DEFAULT_C;
         }
         if (std::isnan(config.elevation) || config.elevation < -500.0f || config.elevation > 9000.0f) {
             config.elevation = 0.0f;
@@ -113,6 +115,57 @@ namespace Config {
         }
         if (config.sensor_i2c_address < MIN_SENSOR_I2C_ADDRESS || config.sensor_i2c_address > MAX_SENSOR_I2C_ADDRESS) {
             config.sensor_i2c_address = DEFAULT_SENSOR_I2C_ADDRESS;
+        }
+
+        if (config.actuator_channel < 0 ||
+            config.actuator_channel > static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
+            config.actuator_channel = ACTUATOR_CHANNEL_UNASSIGNED;
+        }
+
+        // The cycle and the travel time are only meaningful as a pair: a cycle
+        // that cannot fit several full strokes reduces the controller to
+        // bang-bang without saying so. If either is out of range, or the pair
+        // is inconsistent, both go back to defaults rather than leaving a
+        // half-trusted combination in force.
+        const bool travelSane = config.tpo_travel_s >= MIN_TPO_TRAVEL_S &&
+                                config.tpo_travel_s <= MAX_TPO_TRAVEL_S;
+        const bool cycleSane = config.tpo_cycle_s >= MIN_TPO_CYCLE_S &&
+                               config.tpo_cycle_s <= MAX_TPO_CYCLE_S;
+        const bool pairSane =
+            travelSane && cycleSane &&
+            config.tpo_cycle_s >= config.tpo_travel_s * TPO_MIN_STROKES_PER_CYCLE;
+        if (!pairSane) {
+            config.tpo_cycle_s = DEFAULT_TPO_CYCLE_S;
+            config.tpo_travel_s = DEFAULT_TPO_TRAVEL_S;
+        }
+
+        if (std::isnan(config.safety_max_c) || config.safety_max_c < MIN_SAFETY_MAX_C ||
+            config.safety_max_c > MAX_SAFETY_MAX_C) {
+            config.safety_max_c = DEFAULT_SAFETY_MAX_C;
+        }
+        if (std::isnan(config.safety_hyst_c) || config.safety_hyst_c <= 0.0f ||
+            config.safety_hyst_c > 10.0f) {
+            config.safety_hyst_c = DEFAULT_SAFETY_HYST_C;
+        }
+
+        // Gains fall back per field rather than as a set: a partial NVS
+        // corruption should cost the one field that was corrupted, not the
+        // three that survived it. `isfinite` rather than `isnan` because an
+        // infinity is equally untrustworthy and would pass a bare range check
+        // on only one side. Zero `kp` is out of range by construction
+        // (MIN_PID_KP is positive), so it falls back like any other bad value.
+        if (!std::isfinite(config.kp) || config.kp < MIN_PID_KP || config.kp > MAX_PID_KP) {
+            config.kp = DEFAULT_PID_KP;
+        }
+        if (!std::isfinite(config.ki) || config.ki < MIN_PID_KI || config.ki > MAX_PID_KI) {
+            config.ki = DEFAULT_PID_KI;
+        }
+        if (!std::isfinite(config.kd) || config.kd < MIN_PID_KD || config.kd > MAX_PID_KD) {
+            config.kd = DEFAULT_PID_KD;
+        }
+        if (config.control_interval_s < MIN_CONTROL_INTERVAL_S ||
+            config.control_interval_s > MAX_CONTROL_INTERVAL_S) {
+            config.control_interval_s = DEFAULT_CONTROL_INTERVAL_S;
         }
     }
 
@@ -132,11 +185,25 @@ namespace Config {
         }
 
         // Load other device settings
-        deviceConfig.target_temperature = guard.get().getFloat(TARGET_TEMPERATURE, 22.0f);
+        deviceConfig.target_temperature =
+            guard.get().getFloat(TARGET_TEMPERATURE, TARGET_TEMPERATURE_DEFAULT_C);
         deviceConfig.temperature_control_enabled = guard.get().getBool(TEMPERATURE_CONTROL_ENABLED, false);
         deviceConfig.elevation = guard.get().getFloat(ELEVATION, 0.0f);
         guard.get().getString(TIMEZONE, deviceConfig.timezone, sizeof(deviceConfig.timezone));
         deviceConfig.sensor_i2c_address = guard.get().getUChar(SENSOR_I2C_ADDRESS, DEFAULT_SENSOR_I2C_ADDRESS);
+        guard.get().getString(ACTUATOR_HOST, deviceConfig.actuator_host,
+                              sizeof(deviceConfig.actuator_host));
+        deviceConfig.actuator_channel =
+            static_cast<int8_t>(guard.get().getChar(ACTUATOR_CHANNEL, ACTUATOR_CHANNEL_UNASSIGNED));
+        deviceConfig.tpo_cycle_s = guard.get().getUShort(TPO_CYCLE, DEFAULT_TPO_CYCLE_S);
+        deviceConfig.tpo_travel_s = guard.get().getUShort(TPO_TRAVEL, DEFAULT_TPO_TRAVEL_S);
+        deviceConfig.safety_max_c = guard.get().getFloat(SAFETY_MAX, DEFAULT_SAFETY_MAX_C);
+        deviceConfig.safety_hyst_c = guard.get().getFloat(SAFETY_HYST, DEFAULT_SAFETY_HYST_C);
+        deviceConfig.kp = guard.get().getFloat(PID_KP, DEFAULT_PID_KP);
+        deviceConfig.ki = guard.get().getFloat(PID_KI, DEFAULT_PID_KI);
+        deviceConfig.kd = guard.get().getFloat(PID_KD, DEFAULT_PID_KD);
+        deviceConfig.control_interval_s =
+            guard.get().getUShort(CONTROL_INTERVAL, DEFAULT_CONTROL_INTERVAL_S);
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
@@ -158,6 +225,16 @@ namespace Config {
         guard.get().putFloat(ELEVATION, validated.elevation);
         guard.get().putString(TIMEZONE, validated.timezone);
         guard.get().putUChar(SENSOR_I2C_ADDRESS, validated.sensor_i2c_address);
+        guard.get().putString(ACTUATOR_HOST, validated.actuator_host);
+        guard.get().putChar(ACTUATOR_CHANNEL, static_cast<int8_t>(validated.actuator_channel));
+        guard.get().putUShort(TPO_CYCLE, validated.tpo_cycle_s);
+        guard.get().putUShort(TPO_TRAVEL, validated.tpo_travel_s);
+        guard.get().putFloat(SAFETY_MAX, validated.safety_max_c);
+        guard.get().putFloat(SAFETY_HYST, validated.safety_hyst_c);
+        guard.get().putFloat(PID_KP, validated.kp);
+        guard.get().putFloat(PID_KI, validated.ki);
+        guard.get().putFloat(PID_KD, validated.kd);
+        guard.get().putUShort(CONTROL_INTERVAL, validated.control_interval_s);
 #endif
 
         // Also update in-memory cache
@@ -173,9 +250,15 @@ namespace Config {
     }
 
     void ConfigManager::updateTargetTemperature([[maybe_unused]] float temperature) {
+        // Guards against a corrupt or absent NVS value, not against user input:
+        // out of range here means "the stored setpoint is not trustworthy", and
+        // the honest response is the documented default rather than whichever
+        // bound happens to be nearer. User-supplied setpoints are rejected
+        // outright by the route handler and never reach this fallback.
         // Validate — same logic as validateDeviceConfig()
-        if (std::isnan(temperature) || temperature < 10.0f || temperature > 30.0f) {
-            temperature = 22.0f;
+        if (std::isnan(temperature) || temperature < TARGET_TEMPERATURE_MIN_C ||
+            temperature > TARGET_TEMPERATURE_MAX_C) {
+            temperature = TARGET_TEMPERATURE_DEFAULT_C;
         }
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, NAMESPACE, false);
@@ -190,6 +273,75 @@ namespace Config {
         guard.get().putBool(TEMPERATURE_CONTROL_ENABLED, enabled);
 #endif
         deviceConfig.temperature_control_enabled = enabled;
+    }
+
+    void ConfigManager::updateActuatorAssignment([[maybe_unused]] const char *actuatorHost,
+                                                 [[maybe_unused]] int8_t actuatorChannel) {
+        char hostBuf[sizeof(deviceConfig.actuator_host)] = "";
+        int8_t ch = ACTUATOR_CHANNEL_UNASSIGNED;
+        if (actuatorHost != nullptr && actuatorHost[0] != '\0' && actuatorChannel >= 0 &&
+            actuatorChannel <= static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
+            strlcpy(hostBuf, actuatorHost, sizeof(hostBuf));
+            ch = actuatorChannel;
+        }
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putString(ACTUATOR_HOST, hostBuf);
+        guard.get().putChar(ACTUATOR_CHANNEL, ch);
+#endif
+        strlcpy(deviceConfig.actuator_host, hostBuf, sizeof(deviceConfig.actuator_host));
+        deviceConfig.actuator_channel = ch;
+    }
+
+    void ConfigManager::updateActuatorTiming([[maybe_unused]] uint16_t cycleS,
+                                             [[maybe_unused]] uint16_t travelS,
+                                             [[maybe_unused]] float safetyMaxC,
+                                             [[maybe_unused]] float safetyHystC) {
+        DeviceConfig candidate = deviceConfig;
+        candidate.tpo_cycle_s = cycleS;
+        candidate.tpo_travel_s = travelS;
+        candidate.safety_max_c = safetyMaxC;
+        candidate.safety_hyst_c = safetyHystC;
+        // Reuse the load-time validator so a stored value can never be one the
+        // firmware would have rejected on the way in.
+        validateDeviceConfig(candidate);
+
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putUShort(TPO_CYCLE, candidate.tpo_cycle_s);
+        guard.get().putUShort(TPO_TRAVEL, candidate.tpo_travel_s);
+        guard.get().putFloat(SAFETY_MAX, candidate.safety_max_c);
+        guard.get().putFloat(SAFETY_HYST, candidate.safety_hyst_c);
+#endif
+        deviceConfig.tpo_cycle_s = candidate.tpo_cycle_s;
+        deviceConfig.tpo_travel_s = candidate.tpo_travel_s;
+        deviceConfig.safety_max_c = candidate.safety_max_c;
+        deviceConfig.safety_hyst_c = candidate.safety_hyst_c;
+    }
+
+    void ConfigManager::updateTuning([[maybe_unused]] float kp, [[maybe_unused]] float ki,
+                                     [[maybe_unused]] float kd,
+                                     [[maybe_unused]] uint16_t intervalS) {
+        DeviceConfig candidate = deviceConfig;
+        candidate.kp = kp;
+        candidate.ki = ki;
+        candidate.kd = kd;
+        candidate.control_interval_s = intervalS;
+        // Reuse the load-time validator so a stored value can never be one the
+        // firmware would have rejected on the way in.
+        validateDeviceConfig(candidate);
+
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putFloat(PID_KP, candidate.kp);
+        guard.get().putFloat(PID_KI, candidate.ki);
+        guard.get().putFloat(PID_KD, candidate.kd);
+        guard.get().putUShort(CONTROL_INTERVAL, candidate.control_interval_s);
+#endif
+        deviceConfig.kp = candidate.kp;
+        deviceConfig.ki = candidate.ki;
+        deviceConfig.kd = candidate.kd;
+        deviceConfig.control_interval_s = candidate.control_interval_s;
     }
 
     void ConfigManager::updateElevation([[maybe_unused]] float elevation) {

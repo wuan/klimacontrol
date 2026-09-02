@@ -23,17 +23,48 @@ The firmware SHALL expose: `GET /api/sensors` (list with status), `GET /api/sens
 
 ### Requirement: Temperature control endpoints
 
-The firmware SHALL expose: `POST /api/temperature/target` (set setpoint), `POST /api/control/enable`, `POST /api/control/disable`.
+The firmware SHALL expose: `POST /api/temperature/target` (set setpoint),
+`POST /api/control/enable`, `POST /api/control/disable`.
+
+`POST /api/temperature/target` SHALL validate the requested value **before**
+applying it and SHALL reject any value that is not a finite number within
+`[10.0, 30.0]` °C. A rejected request SHALL leave `DeviceConfig.target_temperature`
+unchanged, SHALL perform no NVS write, and SHALL respond with HTTP 400 and a
+JSON body carrying `"success": false`. The endpoint SHALL NOT silently clamp an
+out-of-range value and report success.
 
 #### Scenario: Setting target temperature
 
 - **WHEN** `POST /api/temperature/target` is sent with body `{"value": 23.5}`
-- **THEN** `sensorController.setTargetTemperature(23.5)` SHALL be invoked and the new value SHALL be persisted to `DeviceConfig.target_temperature`
+- **THEN** `sensorController.setTargetTemperature(23.5)` SHALL be invoked and
+  the new value SHALL be persisted to `DeviceConfig.target_temperature`
+
+#### Scenario: Boundary values are accepted
+
+- **WHEN** `POST /api/temperature/target` is sent with `{"value": 10.0}` or
+  `{"value": 30.0}`
+- **THEN** the request SHALL be accepted and the setpoint SHALL be persisted
 
 #### Scenario: Out-of-range setpoint
 
-- **WHEN** the request body contains a value outside the validated range (`10.0` … `30.0` °C)
-- **THEN** the endpoint SHALL respond with HTTP 4xx and the controller setpoint SHALL remain unchanged
+- **WHEN** the request body contains a value outside the validated range
+  (`10.0` … `30.0` °C)
+- **THEN** the endpoint SHALL respond with HTTP 400
+- **AND** the controller setpoint SHALL remain unchanged
+- **AND** no value SHALL be written to NVS
+
+#### Scenario: Non-finite setpoint
+
+- **WHEN** the request body contains a value that is not a finite number
+- **THEN** the endpoint SHALL respond with HTTP 400 and the setpoint SHALL
+  remain unchanged
+
+#### Scenario: Missing CSRF header
+
+- **WHEN** any of the three control endpoints is called without
+  `X-Requested-With: KlimaControl`
+- **THEN** the request SHALL be rejected by `verifyCsrfHeader()` and SHALL have
+  no effect on device state
 
 ### Requirement: Settings endpoints
 
@@ -279,3 +310,190 @@ state that a restart would reconcile.
 - **WHEN** a client POSTs `/api/settings/timezone` without the `X-Requested-With: KlimaControl` header
 - **THEN** the request SHALL be rejected and no configuration SHALL be written
 
+### Requirement: Unsupported request content types are rejected explicitly
+
+Endpoints that expect a JSON request body SHALL reject a request carrying any other content type with `415 Unsupported Media Type`, naming the type they expect. They SHALL NOT allow such a request to fall through to the framework's `501 Handler did not handle the request`.
+
+The reason is concrete. ESPAsyncWebServer treats a `application/x-www-form-urlencoded` body as request parameters: it parses the body into params and never invokes the route's body callback, so no response is produced and `_send()` substitutes a 501. That status describes the framework's confusion rather than the caller's mistake, gives no indication that the content type is at fault, and is indistinguishable from a genuine firmware defect. Diagnosing one such case from the 501 alone consumed several hours.
+
+#### Scenario: JSON endpoint receives a form-encoded body
+
+- **WHEN** a POST carrying `Content-Type: application/x-www-form-urlencoded` is sent to an endpoint that expects JSON
+- **THEN** the response SHALL be `415` and SHALL name the expected content type
+- **AND** it SHALL NOT be `501`
+
+#### Scenario: Correct content type is unaffected
+
+- **WHEN** a POST carrying `Content-Type: application/json` is sent
+- **THEN** the request SHALL be handled normally
+
+### Requirement: A no-response outcome indicates a defect, not an API result
+
+`501 Handler did not handle the request` is produced by the framework when a matched handler leaves a request unanswered. Where it is reachable, it SHALL be treated as a defect or as an unhandled input class to be given a proper status, and SHALL NOT be documented as an outcome of any endpoint.
+
+Any handler that responds from a body callback rather than from its request callback SHALL guarantee a response on every path through that callback, including early returns and error paths.
+
+#### Scenario: Every documented path answers
+
+- **WHEN** a documented endpoint is exercised on any of its success, validation-failure or authorisation-failure paths
+- **THEN** it SHALL produce the status that path documents
+
+#### Scenario: A diagnostic must not destroy the real response
+
+- **WHEN** code in a request callback wishes to report that no response was produced
+- **THEN** it SHALL first check that no response exists, because `AsyncWebServerRequest::send()` deletes and replaces any response already set by the body callback
+
+### Requirement: Recent request outcomes are observable over a GET
+
+The firmware SHALL retain a bounded in-memory record of recent HTTP requests, exposed over a `GET` endpoint, holding at least the URL, method, the response status seen by the middleware chain, the request content type and length, elapsed time, and free heap.
+
+It SHALL be readable by a `GET`, deliberately, so that a fault affecting request bodies can still be observed: a diagnostic that travels by the same route as the thing it measures cannot be trusted when that route is what is suspect. The status recorded SHALL be the one visible to the middleware, which runs before the framework substitutes a 501 — so a request that produced no response SHALL be distinguishable from one that deliberately returned 501.
+
+#### Scenario: A request that produced no response is identifiable
+
+- **WHEN** a handler is matched but produces no response
+- **THEN** the record SHALL show that no response existed, rather than showing the substituted status
+
+#### Scenario: Content type is recorded
+
+- **WHEN** a request is recorded
+- **THEN** the content type as received by the device SHALL be included, so a mismatch between what a client believes it sent and what arrived is visible
+
+#### Scenario: The buffer keeps the most recent requests
+
+- **WHEN** more requests are served than the buffer holds
+- **THEN** the oldest SHALL be evicted and the most recent retained
+
+### Requirement: Autotune endpoints
+
+The firmware SHALL expose `POST /api/autotune/start`, `POST /api/autotune/abort`, `POST /api/autotune/accept` and `GET /api/autotune/status`. The three POST endpoints SHALL require the `X-Requested-With: KlimaControl` CSRF header; the status read SHALL NOT.
+
+`GET /api/autotune/status` SHALL report the run state, the abort reason when aborted, elapsed time, completed cycles, and — once converged — the identified `ku` and `tu` alongside the derived gains and the gains currently in force. It SHALL be sufficient on its own to reconstruct the full view after a page reload, because a run outlasts any particular browser session.
+
+`POST /api/autotune/accept` SHALL persist the derived gains and request that the control task apply them. Because application happens on a later control tick, a success response SHALL mean the result was validated and the request accepted, not that the running controller has already adopted the gains. The gains in force SHALL be readable from `GET /api/control` and `GET /api/autotune/status`, which is how a caller confirms the outcome.
+
+#### Scenario: Starting a run
+
+- **WHEN** `POST /api/autotune/start` is sent while the autotuner is idle and control is enabled
+- **THEN** the request SHALL be accepted and a run SHALL begin on a subsequent control tick
+
+#### Scenario: Starting while control is disabled
+
+- **WHEN** `POST /api/autotune/start` is sent while temperature control is disabled
+- **THEN** the endpoint SHALL respond with HTTP 409 and no run SHALL begin
+
+#### Scenario: Starting while a run is active
+
+- **WHEN** `POST /api/autotune/start` is sent while a run is settling or oscillating
+- **THEN** the endpoint SHALL respond with HTTP 409 and the existing run SHALL continue undisturbed
+
+#### Scenario: Aborting
+
+- **WHEN** `POST /api/autotune/abort` is sent during a run
+- **THEN** the run SHALL be cancelled and the output SHALL return to zero
+
+#### Scenario: Status is self-sufficient
+
+- **WHEN** `GET /api/autotune/status` is requested at any point
+- **THEN** the response SHALL carry enough to render the current state, progress and outcome without reference to earlier responses
+
+#### Scenario: Status reports the abort reason
+
+- **WHEN** a run has aborted
+- **THEN** the status SHALL include a machine-readable reason
+
+#### Scenario: Accepting a result
+
+- **WHEN** `POST /api/autotune/accept` is sent while a converged result exists
+- **THEN** the derived gains SHALL be persisted and a gain change SHALL be requested of the control task
+
+#### Scenario: Acceptance is confirmed by reading back
+
+- **WHEN** acceptance has succeeded and a control tick has elapsed
+- **THEN** the gains in force reported by `GET /api/control` SHALL be the derived gains
+
+#### Scenario: Accepting with no result
+
+- **WHEN** `POST /api/autotune/accept` is sent when the state is not converged
+- **THEN** the endpoint SHALL respond with HTTP 409 and the gains SHALL be unchanged
+
+#### Scenario: Missing CSRF header
+
+- **WHEN** any autotune POST is sent without the CSRF header
+- **THEN** it SHALL be rejected and no state SHALL change
+
+### Requirement: Control parameters endpoint
+
+The firmware SHALL expose `GET /api/control` returning the temperature controller's live state and its tuning parameters in a single response: whether control is enabled, whether the PID is currently running, the setpoint, the current temperature, the control error, the computed output, the integral accumulator, the gains `kp`/`ki`/`kd`, the control interval, and the output clamp range.
+
+The gains reported SHALL be the gains in force in the running controller, not the gains stored in configuration, so that a pending change which the control task has not yet consumed is not reported as already applied.
+
+The control error SHALL be computed by the firmware as `setpoint − temperature` rather than left to the client, so the reported sign convention cannot disagree with the controller's. Fields derived from a temperature reading SHALL be omitted when no valid reading exists, matching how `/api/status` already omits `temperature`.
+
+These fields SHALL NOT be added to `GET /api/status`, which is polled on a timer by every client; they are diagnostic detail to be fetched only when requested.
+
+#### Scenario: Reporting control state
+
+- **WHEN** `GET /api/control` is requested while control is enabled and sensor data is valid
+- **THEN** the response SHALL include the enabled flag, running flag, setpoint, temperature, error, output, integral, gains, control interval and output range
+
+#### Scenario: No valid temperature
+
+- **WHEN** `GET /api/control` is requested while no valid temperature reading exists
+- **THEN** the temperature and error fields SHALL be omitted
+- **AND** the remaining fields SHALL still be reported
+
+#### Scenario: Status endpoint is unchanged
+
+- **WHEN** `GET /api/status` is requested
+- **THEN** it SHALL NOT gain the gains or the integral accumulator
+
+#### Scenario: A pending gain change is not reported as applied
+
+- **WHEN** tuning has been written but the control task has not yet consumed the change
+- **THEN** `GET /api/control` SHALL report the gains still in force
+
+### Requirement: Tuning write endpoint
+
+The firmware SHALL expose `POST /api/control/tuning`, accepting `kp`, `ki`, `kd` and the control interval, and requiring the `X-Requested-With: KlimaControl` CSRF header.
+
+Validation SHALL be all-or-nothing and SHALL **reject** rather than clamp: if any field is absent, unparseable or outside its documented range, the endpoint SHALL respond with an error naming the offending field and SHALL apply nothing. Clamping a value the caller did not ask for is worse here than refusing it, because the result drives a physical valve and a silently altered gain is indistinguishable from an accepted one.
+
+No separate read endpoint SHALL be added. The tuning values SHALL be read from `GET /api/control`, which already reports the gains.
+
+The handler SHALL be registered with an exact URI matcher. `server.on(const char*)` builds a matcher that also matches any deeper path, and because handlers are tried in registration order the already-registered `GET /api/control` would otherwise shadow paths beneath it — the failure mode this project has already debugged once for `/api/actuator`.
+
+#### Scenario: Valid tuning applied
+
+- **WHEN** `POST /api/control/tuning` is sent with all four fields in range and the CSRF header
+- **THEN** the values SHALL be persisted and a gain change SHALL be requested of the control task
+
+#### Scenario: Out-of-range field rejected wholesale
+
+- **WHEN** a request carries a valid `kp` and a `ki` above its permitted maximum
+- **THEN** the endpoint SHALL respond with an error naming `ki`, and neither field SHALL be stored
+
+#### Scenario: Values are not clamped
+
+- **WHEN** a request carries a field outside its range
+- **THEN** the response SHALL be an error rather than a success reporting a clamped value
+
+#### Scenario: Missing field rejected
+
+- **WHEN** a request omits one of the four fields
+- **THEN** the endpoint SHALL respond with an error and apply nothing
+
+#### Scenario: Zero proportional gain rejected
+
+- **WHEN** a request carries `kp` of zero
+- **THEN** the endpoint SHALL respond with an error and apply nothing
+
+#### Scenario: Missing CSRF header
+
+- **WHEN** the request is sent without the CSRF header
+- **THEN** it SHALL be rejected and no state SHALL change
+
+#### Scenario: Deeper path is not shadowed
+
+- **WHEN** `POST /api/control/tuning` is requested
+- **THEN** it SHALL reach the tuning handler rather than a handler registered for `/api/control`

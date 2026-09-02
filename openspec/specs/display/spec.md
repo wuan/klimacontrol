@@ -5,7 +5,6 @@
 Allow visualizing basic sensor data like temperature and humidity from the sensor board.
 
 Possible future expansion to include more sensors and more complex visualizations.
-
 ## Requirements
 ### Requirement: Hardware target and wiring
 
@@ -141,10 +140,12 @@ The display SHALL show the current temperature and the current relative
 humidity, sourced from `SensorController` under a single consistent snapshot.
 No other measurement type SHALL be rendered.
 
-The layout SHALL place the temperature as the primary value and the humidity
-below it, with the two-line footer described in *Two-line footer layout*. The
-value block SHALL occupy the region `(0, 30)` to `(199, 139)`; the footer SHALL
-occupy the region below it, from the rule at y=152 to the bottom of the panel.
+The layout SHALL place the header band described in *Header band with brand mark
+and firmware version* in the region `(0, 0)` to `(199, 29)`, the temperature as
+the primary value and the humidity below it, with the two-line footer described
+in *Two-line footer layout*. The value block SHALL occupy the region `(0, 30)` to
+`(199, 139)`; the footer SHALL occupy the region below it, from the rule at y=152
+to the bottom of the panel.
 
 When a value is unavailable — the sensor snapshot is invalid, or the accessor
 returns `NAN` — the firmware SHALL render a placeholder (`--.-` for temperature,
@@ -169,6 +170,85 @@ returns `NAN` — the firmware SHALL render a placeholder (`--.-` for temperatur
 
 - **WHEN** the target temperature is `NAN`
 - **THEN** the setpoint field SHALL render `--` rather than a number
+
+#### Scenario: Header is present alongside the values
+
+- **WHEN** the panel shows a temperature and humidity reading
+- **THEN** the header band SHALL be visible above them, and the value block SHALL keep its existing geometry
+
+### Requirement: Header band with brand mark and firmware version
+
+The e-paper layout SHALL include a header band occupying the region `(0, 0)` to
+`(199, 29)` — the strip above the partial-refresh window — containing exactly
+two fields, both rendered in the built-in 5x7 GFX font:
+
+- `KlimaControl` flush left at the panel's left margin (x=6). The casing SHALL
+  match the splash and the web UI.
+- The firmware version (`FIRMWARE_VERSION`) flush right at the panel's right
+  margin (x=194), on the same row.
+
+Both fields SHALL sit at a glyph top of y=4, tucked against the panel's top
+edge. Because the built-in font takes `setCursor(x, y)` as the glyph **top**
+while the free GFX fonts used elsewhere in the layout take it as the
+**baseline**, a single shared constant SHALL express the row position, and it
+SHALL NOT be reinterpreted as a baseline.
+
+No horizontal rule SHALL be drawn beneath the band. The band SHALL NOT contain
+any further field, and SHALL leave the value block and footer regions unchanged.
+
+The version field SHALL be laid out first, right-aligned, and the version string
+SHALL be the field that is truncated should the two fields not both fit. The
+brand mark is a fixed string and SHALL NOT be truncated. Truncation SHALL use the
+same trailing-`.` marker as the footer fields, keeping the release prefix of a
+`git describe` version and dropping its build suffix. With both fields in the
+small font the 12-character brand mark leaves 110 px — 18 characters — for the
+version, so truncation is a guard rather than the expected path.
+
+#### Scenario: Tagged release build
+
+- **WHEN** the firmware is built from the tag `v0.1.1` and the display is enabled
+- **THEN** the panel SHALL show `KlimaControl` in the top-left corner and `v0.1.1` in the top-right corner, both in the small font on the same row
+
+#### Scenario: Developer version fits unabbreviated
+
+- **WHEN** `FIRMWARE_VERSION` is a `git describe` string such as `v0.1.1-5-gc1c08f0`
+- **THEN** the panel SHALL show it in full beside the brand mark
+
+#### Scenario: Version longer than the band allows
+
+- **WHEN** `FIRMWARE_VERSION` is wider than the space left over by the brand mark
+- **THEN** the version SHALL be truncated with a trailing `.` and the brand mark SHALL be rendered in full and unmoved
+
+#### Scenario: Header does not intrude on the value block
+
+- **WHEN** the header band is painted
+- **THEN** no header ink SHALL be drawn at y >= 30, so the value block and the partial-refresh window are unaffected
+
+### Requirement: Header band content must be static
+
+Only content that cannot change while the firmware runs SHALL be placed in the
+header band, because the band lies outside the partial-refresh window and is
+therefore rewritten only by a `Full` refresh.
+
+The firmware version satisfies this: it is a compile-time constant, and the first
+paint after every boot — including the boot that follows an OTA update — is a
+`Full` refresh, so the band is repainted exactly when its content can have
+changed.
+
+If a field in the band ever becomes runtime-mutable, the band SHALL be moved
+inside the partial-refresh window rather than left to freeze. In particular the
+device name SHALL NOT be moved into the band, as the web UI can change it without
+a reboot.
+
+#### Scenario: Version updates after an over-the-air update
+
+- **WHEN** a device is updated over the air and reboots onto the new firmware
+- **THEN** the first paint SHALL be a `Full` refresh and the header band SHALL show the new version
+
+#### Scenario: Band survives partial refreshes untouched
+
+- **WHEN** a sequence of `Partial` refreshes repaints the values and footer
+- **THEN** the header band SHALL be left unwritten, retaining the pixels from the last `Full` refresh, and SHALL add no drawing cost to those refreshes
 
 ### Requirement: Two-line footer layout
 
@@ -351,6 +431,11 @@ The window was widened from 160 to 170 rows when the footer became two lines
 tall: a field left outside it would freeze between full refreshes, which on a
 stable sensor could be indefinitely.
 
+The strip above the window, `y 0..29`, holds the header band. Drawing commands
+targeting it are clipped away while the partial window is active, so the band
+costs nothing on a partial refresh; it SHALL therefore carry only static content,
+as required by *Header band content must be static*.
+
 #### Scenario: Partial refresh does not flash
 
 - **WHEN** the policy returns `Partial`
@@ -366,16 +451,37 @@ stable sensor could be indefinitely.
 - **WHEN** the measured values remain inside the hysteresis band for an extended period
 - **THEN** the panel SHALL still refresh as the minute rolls over, subject to the configured minimum interval
 
+#### Scenario: Header is clipped rather than redrawn
+
+- **WHEN** the paged draw loop runs with the partial window active
+- **THEN** the header band's drawing commands SHALL be clipped, leaving the panel's existing header pixels in place
+
 ### Requirement: Boot splash
 
 When the display is enabled, the firmware SHALL paint a splash screen at the end
 of `setup()` showing the device name and an indication that the device is
 starting, before any sensor reading is available.
 
+The splash SHALL also paint the header band, so the brand mark and the firmware
+version are visible throughout boot — including a boot that does not complete.
+Because the band carries the brand mark, the splash SHALL NOT additionally render
+a centred `KlimaControl` title: the splash body is the device name over the
+"starting" indication.
+
 #### Scenario: Booting device is visibly distinct from a dead one
 
 - **WHEN** a device with the display enabled powers on
 - **THEN** the panel SHALL show the device name and a "starting" indication within the boot sequence, and SHALL be replaced by the first measurement once a valid sensor snapshot exists
+
+#### Scenario: Version is readable during a failed boot
+
+- **WHEN** a device with the display enabled powers on and does not reach its first measurement
+- **THEN** the panel SHALL still show the header band, so the running firmware version can be read from the device
+
+#### Scenario: Brand mark appears once
+
+- **WHEN** the splash is painted
+- **THEN** `KlimaControl` SHALL appear only in the header band, and the splash body SHALL show the device name and the "starting" indication
 
 ### Requirement: Clear on disable
 
@@ -461,4 +567,73 @@ hardware fault.
 
 - **WHEN** a faulted device is restarted with the panel reconnected
 - **THEN** the display SHALL initialise normally and the fault state SHALL be cleared
+
+### Requirement: Controller demand bar
+
+The panel footer SHALL show the controller's demand as a bar of discrete segments on footer line 2, positioned between the date/time and the control symbol. The bar SHALL be drawn only while temperature control is enabled: when control is off the inactive symbol already conveys the state, and when control is on the bar SHALL be drawn even at zero demand, so that "enabled and calling for nothing" is distinguishable from "switched off".
+
+A numeric percentage SHALL NOT be shown on the panel. The panel repaints whenever a displayed value changes, so a value that moves on every control tick would hold refreshes at the minimum-interval floor indefinitely, for a precision that is not meaningful on a plant with hours-long dynamics.
+
+The bar SHALL be sized so that the date/time in the same row still fits, and the left column SHALL continue to truncate to the space the right column leaves.
+
+#### Scenario: Bar shown while control is enabled
+
+- **WHEN** control is enabled and the controller demand is roughly half of its range
+- **THEN** the footer SHALL show about half the bar's segments filled
+
+#### Scenario: Bar hidden while control is disabled
+
+- **WHEN** control is disabled
+- **THEN** no demand bar SHALL be drawn, and the inactive symbol SHALL be shown as before
+
+#### Scenario: Zero demand while enabled
+
+- **WHEN** control is enabled and demand is zero
+- **THEN** an empty bar SHALL be drawn rather than no bar
+
+#### Scenario: Date and time still fit
+
+- **WHEN** the bar is drawn alongside a full date and time
+- **THEN** the date/time SHALL remain legible, truncated to the room the right column leaves
+
+### Requirement: Demand is quantised with hysteresis before display
+
+Demand SHALL be reduced to a small number of buckets before it reaches the display or the refresh decision, and moving between buckets SHALL require clearing the boundary by a hysteresis margin. Quantisation alone is insufficient: a demand hovering on a boundary would change bucket on alternate ticks and repaint the panel as often as a raw value would.
+
+The refresh policy SHALL treat a change of bucket as a change worth showing, subject to the existing minimum-interval floor, and SHALL compare buckets directly rather than applying a further threshold of its own.
+
+#### Scenario: Bucket holds on a boundary
+
+- **WHEN** the demand fraction sits exactly on a bucket boundary
+- **THEN** the displayed bucket SHALL remain whichever it already was
+
+#### Scenario: Dithering does not move the bar
+
+- **WHEN** the demand fraction oscillates by less than the hysteresis margin either side of a boundary
+- **THEN** the displayed bucket SHALL NOT change, and no refresh SHALL be triggered by it
+
+#### Scenario: A decisive move changes the bucket
+
+- **WHEN** the demand fraction clears a boundary by more than the hysteresis margin
+- **THEN** the displayed bucket SHALL change
+
+#### Scenario: Bucket change triggers a refresh
+
+- **WHEN** the bucket changes and all other displayed values are unchanged
+- **THEN** a refresh SHALL be scheduled
+
+#### Scenario: Unchanged bucket triggers nothing
+
+- **WHEN** the bucket is unchanged and no other displayed value has changed
+- **THEN** no refresh SHALL be scheduled, even though the raw demand moved
+
+#### Scenario: Bucket changes respect the interval floor
+
+- **WHEN** the bucket changes sooner than the minimum interval allows
+- **THEN** the refresh SHALL be deferred, as it is for a setpoint change
+
+#### Scenario: Steady demand costs no refreshes
+
+- **WHEN** the controller output has settled such that the bucket no longer moves
+- **THEN** the panel SHALL return to its baseline refresh rate, driven only by the clock and by sensor readings
 

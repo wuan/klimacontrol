@@ -28,21 +28,117 @@ The firmware SHALL serve a main dashboard at `GET /` and a settings page at `GET
 
 ### Requirement: Dashboard contents
 
-The dashboard SHALL display, at minimum: current temperature, current relative humidity, target temperature, control enabled/disabled state, per-sensor connection status, and WiFi connection status.
+The dashboard SHALL display, at minimum: current temperature, current relative
+humidity, target temperature, control enabled/disabled state, per-sensor
+connection status, and WiFi connection status.
+
+The target temperature and the control enabled/disabled state SHALL be
+presented as interactive controls (see "Temperature control UI"), not as
+read-only text. The symbol-based control state indicator SHALL be retained
+alongside the enable toggle: the toggle reports what the user requested, the
+symbol reports what the controller is currently doing, and these differ
+whenever control is enabled but output is zero.
 
 #### Scenario: All-fields render
 
 - **WHEN** the dashboard receives a valid `/api/status` response
-- **THEN** all six fields above SHALL be rendered as text in the UI
+- **THEN** all six fields above SHALL be rendered in the UI
+
+#### Scenario: Toggle and symbol both present
+
+- **WHEN** `control_enabled` is `true` and `control_active` is `false`
+- **THEN** the toggle SHALL be shown in the on position
+- **AND** the hollow circle symbol (`○`) SHALL be shown alongside it
 
 ### Requirement: Temperature control UI
 
-The dashboard SHALL provide a control for adjusting the target temperature in 0.5 °C increments and a toggle for enabling/disabling temperature control. Adjustments SHALL be sent to `POST /api/temperature/target`; the enable/disable toggle SHALL call `POST /api/control/enable` or `/api/control/disable`.
+The dashboard SHALL provide a control for adjusting the target temperature in
+0.5 °C increments and a toggle for enabling/disabling temperature control.
+Adjustments SHALL be sent to `POST /api/temperature/target`; the enable/disable
+toggle SHALL call `POST /api/control/enable` or `/api/control/disable`. All
+three requests SHALL carry the `X-Requested-With: KlimaControl` CSRF header.
+
+The stepper SHALL clamp the requested value client-side to the range
+`[10.0, 30.0]` °C so that no out-of-range request is issued during normal use.
+The stepper SHALL remain operable while temperature control is disabled, so a
+target can be set before control is switched on.
+
+The stepper SHALL render each tap immediately from local state and SHALL
+coalesce a burst of taps into a single request. While a local adjustment is
+pending or its request is in flight, polled `/api/status` responses SHALL NOT
+overwrite the displayed setpoint; all other polled fields SHALL continue to
+update normally.
 
 #### Scenario: Increment by half a degree
 
 - **WHEN** the user clicks the `+` button twice
-- **THEN** two requests SHALL be issued, raising the setpoint by 1.0 °C in total
+- **THEN** the displayed setpoint SHALL rise by 1.0 °C in total
+- **AND** the resulting setpoint SHALL be sent to `POST /api/temperature/target`
+
+#### Scenario: Burst of taps coalesces into one request
+
+- **WHEN** the user taps `+` three times in rapid succession from 22.0 °C
+- **THEN** the display SHALL show 22.5, 23.0 and 23.5 °C as each tap lands
+- **AND** exactly one `POST /api/temperature/target` request SHALL be issued,
+  with value `23.5`
+
+#### Scenario: Upper rail
+
+- **WHEN** the displayed setpoint is 30.0 °C and the user clicks `+`
+- **THEN** the displayed setpoint SHALL remain 30.0 °C
+- **AND** no request SHALL be issued
+
+#### Scenario: Lower rail
+
+- **WHEN** the displayed setpoint is 10.0 °C and the user clicks `−`
+- **THEN** the displayed setpoint SHALL remain 10.0 °C
+- **AND** no request SHALL be issued
+
+#### Scenario: Poll does not revert an in-progress adjustment
+
+- **WHEN** the user has adjusted the setpoint and the request has not yet
+  resolved
+- **AND** a scheduled `/api/status` poll returns the previous setpoint
+- **THEN** the displayed setpoint SHALL remain the user's adjusted value
+- **AND** the temperature, humidity and control-state fields SHALL still be
+  updated from that response
+
+#### Scenario: Poll resumes ownership after the request resolves
+
+- **WHEN** a setpoint request has resolved
+- **AND** a subsequent `/api/status` poll returns a `target_temperature`
+- **THEN** the displayed setpoint SHALL be updated from the polled value
+
+#### Scenario: Setpoint adjustable while control is disabled
+
+- **WHEN** `control_enabled` is `false` and the user clicks `+`
+- **THEN** the setpoint SHALL be adjusted and persisted as normal
+- **AND** the control state SHALL remain disabled
+
+#### Scenario: Toggling control on
+
+- **WHEN** the user switches the control toggle on
+- **THEN** `POST /api/control/enable` SHALL be issued
+- **AND** the toggle SHALL reflect the enabled state without waiting for the
+  next poll
+
+#### Scenario: Toggling control off
+
+- **WHEN** the user switches the control toggle off
+- **THEN** `POST /api/control/disable` SHALL be issued
+
+#### Scenario: Poll does not flip the toggle mid-request
+
+- **WHEN** the user has switched the toggle and the request has not yet resolved
+- **AND** a scheduled `/api/status` poll returns the previous `control_enabled`
+  value
+- **THEN** the toggle SHALL remain in the position the user selected
+
+#### Scenario: Rejected setpoint is reconciled
+
+- **WHEN** a `POST /api/temperature/target` request returns HTTP 4xx
+- **THEN** the dashboard SHALL restore the displayed setpoint from the device's
+  reported `target_temperature` rather than leaving the rejected value on screen
 
 ### Requirement: Symbol-based control state display
 
@@ -140,7 +236,7 @@ SHALL stay focused on at-a-glance environmental readings
 
 ### Requirement: Settings page sections
 
-The settings page SHALL organize configuration into distinct sections covering at least: Device Name, Elevation, Timezone, I2C Sensors, MQTT, E-Paper Display, Syslog, WiFi, Energy, OTA, System.
+The settings page SHALL organize configuration into distinct sections covering at least: Device Name, Elevation, Timezone, I2C Sensors, Tuning, MQTT, E-Paper Display, Syslog, WiFi, Energy, OTA, System.
 
 Sections SHALL be rendered as stacked blocks on a single page, each with its own heading and its own save action, so that saving one section does not submit the others.
 
@@ -173,3 +269,132 @@ The section SHALL display the current device time as reported by `GET /api/setti
 - **WHEN** the operator saves a timezone
 - **THEN** the page SHALL confirm the change and refresh the displayed device time, without telling the user the device is restarting
 
+### Requirement: Autotune controls and status
+
+The web UI SHALL provide a way to start an autotune run, abort a running one, view its progress, and accept a derived result. Progress SHALL be reconstructed from `GET /api/autotune/status` so that it survives a page reload, and an abort control SHALL be reachable whenever a run is active.
+
+#### Scenario: Progress survives a reload
+
+- **WHEN** the page is reloaded during a run
+- **THEN** the state, elapsed time and completed cycles SHALL be shown, rebuilt from the status endpoint
+
+#### Scenario: Abort reachable while running
+
+- **WHEN** a run is active
+- **THEN** an abort control SHALL be visible
+
+#### Scenario: Abort reason surfaced
+
+- **WHEN** a run aborts for any reason
+- **THEN** the recorded reason SHALL be displayed rather than the UI returning silently to idle
+
+### Requirement: Autotune UI states its current limitations
+
+A run cannot converge unless the device can actually drive its zone: without a conforming actuator assignment the plant does not respond to the relay, so the run ends in a timeout. The UI SHALL state this **when it applies** — when no actuator channel is assigned, or when the assigned channel is refused — so that an expected timeout is not read as a malfunction. When a conforming actuator is assigned, the UI SHALL NOT display the warning, because a run can then converge and a standing warning would be misleading.
+
+The UI SHALL NOT describe acceptance as temporary. Accepted gains are persisted and survive a restart.
+
+#### Scenario: Limitation stated when no actuator is assigned
+
+- **WHEN** the user views the autotune controls with no actuator channel assigned
+- **THEN** the UI SHALL state that runs cannot converge until an actuator is assigned
+
+#### Scenario: Limitation stated when the channel is refused
+
+- **WHEN** the user views the autotune controls while the assigned channel is non-conforming
+- **THEN** the UI SHALL state that the channel is refused and that a run will end in a timeout
+
+#### Scenario: No warning with a working actuator
+
+- **WHEN** the user views the autotune controls with a conforming actuator assigned
+- **THEN** the UI SHALL NOT claim that runs cannot converge
+
+#### Scenario: Timeout is not presented as a fault
+
+- **WHEN** a run ends in a settling or run timeout
+- **THEN** the UI SHALL report the reason without implying a malfunction
+
+#### Scenario: Acceptance is described as durable
+
+- **WHEN** derived gains are offered for acceptance
+- **THEN** the UI SHALL NOT state that they are lost on restart
+- **AND** SHALL indicate that accepting stores them
+
+### Requirement: Control parameters panel
+
+The dashboard SHALL provide a collapsible panel showing the controller's live state and tuning parameters, backed by `GET /api/control`. It SHALL be fetched on demand rather than on the dashboard's polling timer, following the existing "Show Measurements" pattern, so that a client which is not looking at it costs the device nothing.
+
+The panel SHALL present the controller output as a percentage of its clamp range, alongside a visual indication of magnitude. A percentage SHALL be shown rather than only the existing three-state symbol, because that symbol reports whether demand is non-zero and is therefore identical at 1 % and at 100 % demand.
+
+The existing symbol SHALL be retained, as a glanceable summary that the e-paper footer mirrors.
+
+#### Scenario: Panel is collapsed by default
+
+- **WHEN** the dashboard first loads
+- **THEN** the control parameters panel SHALL be hidden and `GET /api/control` SHALL NOT have been requested
+
+#### Scenario: Showing the panel
+
+- **WHEN** the user opens the panel
+- **THEN** `GET /api/control` SHALL be requested and the values rendered
+
+#### Scenario: Panel refreshes while visible
+
+- **WHEN** the panel is open
+- **THEN** it SHALL refresh on the dashboard's existing polling cadence
+- **AND** SHALL stop refreshing once hidden
+
+#### Scenario: Demand shown as a percentage
+
+- **WHEN** the controller output is `0.42` with a clamp range of `0.0` to `1.0`
+- **THEN** the panel SHALL show `42 %`
+
+#### Scenario: Missing temperature is handled
+
+- **WHEN** the response omits temperature and error because no valid reading exists
+- **THEN** the panel SHALL render placeholders for those rows rather than `undefined`
+
+#### Scenario: Symbol retained
+
+- **WHEN** the panel is open
+- **THEN** the three-state control symbol SHALL still be shown in the control bar
+
+### Requirement: Tuning section on the settings page
+
+The settings page SHALL provide a Tuning section covering the PID gains and the control interval, with its own save action like every other section.
+
+Each field SHALL be labelled with its unit and its permitted range, because a sensible `ki` is a small fraction whose order of magnitude is not obvious and is easy to mistype. The section SHALL additionally display the derived integral time `Ti = Kp / Ki` in seconds, which is the quantity with physical meaning and the one the autotuner's derivation actually produces.
+
+The section SHALL state that these values drive a physical valve, because this is the only settings section whose misconfiguration has a thermal consequence rather than a cosmetic one.
+
+Rejections from the write endpoint SHALL be surfaced with the offending field named, rather than reported as a generic failure, since an all-or-nothing validation that does not say which field failed leaves the user guessing.
+
+#### Scenario: Section rendering
+
+- **WHEN** the settings page loads
+- **THEN** a Tuning section SHALL be present as a headed block with its own save action
+
+#### Scenario: Current values shown
+
+- **WHEN** the Tuning section loads
+- **THEN** it SHALL show the gains in force and the configured control interval
+
+#### Scenario: Integral time is derived for the user
+
+- **WHEN** `Kp` is `0.5` and `Ki` is `0.0001`
+- **THEN** the section SHALL show an integral time of approximately 5000 seconds
+
+#### Scenario: Integral time with no integral action
+
+- **WHEN** `Ki` is zero
+- **THEN** the section SHALL indicate that there is no integral action rather than rendering a division by zero
+
+#### Scenario: Physical consequence stated
+
+- **WHEN** the Tuning section is displayed
+- **THEN** it SHALL state that these values drive a physical valve
+
+#### Scenario: Rejected field is named
+
+- **WHEN** a save is rejected because `ki` is out of range
+- **THEN** the section SHALL report that `ki` was the offending field and SHALL leave the form values as entered

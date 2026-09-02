@@ -720,6 +720,28 @@ input[type="color"] {
 .device-subtitle {
     font-size: 11px;
     font-weight: normal;
+    /* Without this the 11px text inherits the body line-height and sets
+       uncomfortably tight for multi-line explanations. */
+    line-height: 1.5;
+}
+
+/* A field and the sentence explaining it, side by side.
+   The explanation is its own flex column, so it wraps to the right of the
+   input instead of flowing back underneath it — an inline <small> after a
+   fixed-width input wraps to the full container width, which reads as a
+   caption belonging to the whole section rather than to the one field.
+   It drops below the input once there is no room for a readable column. */
+.field-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.field-row > .device-subtitle {
+    flex: 1 1 260px;
+    min-width: 260px;
+    color: #666;
 }
 
 .device-subtitle a {

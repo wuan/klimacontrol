@@ -21,12 +21,11 @@ static const char* TAG = "sensor";
 #endif
 
 namespace {
-    // Simple PID controller parameters (will be configurable later)
-    constexpr float Kp = 2.0f;    // Proportional gain
-    constexpr float Ki = 0.1f;   // Integral gain
-    constexpr float Kd = 0.5f;   // Derivative gain
-    constexpr float MaxOutput = 1.0f; // Maximum control output
-    constexpr float MinOutput = 0.0f; // Minimum control output
+    // The gains are no longer compiled in — they come from DeviceConfig — so
+    // only the output clamps are constants here. Defined in
+    // control/PidController.h so the API can report them.
+    constexpr float MaxOutput = Control::DEFAULT_MAX_OUTPUT;
+    constexpr float MinOutput = Control::DEFAULT_MIN_OUTPUT;
 
     // Upper bound on measurements per sensor in a single read cycle. Used
     // to pre-reserve `currentMeasurements` capacity at boot so the per-cycle
@@ -44,7 +43,14 @@ SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused
       statusLed(statusLed),
 #endif
       lastReadingTime(0),
-      lastControlOutput(0.0f) {
+      lastControlOutput(0.0f),
+      // The config cache holds the compiled-in defaults at this point: this
+      // object is a global constructed long before config.begin() has read
+      // NVS. begin() applies the stored tuning once it is available.
+      pid(Control::PidGains{config.getDeviceConfig().kp, config.getDeviceConfig().ki,
+                            config.getDeviceConfig().kd},
+          MinOutput, MaxOutput),
+      autotuner(Control::AutotuneLimits{}) {
 #ifdef ARDUINO
     // xSemaphoreCreateMutex() returns nullptr if the heap is exhausted at boot.
     // Previously this just logged a warning and continued, which let the
@@ -97,6 +103,17 @@ void SensorController::begin() {
     }
 
     ESP_LOGI(TAG, "Found %u sensors total", sensors.size());
+
+    // Adopt the stored tuning. This has to happen here rather than in the
+    // constructor: this object is a global, constructed before config.begin()
+    // has read NVS, so the constructor could only ever see the compiled-in
+    // defaults. Called from setup() before the Sensor Monitor task exists, so
+    // writing PID state directly is safe — there is no other task to race.
+    const Config::DeviceConfig &cfg = config.getDeviceConfig();
+    pid.setGains(Control::PidGains{cfg.kp, cfg.ki, cfg.kd});
+    ESP_LOGI(TAG, "PID tuning from config: Kp=%.4f Ki=%.5f Kd=%.1f interval=%us",
+             static_cast<double>(cfg.kp), static_cast<double>(cfg.ki),
+             static_cast<double>(cfg.kd), static_cast<unsigned>(cfg.control_interval_s));
 }
 
 void SensorController::addSensor(std::unique_ptr<Sensor::Sensor> sensor) {
@@ -422,8 +439,15 @@ Sensor::Sensor *SensorController::getSensor(size_t index) {
 }
 
 void SensorController::setTargetTemperature(float temperature) {
-    // Clamp to reasonable range for room temperature control
-    float clamped = std::max(10.0f, std::min(30.0f, temperature));
+    // Last line of defence for callers that do not come through HTTP — chiefly
+    // main.cpp restoring the persisted value at boot. Requests arriving via
+    // POST /api/temperature/target are range-checked and *rejected* by the
+    // route handler before they get here, because silently substituting a
+    // different setpoint than the one asked for is not an acceptable answer to
+    // a user. See spec `temperature-control` → "Setpoint range" for the three
+    // validation layers and what each is for.
+    float clamped = std::max(Config::TARGET_TEMPERATURE_MIN_C,
+                             std::min(Config::TARGET_TEMPERATURE_MAX_C, temperature));
     ESP_LOGI(TAG, "Target temperature set to %.1f C", clamped);
 
     // Persist to NVS using partial update (also updates in-memory cache)
@@ -431,6 +455,10 @@ void SensorController::setTargetTemperature(float temperature) {
 }
 
 void SensorController::setControlEnabled(bool enabled) {
+    // Configuration write only. This runs on the web-server task, while the PID
+    // accumulators are owned by the Sensor Monitor task; resetting them from
+    // here would race a control tick that is mid read-modify-write and could
+    // silently lose the reset. updateControl() detects the resumption itself.
     if (config.getDeviceConfig().temperature_control_enabled != enabled) {
         ESP_LOGI(TAG, "Temperature control %s", enabled ? "enabled" : "disabled");
 
@@ -439,9 +467,162 @@ void SensorController::setControlEnabled(bool enabled) {
     }
 }
 
+bool SensorController::requestAutotuneStart() {
+    // Early refusal on the web task so the API can answer immediately. The
+    // control loop re-checks both conditions, because it is authoritative and
+    // the state can move between here and the next tick.
+    if (!config.getDeviceConfig().temperature_control_enabled) {
+        return false;
+    }
+    if (isAutotuneActive()) {
+        return false;
+    }
+    autotuneStartRequested.store(true);
+    return true;
+}
+
+void SensorController::requestAutotuneCancel() {
+    autotuneCancelRequested.store(true);
+}
+
+bool SensorController::acceptAutotuneResult() {
+    if (autotuner.state() != Control::AutotuneState::Done) {
+        return false;
+    }
+    // Persist first, then request. A run costs hours of the plant's time, so
+    // the gains the user is told were accepted have to be the ones that will
+    // survive a restart: if the write is the step that fails, it fails before
+    // the running controller has adopted anything.
+    const Control::PidGains derived = autotuner.getResultGains();
+    requestGains(derived, config.getDeviceConfig().control_interval_s);
+    ESP_LOGI(TAG, "Autotune gains stored, awaiting control tick: Kp=%.4f Ki=%.5f Kd=%.1f",
+             static_cast<double>(derived.kp), static_cast<double>(derived.ki),
+             static_cast<double>(derived.kd));
+    return true;
+}
+
+void SensorController::requestGains(Control::PidGains gains, uint16_t controlIntervalS) {
+    // Runs on the web task. Persisting here is safe — it touches only NVS and
+    // the config cache — but applying the gains is not, so that is handed to
+    // the control task rather than done here. See the gainsChangeRequested
+    // comment for the race this avoids.
+    config.updateTuning(gains.kp, gains.ki, gains.kd, controlIntervalS);
+
+    // Publish the validated values as stored, not as supplied: updateTuning()
+    // may have fallen back on a field, and the running controller must agree
+    // with what was persisted rather than with what was asked for.
+    const Config::DeviceConfig &cfg = config.getDeviceConfig();
+    pendingGains = Control::PidGains{cfg.kp, cfg.ki, cfg.kd};
+    gainsChangeRequested.store(true, std::memory_order_release);
+}
+
+bool SensorController::isHeatingPermitted() const {
+    return config.getDeviceConfig().temperature_control_enabled && !safetyShutoff &&
+           isDataValid() && !std::isnan(getTemperature());
+}
+
+void SensorController::suspendPid(uint32_t nowMs) {
+    pid.suspend();
+    lastPidComputeMs = nowMs;
+}
+
 float SensorController::updateControl() {
+    const uint32_t now = millis();
+
+    // Adopt a pending gain change first, on the only task allowed to write PID
+    // state. setGains() suspends, so whichever path below runs on this tick
+    // treats the change as the discontinuity it is: the next computing tick
+    // restarts bumplessly rather than carrying an integral accumulated under
+    // the old gains into the new ones.
+    if (gainsChangeRequested.exchange(false, std::memory_order_acquire)) {
+        const Control::PidGains gains = pendingGains;
+        pid.setGains(gains);
+        lastPidComputeMs = now;
+        ESP_LOGI(TAG, "PID gains applied: Kp=%.4f Ki=%.5f Kd=%.1f",
+                 static_cast<double>(gains.kp), static_cast<double>(gains.ki),
+                 static_cast<double>(gains.kd));
+    }
+
+    // Over-temperature shutoff, evaluated before anything else so a saturated
+    // integral cannot override it, and latched so releasing needs the
+    // temperature to fall a hysteresis band below the limit rather than merely
+    // touch it. An unavailable reading engages it too: an unknown temperature
+    // is not a safe basis for delivering heat.
+    {
+        const Config::DeviceConfig &cfg = config.getDeviceConfig();
+        const float t = getTemperature();
+        if (std::isnan(t) || !isDataValid()) {
+            safetyShutoff = true;
+        } else if (t > cfg.safety_max_c) {
+            if (!safetyShutoff) {
+                ESP_LOGW(TAG, "Over-temperature shutoff: %.1f C above limit %.1f C",
+                         static_cast<double>(t), static_cast<double>(cfg.safety_max_c));
+            }
+            safetyShutoff = true;
+        } else if (safetyShutoff && t < cfg.safety_max_c - cfg.safety_hyst_c) {
+            ESP_LOGI(TAG, "Over-temperature shutoff released at %.1f C", static_cast<double>(t));
+            safetyShutoff = false;
+        }
+    }
+
+    if (safetyShutoff) {
+        suspendPid(now);
+        autotuner.cancel();
+        lastControlOutput = 0.0f;
+        return 0.0f;
+    }
+
+    // Cross-task requests are consumed here, on the only task allowed to mutate
+    // autotuner state. Cancel first, so a cancel and a start arriving in the
+    // same tick mean "stop the old run, begin a new one" rather than resolving
+    // by arrival order.
+    if (autotuneCancelRequested.exchange(false)) {
+        autotuner.cancel();
+    }
+    if (autotuneStartRequested.exchange(false)) {
+        if (config.getDeviceConfig().temperature_control_enabled && !isAutotuneActive()) {
+            ESP_LOGI(TAG, "Autotune starting around %.1f C",
+                     static_cast<double>(config.getDeviceConfig().target_temperature));
+            autotuner.start(config.getDeviceConfig().target_temperature, now);
+        }
+    }
+
+    if (isAutotuneActive()) {
+        // A run switched off underneath itself would be driving an output
+        // nobody enabled.
+        if (!config.getDeviceConfig().temperature_control_enabled) {
+            autotuner.cancel();
+            suspendPid(now);
+            lastControlOutput = 0.0f;
+            return 0.0f;
+        }
+
+        // The autotuner owns the output for the duration. Suspending the PID is
+        // what makes the handover back correct: the run is exactly the kind of
+        // gap the bumpless-restart path was built for.
+        suspendPid(now);
+        const float currentTemp = getTemperature();
+        const bool valid = isDataValid() && !std::isnan(currentTemp);
+        lastControlOutput = autotuner.update(currentTemp, valid, now);
+
+        if (!isAutotuneActive()) {
+            ESP_LOGI(TAG, "Autotune finished: state=%d reason=%d cycles=%u",
+                     static_cast<int>(autotuner.state()),
+                     static_cast<int>(autotuner.abortReason()),
+                     static_cast<unsigned>(autotuner.completedCycles()));
+        }
+        return lastControlOutput;
+    }
+
     float currentTemp = getTemperature();
-    if (!config.getDeviceConfig().temperature_control_enabled || !isDataValid() || std::isnan(currentTemp)) {
+    if (!config.getDeviceConfig().temperature_control_enabled || !isDataValid() ||
+        std::isnan(currentTemp)) {
+        // Tell the PID it skipped a tick, so the next one that does run
+        // restarts bumplessly instead of charging its integral with the whole
+        // elapsed gap. All three of the disabled, no-valid-data and NaN cases
+        // land here, and all three leave the same stale-timestamp trap.
+        suspendPid(now);
+
         // The stored output must reflect reality on every call, otherwise
         // isControlActive() keeps reporting the last positive output after the
         // sensor drops out or control is switched off.
@@ -449,41 +630,44 @@ float SensorController::updateControl() {
         return 0.0f;
     }
 
-    // Simple PID controller implementation
-    static float integral = 0.0f;
-    static float previousError = 0.0f;
-    static uint32_t lastControlTime = 0;
+    // Everything above this point runs on every sensor tick: the
+    // over-temperature shutoff, because a safety limit noticed up to a full
+    // control interval late is a weaker guarantee than the one the spec
+    // describes; and the autotuner, because it measures the amplitude of an
+    // induced oscillation and coarser sampling misses peaks, which
+    // under-estimates `a`, over-estimates `Ku` and yields gains more aggressive
+    // than the plant can take — from a run that reports convergence. Only the
+    // PID computation below is decimated.
+    const uint32_t intervalMs =
+        static_cast<uint32_t>(config.getDeviceConfig().control_interval_s) * 1000u;
+    if (now - lastPidComputeMs < intervalMs) {
+        // A tick between computations, not a skipped one — so pointedly no
+        // suspendPid() here. Suspending would make every computation a bumpless
+        // restart and the integral would never accumulate past a single
+        // interval, leaving `ki` with no effect whatever it was set to.
+        //
+        // lastControlOutput is left at the last computed value rather than
+        // zeroed, so demand is held across the interval. Zeroing it would make
+        // the actuator see one pulse per interval, and would make
+        // isControlActive() flicker off between computations.
+        return lastControlOutput;
+    }
+    lastPidComputeMs = now;
 
-    uint32_t now = millis();
-    float dt = (now - lastControlTime) / 1000.0f;
-    lastControlTime = now;
+    const bool restarting = !pid.isRunning();
 
     float targetTemperature = config.getDeviceConfig().target_temperature;
     float error = targetTemperature - currentTemp;
-
-    // Proportional term
-    float proportional = Kp * error;
-
-    // Integral term (with anti-windup)
-    integral += Ki * error * dt;
-    integral = std::max(MinOutput, std::min(MaxOutput, integral));
-
-    // Derivative term
-    float derivative = 0.0f;
-    if (dt > 0.0f) {
-        derivative = Kd * (error - previousError) / dt;
-    }
-    previousError = error;
-
-    // Calculate control output
-    float output = proportional + integral + derivative;
-    output = std::max(MinOutput, std::min(MaxOutput, output));
+    float output = pid.update(error, now);
 
     lastControlOutput = output;
 
-    if (dt > 0.0f) {
-        ESP_LOGD(TAG, "PID: T=%.1f C (target=%.1f C), output=%.2f, P=%.2f, I=%.2f, D=%.2f",
-                 currentTemp, targetTemperature, output, proportional, integral, derivative);
+    if (restarting) {
+        ESP_LOGD(TAG, "PID restart: T=%.1f C (target=%.1f C), output=%.2f (proportional only)",
+                 currentTemp, targetTemperature, output);
+    } else {
+        ESP_LOGD(TAG, "PID: T=%.1f C (target=%.1f C), output=%.2f, I=%.2f", currentTemp,
+                 targetTemperature, output, pid.getIntegral());
     }
 
     return output;

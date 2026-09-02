@@ -48,13 +48,23 @@ paths:
                 value:
                   type: number
                   format: float
-                  description: Target temperature in °C
+                  minimum: 10.0
+                  maximum: 30.0
+                  description: >-
+                    Target temperature in °C. Out-of-range values are rejected,
+                    not clamped.
                   example: 22.5
               required:
                 - value
       responses:
         '200':
           description: Target temperature updated
+        '400':
+          description: >-
+            Value missing, not a number, or outside 10.0–30.0 °C. The stored
+            setpoint is left unchanged.
+        '403':
+          description: Missing or incorrect `X-Requested-With` CSRF header
 
 components:
   schemas:

@@ -5,9 +5,12 @@
  * Global NVS/Preferences key constants
  * Used for persistent storage in ESP32 flash
  *
- * IMPORTANT: Keep key names concise (ideally ≤12 characters).
- * Long key names (17+ characters) cause NVS persistence issues
- * regardless of data type. This is an ESP32 NVS limitation.
+ * IMPORTANT: NVS keys are hard-limited to 15 characters
+ * (NVS_KEY_NAME_MAX_SIZE is 16 including the terminator). A longer key makes
+ * Preferences::putX() fail silently, and the matching getX() then returns the
+ * supplied default — so the setting looks like it simply refuses to stick, with
+ * no error anywhere. Config::nvsKeyFits() enforces this at compile time for the
+ * ConfigManager key set; keep any key added here within the same limit.
  */
 namespace PrefsKeys {
     // NVS namespace
@@ -21,10 +24,10 @@ namespace PrefsKeys {
 
     // Device configuration
     constexpr const char* DEVICE_NAME = "device_name";
-    constexpr const char* TARGET_TEMPERATURE = "target_temperature";
-    constexpr const char* TEMPERATURE_CONTROL_ENABLED = "temperature_control_enabled";
+    constexpr const char* TARGET_TEMPERATURE = "target_temp";
+    constexpr const char* TEMPERATURE_CONTROL_ENABLED = "ctrl_enabled";
     constexpr const char* ELEVATION = "elevation";
-    constexpr const char* SENSOR_I2C_ADDRESS = "sensor_i2c_address";
+    constexpr const char* SENSOR_I2C_ADDRESS = "sensor_i2c";
     constexpr const char* TIMEZONE = "timezone";
 
     // Energy configuration

@@ -73,6 +73,73 @@ namespace Config {
         WiFiConfig() = default;
     };
 
+    // Heating actuator defaults. The cycle and the travel time are specified
+    // together and validated together: an earlier draft picked 15 min and 5 min
+    // independently, which violates the four-strokes-per-cycle rule they are
+    // both subject to. 20 and 3 satisfy it.
+    constexpr uint16_t DEFAULT_TPO_CYCLE_S = 20 * 60;
+    constexpr uint16_t DEFAULT_TPO_TRAVEL_S = 3 * 60;
+    constexpr uint16_t MIN_TPO_TRAVEL_S = 10;
+    constexpr uint16_t MAX_TPO_TRAVEL_S = 15 * 60;
+    constexpr uint16_t MIN_TPO_CYCLE_S = 60;
+    constexpr uint16_t MAX_TPO_CYCLE_S = 2 * 3600;
+    constexpr uint8_t TPO_MIN_STROKES_PER_CYCLE = 4;
+
+    // Over-temperature shutoff. Above any plausible setpoint, and released with
+    // hysteresis so the valve does not chatter at the threshold.
+    constexpr float DEFAULT_SAFETY_MAX_C = 35.0f;
+    constexpr float DEFAULT_SAFETY_HYST_C = 1.0f;
+    constexpr float MIN_SAFETY_MAX_C = 20.0f;
+    constexpr float MAX_SAFETY_MAX_C = 60.0f;
+
+    // No default channel: guessing which zone a device heats is worse than
+    // refusing to act, so an unassigned device cannot enable control.
+    constexpr int8_t ACTUATOR_CHANNEL_UNASSIGNED = -1;
+    constexpr uint8_t MAX_ACTUATOR_CHANNEL = 3; // Shelly Pro 4PM
+
+    // Accepted range for the temperature control setpoint, in degrees Celsius.
+    // Three layers enforce it for different reasons — the route handler rejects
+    // user input outside it, SensorController clamps non-HTTP callers, and
+    // ConfigManager falls back to the default for untrustworthy stored values —
+    // so the bounds live in one place rather than being restated at each.
+    constexpr float TARGET_TEMPERATURE_MIN_C = 10.0f;
+    constexpr float TARGET_TEMPERATURE_MAX_C = 30.0f;
+    constexpr float TARGET_TEMPERATURE_DEFAULT_C = 22.0f;
+
+    // PID gains and the control interval.
+    //
+    // The ranges are a guard against a mistyped order of magnitude, not a
+    // judgement about tuning quality: no range check can tell good tuning from
+    // bad, so the bounds are deliberately generous and only exclude values that
+    // could not have been meant. `ki` and `kd` may be zero — a P-only
+    // controller is droopy but legitimate — while `kp` may not, because a zero
+    // proportional gain disables control while control still reports itself as
+    // enabled.
+    //
+    // The defaults are derived arithmetically, not measured: at `kp = 0.5` a
+    // 2 K error saturates the output, and at `ki = 1e-4` a sustained 1 K error
+    // takes an hour to accumulate 0.36 of output — the right order for a plant
+    // whose time constant is hours. `kd = 0` is what the autotuner's
+    // Tyreus–Luyben derivation produces, because derivative action on a
+    // lag-dominant plant mostly amplifies sensor noise. They are expected to be
+    // revised once a zone is delivering heat and an autotune run has converged
+    // on the real plant; they only need to be safe and non-pathological, not
+    // optimal.
+    constexpr float MIN_PID_KP = 0.01f;
+    constexpr float MAX_PID_KP = 100.0f;
+    constexpr float DEFAULT_PID_KP = 0.5f;
+    constexpr float MIN_PID_KI = 0.0f;
+    constexpr float MAX_PID_KI = 0.05f;
+    constexpr float DEFAULT_PID_KI = 0.0001f;
+    constexpr float MIN_PID_KD = 0.0f;
+    constexpr float MAX_PID_KD = 600.0f;
+    constexpr float DEFAULT_PID_KD = 0.0f;
+
+    // 1 s preserves the pre-decimation behaviour for anyone who wants it.
+    constexpr uint16_t MIN_CONTROL_INTERVAL_S = 1;
+    constexpr uint16_t MAX_CONTROL_INTERVAL_S = 600;
+    constexpr uint16_t DEFAULT_CONTROL_INTERVAL_S = 60;
+
     /**
      * Device configuration structure
      */
@@ -82,9 +149,28 @@ namespace Config {
 
         // Sensor and temperature control configuration
         uint8_t sensor_i2c_address = DEFAULT_SENSOR_I2C_ADDRESS; // Default I2C address for sensors
-        float target_temperature = 22.0f; // Target temperature for control
+        float target_temperature = TARGET_TEMPERATURE_DEFAULT_C; // Target temperature for control
         bool temperature_control_enabled = false; // Temperature control enabled
         float elevation = 0.0f; // Meters above sea level, for sea-level pressure calculation
+
+        // Heating actuator: which manifold, and which channel on it. The host
+        // accepts an mDNS name or an IP — both manifolds answer to
+        // `shellypro4pm-<mac>.local`, so a DHCP change need not orphan a zone.
+        char actuator_host[64] = "";
+        int8_t actuator_channel = ACTUATOR_CHANNEL_UNASSIGNED;
+        uint16_t tpo_cycle_s = DEFAULT_TPO_CYCLE_S;
+        uint16_t tpo_travel_s = DEFAULT_TPO_TRAVEL_S;
+        float safety_max_c = DEFAULT_SAFETY_MAX_C;
+        float safety_hyst_c = DEFAULT_SAFETY_HYST_C;
+
+        // PID gains and the cadence at which the PID computes. The sensor tick
+        // is unaffected: only the PID computation is decimated to this
+        // interval, and the elapsed time is measured rather than assumed, so
+        // the interval does not re-scale the meaning of `ki`.
+        float kp = DEFAULT_PID_KP;
+        float ki = DEFAULT_PID_KI;
+        float kd = DEFAULT_PID_KD;
+        uint16_t control_interval_s = DEFAULT_CONTROL_INTERVAL_S;
 
         // POSIX TZ string carrying both the UTC offset and the daylight-saving
         // transition rules, e.g. "CET-1CEST,M3.5.0,M10.5.0/3". Sits next to
@@ -185,6 +271,16 @@ namespace Config {
         return state >> 1;
     }
 
+    // True when `key` fits NVS's 15-character limit. constexpr so callers can
+    // static_assert on it; see the ConfigManager key block for why.
+    constexpr bool nvsKeyFits(const char *key) {
+        size_t length = 0;
+        while (key[length] != '\0') {
+            ++length;
+        }
+        return length <= 15;
+    }
+
     /**
      * Configuration Manager
      * Handles persistent storage using ESP32 Preferences (NVS)
@@ -195,13 +291,52 @@ namespace Config {
         Preferences prefs;
 #endif
         static constexpr const char *NAMESPACE = "klima";
-        static constexpr const char *TARGET_TEMPERATURE = "target_temperature";
-        static constexpr const char *TEMPERATURE_CONTROL_ENABLED = "temperature_control_enabled";
+        static constexpr const char *TARGET_TEMPERATURE = "target_temp";
+        static constexpr const char *TEMPERATURE_CONTROL_ENABLED = "ctrl_enabled";
         static constexpr const char *ELEVATION = "elevation";
         static constexpr const char *ENERGY_WIFI_PW = "energy_wifi_pw";
-        static constexpr const char *ENERGY_WIFI_SLEEP = "energy_wifi_sleep";
-        static constexpr const char *SENSOR_I2C_ADDRESS = "sensor_i2c_address";
+        static constexpr const char *ENERGY_WIFI_SLEEP = "wifi_sleep";
+        static constexpr const char *SENSOR_I2C_ADDRESS = "sensor_i2c";
         static constexpr const char *TIMEZONE = "timezone";
+        static constexpr const char *ACTUATOR_HOST = "act_host";
+        static constexpr const char *ACTUATOR_CHANNEL = "act_ch";
+        static constexpr const char *TPO_CYCLE = "tpo_cycle";
+        static constexpr const char *TPO_TRAVEL = "tpo_travel";
+        static constexpr const char *SAFETY_MAX = "safe_max";
+        static constexpr const char *SAFETY_HYST = "safe_hyst";
+        static constexpr const char *PID_KP = "pid_kp";
+        static constexpr const char *PID_KI = "pid_ki";
+        static constexpr const char *PID_KD = "pid_kd";
+        // Abbreviated for the same reason "disp_intv" is: "control_interval_s"
+        // is 18 characters and would fail silently.
+        static constexpr const char *CONTROL_INTERVAL = "ctrl_intv";
+
+        // NVS keys are capped at 15 characters (NVS_KEY_NAME_MAX_SIZE is 16
+        // including the terminator). Preferences::putX() fails silently on a
+        // longer key and the matching getX() then hands back the supplied
+        // default, so an over-long key is indistinguishable at runtime from a
+        // setting that simply refuses to stick — which is exactly how
+        // `target_temperature` (18) and `temperature_control_enabled` (27)
+        // went unnoticed: nothing wrote to them until the control UI existed.
+        // A comment saying "keep keys short" was already present in
+        // PrefsKeys.h and did not prevent it, so the rule is enforced here.
+        static_assert(nvsKeyFits(TARGET_TEMPERATURE), "NVS key too long");
+        static_assert(nvsKeyFits(TEMPERATURE_CONTROL_ENABLED), "NVS key too long");
+        static_assert(nvsKeyFits(ELEVATION), "NVS key too long");
+        static_assert(nvsKeyFits(ENERGY_WIFI_PW), "NVS key too long");
+        static_assert(nvsKeyFits(ENERGY_WIFI_SLEEP), "NVS key too long");
+        static_assert(nvsKeyFits(SENSOR_I2C_ADDRESS), "NVS key too long");
+        static_assert(nvsKeyFits(TIMEZONE), "NVS key too long");
+        static_assert(nvsKeyFits(ACTUATOR_HOST), "NVS key too long");
+        static_assert(nvsKeyFits(ACTUATOR_CHANNEL), "NVS key too long");
+        static_assert(nvsKeyFits(TPO_CYCLE), "NVS key too long");
+        static_assert(nvsKeyFits(TPO_TRAVEL), "NVS key too long");
+        static_assert(nvsKeyFits(SAFETY_MAX), "NVS key too long");
+        static_assert(nvsKeyFits(SAFETY_HYST), "NVS key too long");
+        static_assert(nvsKeyFits(PID_KP), "NVS key too long");
+        static_assert(nvsKeyFits(PID_KI), "NVS key too long");
+        static_assert(nvsKeyFits(PID_KD), "NVS key too long");
+        static_assert(nvsKeyFits(CONTROL_INTERVAL), "NVS key too long");
 
         // In-memory cache of device config — always read from here, never maintain separate copies
         DeviceConfig deviceConfig;
@@ -328,6 +463,33 @@ namespace Config {
         void updateTargetTemperature(float temperature);
         void updateTemperatureControlEnabled(bool enabled);
         void updateElevation(float elevation);
+
+        /**
+         * Assign this device to a manifold channel. Validated as a pair — an
+         * empty host or an out-of-range channel clears the assignment
+         * entirely, because a half-assignment is not a thing that can be acted
+         * on safely.
+         */
+        void updateActuatorAssignment(const char *actuatorHost, int8_t actuatorChannel);
+
+        /**
+         * Cycle period, actuator travel time and the over-temperature limit.
+         * Applied as a set: validateDeviceConfig() reverts the cycle/travel
+         * pair together if they are inconsistent, so callers should check the
+         * pair before offering it.
+         */
+        void updateActuatorTiming(uint16_t cycleS, uint16_t travelS, float safetyMaxC,
+                                  float safetyHystC);
+
+        /**
+         * PID gains and the control interval. Taken as a set because gains are
+         * only meaningful together: storing three of four and reverting one
+         * leaves a controller nobody configured. Each field independently falls
+         * back to its default if it is not trustworthy, matching how
+         * validateDeviceConfig() treats a corrupt NVS read; callers wanting a
+         * rejection rather than a fallback must validate before calling.
+         */
+        void updateTuning(float kp, float ki, float kd, uint16_t intervalS);
         void updateTimezone(const char* timezone);
         void updateSensorI2CAddress(uint8_t address);
 

@@ -52,13 +52,18 @@ namespace Display {
          *                    may be empty while NTP is unsynced
          * @param controlState Control state, drawn as footer line 2, right column
          * @param setpointStr Preformatted setpoint, footer line 1, right column
+         * @param demandSegments Filled segments of the demand bar, 0..DEMAND_BUCKETS.
+         *                    Drawn on footer line 2 between the date/time and
+         *                    the control symbol, and only while controlState is
+         *                    not INACTIVE. Pre-bucketed by the caller so the
+         *                    panel repaints on a visible change, not every tick.
          * @param kind        Partial repaints the value+footer window; Full also
          *                    clears ghosting
          */
         void render(const char *tempStr, const char *humStr,
                     const char *footerName, const char *footerDateTime,
                     ControlState controlState, const char *setpointStr,
-                    RefreshKind kind);
+                    uint8_t demandSegments, RefreshKind kind);
 
         /**
          * Blank the panel to white. Used on the disable path — e-paper retains
@@ -88,9 +93,20 @@ namespace Display {
         // unconditionally: it carries a live clock and lies entirely inside the
         // partial-refresh window, so it stays in step with the values on every
         // refresh.
+        void drawDemandBar(int16_t leftX, uint8_t filledSegments);
+
+        // Paints the header band: the brand mark flush left, the firmware
+        // version flush right, both in the built-in 5x7 font. Called from
+        // inside the paged draw loop, where a partial refresh clips it away —
+        // the band lies above the partial window and so carries only
+        // compile-time-constant content. Leaves the built-in font selected, so
+        // callers must set the font they need next.
+        void drawHeader();
+
         void runPagedDraw(const char *tempStr, const char *humStr,
                           const char *footerName, const char *footerDateTime,
-                          ControlState controlState, const char *setpointStr);
+                          ControlState controlState, const char *setpointStr,
+                          uint8_t demandSegments);
 
         // Records the duration of a completed panel operation and trips the
         // fault guard when the timeout streak is reached.

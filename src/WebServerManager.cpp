@@ -7,6 +7,7 @@
 #include "task/SensorMonitor.h"
 #include "DeviceId.h"
 #include "Constants.h"
+#include "support/RequestDiag.h"
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
@@ -27,6 +28,23 @@ void AccessLogger::run(AsyncWebServerRequest *request, ArMiddlewareNext next) {
     elapsed = millis() - elapsed;
 
     AsyncWebServerResponse *response = request->getResponse();
+
+    // Also recorded into a RAM ring readable over GET /api/diag/requests.
+    // Serial cannot see the fault being hunted: reading the log means attaching
+    // a monitor, and the intermittent 501 on body-carrying POSTs has never been
+    // observed while one was attached. GETs are unaffected, so this channel can
+    // see what serial cannot.
+    //
+    // A response of -1 here is the signature: the middleware runs immediately
+    // before _send(), which is where the framework substitutes the 501, so a
+    // request that produced nothing shows as "no response" rather than as 501.
+    Support::recordRequest(request->methodToString(), request->url().c_str(),
+                           response ? response->code() : -1,
+                           static_cast<uint32_t>(request->contentLength()),
+                           static_cast<uint16_t>(elapsed), ESP.getFreeHeap(),
+                           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), millis(),
+                           request->contentType().c_str(),
+                           static_cast<uint16_t>(request->params()));
     if (response) {
         ESP_LOGI(TAG, "%s %s %s (%u ms) %u",
                  request->client()->remoteIP().toString().c_str(),
@@ -101,6 +119,20 @@ WebServerManager::WebServerManager(Config::ConfigManager &config, Network &netwo
       , server(80)
 #endif
 {
+#ifdef ARDUINO
+    // Registered here rather than in setMode() because AsyncWebServer::reset()
+    // clears rewrites and handlers but NOT middlewares (WebServer.cpp:197), and
+    // addMiddleware() appends without de-duplicating (Middleware.cpp:23). A
+    // per-mode registration would therefore stack a fresh copy on every mode
+    // flip and log each request once per flip.
+    //
+    // AccessLogger has existed since the class was written but was never wired
+    // up, so no request has ever been logged. That gap is what made the
+    // intermittent 501 on body-carrying POSTs so hard to pin down: a request
+    // that produces no response left no trace at all. run() reports
+    // "(no response)" for exactly that case.
+    server.addMiddleware(&logging);
+#endif
 }
 
 #ifdef ARDUINO
