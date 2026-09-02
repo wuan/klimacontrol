@@ -269,3 +269,82 @@ The section SHALL display the current device time as reported by `GET /api/setti
 - **WHEN** the operator saves a timezone
 - **THEN** the page SHALL confirm the change and refresh the displayed device time, without telling the user the device is restarting
 
+### Requirement: Autotune controls and status
+
+The web UI SHALL provide a way to start an autotune run, abort a running one, view its progress, and accept a derived result. Progress SHALL be reconstructed from `GET /api/autotune/status` so that it survives a page reload, and an abort control SHALL be reachable whenever a run is active.
+
+#### Scenario: Progress survives a reload
+
+- **WHEN** the page is reloaded during a run
+- **THEN** the state, elapsed time and completed cycles SHALL be shown, rebuilt from the status endpoint
+
+#### Scenario: Abort reachable while running
+
+- **WHEN** a run is active
+- **THEN** an abort control SHALL be visible
+
+#### Scenario: Abort reason surfaced
+
+- **WHEN** a run aborts for any reason
+- **THEN** the recorded reason SHALL be displayed rather than the UI returning silently to idle
+
+### Requirement: Autotune UI states its current limitations
+
+Because the device has no heating output, a run cannot converge: the plant does not respond to the relay, so every run ends in a timeout. The UI SHALL say so before a run is started, so that the expected outcome is not read as a malfunction.
+
+The UI SHALL also state that an accepted result is applied in memory only and does not survive a restart, rather than presenting acceptance as a durable change.
+
+#### Scenario: Limitation stated before starting
+
+- **WHEN** the user views the autotune controls
+- **THEN** the UI SHALL state that runs cannot converge until a heating output exists
+
+#### Scenario: Timeout is not presented as a fault
+
+- **WHEN** a run ends in a settling or run timeout
+- **THEN** the UI SHALL report the reason without implying a malfunction
+
+#### Scenario: Acceptance is described as temporary
+
+- **WHEN** derived gains are offered for acceptance
+- **THEN** the UI SHALL state that they are not persisted and are lost on restart
+
+### Requirement: Control parameters panel
+
+The dashboard SHALL provide a collapsible panel showing the controller's live state and tuning parameters, backed by `GET /api/control`. It SHALL be fetched on demand rather than on the dashboard's polling timer, following the existing "Show Measurements" pattern, so that a client which is not looking at it costs the device nothing.
+
+The panel SHALL present the controller output as a percentage of its clamp range, alongside a visual indication of magnitude. A percentage SHALL be shown rather than only the existing three-state symbol, because that symbol reports whether demand is non-zero and is therefore identical at 1 % and at 100 % demand.
+
+The existing symbol SHALL be retained, as a glanceable summary that the e-paper footer mirrors.
+
+#### Scenario: Panel is collapsed by default
+
+- **WHEN** the dashboard first loads
+- **THEN** the control parameters panel SHALL be hidden and `GET /api/control` SHALL NOT have been requested
+
+#### Scenario: Showing the panel
+
+- **WHEN** the user opens the panel
+- **THEN** `GET /api/control` SHALL be requested and the values rendered
+
+#### Scenario: Panel refreshes while visible
+
+- **WHEN** the panel is open
+- **THEN** it SHALL refresh on the dashboard's existing polling cadence
+- **AND** SHALL stop refreshing once hidden
+
+#### Scenario: Demand shown as a percentage
+
+- **WHEN** the controller output is `0.42` with a clamp range of `0.0` to `1.0`
+- **THEN** the panel SHALL show `42 %`
+
+#### Scenario: Missing temperature is handled
+
+- **WHEN** the response omits temperature and error because no valid reading exists
+- **THEN** the panel SHALL render placeholders for those rows rather than `undefined`
+
+#### Scenario: Symbol retained
+
+- **WHEN** the panel is open
+- **THEN** the three-state control symbol SHALL still be shown in the control bar
+

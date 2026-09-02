@@ -78,13 +78,18 @@ runbook's per-zone assignment step requires a terminal.
 
 ## Stage 4 — report the truth
 
-- [ ] Track commanded / observed / power separately
-- [ ] `isControlActive()` becomes confirmed actuation
-- [ ] Surface the four interesting states: agreed-open, agreed-closed,
-      **commanded-on-but-no-power** (dead actuator), and unreachable
-- [ ] `/api/control` gains actuator state; the panel and the demand bar follow
-      confirmed state, and show unknown rather than a stale belief
-- [ ] Regenerate web assets
+- [x] Track commanded / observed / power separately
+- [x] `isControlActive()` becomes confirmed actuation
+- [x] Surface the four interesting states: agreed-open, agreed-closed,
+      **commanded-on-but-no-power** (dead actuator), and unreachable —
+      as `Actuator::ReportedState` {disabled, idle, heating, unknown, fault},
+      mapped by a pure function with 10 native tests
+- [x] `/api/control` and `/api/status` gain `state`; the dashboard symbol gains a
+      fourth amber form for "cannot say", the e-paper gains
+      `ControlState::UNCERTAIN` (ring with a dot), and the demand bar is
+      suppressed while uncertain because a duty means nothing when the actuator
+      is not answering
+- [x] Regenerate web assets
 
 ## Verification on hardware
 

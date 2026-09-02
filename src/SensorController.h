@@ -8,6 +8,7 @@
 #include "StatusLed.h"
 #include "control/PidController.h"
 #include "control/RelayAutotuner.h"
+#include "actuator/HeatingActuator.h"
 
 #include <atomic>
 
@@ -74,6 +75,11 @@ private:
 
     // Latched over-temperature state; see isSafetyShutoffEngaged().
     bool safetyShutoff = false;
+
+    // Actuator state, written only by the Network task via
+    // publishActuatorState() and read by the API and the displays.
+    bool actuatorAssigned = false;
+    Actuator::Agreement actuatorAgreement = Actuator::Agreement::Unknown;
 
     // Consecutive read cycles in which I2C sensors are present but none returned
     // valid data. After I2C_RECOVERY_FAILURE_STREAK cycles the bus is assumed
@@ -204,7 +210,35 @@ public:
 
     void setControlEnabled(bool enabled);
     bool isControlEnabled() const { return config.getDeviceConfig().temperature_control_enabled; }
-    bool isControlActive() const { return lastControlOutput > 0.0f; }
+    /**
+     * Whether heat is confirmed to be going into the room.
+     *
+     * With a channel assigned this reflects the actuator's observed state, not
+     * this controller's intent: during a manifold outage it reports unknown
+     * rather than claiming to heat. With no channel assigned it falls back to
+     * demand, because nothing exists to confirm against.
+     */
+    bool isControlActive() const {
+        return getReportedState() == Actuator::ReportedState::Heating;
+    }
+
+    /** The full picture, for displays that can show more than on/off. */
+    Actuator::ReportedState getReportedState() const {
+        return Actuator::reportedState(config.getDeviceConfig().temperature_control_enabled,
+                                       actuatorAssigned, actuatorAgreement, lastControlOutput);
+    }
+
+    /**
+     * Published by the Network task after each actuator tick.
+     *
+     * Cross-task, but single-writer and only ever plain scalars, matching the
+     * rule already used for lastControlOutput. The control loop never writes
+     * these and the actuator never writes anything else here.
+     */
+    void publishActuatorState(bool assigned, Actuator::Agreement agreement) {
+        actuatorAssigned = assigned;
+        actuatorAgreement = agreement;
+    }
 
     // Read-only view of the control loop, for GET /api/control.
     //

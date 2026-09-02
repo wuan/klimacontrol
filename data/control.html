@@ -17,6 +17,10 @@
         .control-symbol.inactive { color: #dc3545; }
         .control-symbol.active-off { color: #667eea; }
         .control-symbol.active-on { color: #28a745; }
+        /* Amber: the device cannot vouch for the actuator's state. Deliberately
+           not green — a confident symbol during a manifold outage is the panel
+           lying about the one thing anyone looks at it for. */
+        .control-symbol.uncertain { color: #d39e00; }
 
         /* Setpoint stepper. The value keeps a fixed width so the buttons do
            not shuffle sideways as it moves between 9.5 and 30.0. */
@@ -260,7 +264,14 @@
         // "enabled, output unknown" — hollow circle, active-off colour. Claiming
         // active-on there would paint a device that never reports output as if it
         // were actively heating.
-        function getControlSymbol(enabled, active) {
+        // control_state is richer than control_active: it can say "cannot
+        // say", which a boolean cannot. Fall back to the boolean on firmware
+        // that predates it.
+        function getControlSymbol(enabled, active, state) {
+            if (state === 'disabled') return '\u2212';
+            if (state === 'heating') return '\u25CF';
+            if (state === 'idle') return '\u25CB';
+            if (state === 'unknown' || state === 'fault') return '\u2299';
             if (enabled === undefined) return '-';
             if (active === undefined) return enabled ? '\u25CB' : '\u2212';
             if (!enabled) return '\u2212';
@@ -268,7 +279,12 @@
             return '\u25CB';
         }
 
-        function getControlSymbolClass(enabled, active) {
+        function getControlSymbolClass(enabled, active, state) {
+            if (state === 'disabled') return 'inactive';
+            if (state === 'heating') return 'active-on';
+            if (state === 'idle') return 'active-off';
+            if (state === 'unknown') return 'uncertain';
+            if (state === 'fault') return 'inactive';
             if (enabled === undefined) return 'inactive';
             if (active === undefined) return enabled ? 'active-off' : 'inactive';
             if (!enabled) return 'inactive';
@@ -529,8 +545,9 @@
                 // Update control status with symbol
                 const controlStatusElement = document.getElementById('controlStatus');
                 if (controlStatusElement) {
-                    const symbol = getControlSymbol(currentStatus.control_enabled, currentStatus.control_active);
-                    const symbolClass = getControlSymbolClass(currentStatus.control_enabled, currentStatus.control_active);
+                    const symbol = getControlSymbol(currentStatus.control_enabled, currentStatus.control_active, currentStatus.control_state);
+                    const symbolClass = getControlSymbolClass(currentStatus.control_enabled, currentStatus.control_active, currentStatus.control_state);
+                    controlStatusElement.title = currentStatus.control_state || '';
                     controlStatusElement.textContent = symbol;
                     controlStatusElement.className = 'control-symbol ' + symbolClass;
                 }
@@ -610,16 +627,23 @@
                     ? Math.max(0, Math.min(100, ((d.output - lo) / span) * 100))
                     : null;
 
-                const state = d.enabled === false
-                    ? 'Disabled'
-                    : (d.running ? 'Enabled, running' : 'Enabled, not yet running');
+                const STATE_TEXT = {
+                    disabled: 'Disabled',
+                    idle: 'Enabled \u2014 not heating',
+                    heating: 'Heating (confirmed)',
+                    unknown: 'Enabled \u2014 actuator not responding',
+                    fault: 'Enabled \u2014 actuator fault'
+                };
+                const state = STATE_TEXT[d.state] ||
+                    (d.enabled === false ? 'Disabled'
+                                         : (d.running ? 'Enabled, running' : 'Enabled, not yet running'));
 
                 const demandCell = pct === null ? '&mdash;'
                     : `${pct.toFixed(0)} %<span class="demand-bar"><span style="width:${pct.toFixed(0)}%"></span></span>`;
 
                 tbody.innerHTML = `
                     <tr><td>State</td><td>${esc(state)}</td></tr>
-                    <tr><td>Demand</td><td>${demandCell}</td></tr>
+                    <tr><td>Demand${(d.state === 'unknown' || d.state === 'fault') ? ' <small>(requested)</small>' : ''}</td><td>${demandCell}</td></tr>
                     <tr><td>Setpoint</td><td>${fmt(d.setpoint, 1, ' °C')}</td></tr>
                     <tr><td>Temperature</td><td>${fmt(d.temperature, 2, ' °C')}</td></tr>
                     <tr><td>Error</td><td>${fmt(d.error, 2, ' K')}</td></tr>

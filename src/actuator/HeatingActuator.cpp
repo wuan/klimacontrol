@@ -4,17 +4,18 @@
 #include <cstdio>
 #include <cstring>
 
+// Log.h carries native no-op stubs, so it is included unconditionally: this
+// translation unit builds in the `native` environment so the state mapping and
+// the agreement logic can be tested off-device.
+#include "Log.h"
+
 #ifdef ARDUINO
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
-#include "Log.h"
+static const char *TAG = "actuator";
 #else
 #define TAG "actuator"
-#endif
-
-#ifdef ARDUINO
-static const char *TAG = "actuator";
 #endif
 
 namespace Actuator {
@@ -62,6 +63,38 @@ namespace Actuator {
             case Agreement::HeatingOk: return "heating";
             case Agreement::NoActuator: return "no_actuator";
             case Agreement::RelayRefused: return "relay_refused";
+        }
+        return "unknown";
+    }
+
+    ReportedState reportedState(bool controlEnabled, bool assigned, Agreement agreement,
+                                float demand) {
+        if (!controlEnabled) {
+            return ReportedState::Disabled;
+        }
+        if (!assigned) {
+            // Nothing to confirm against. Reporting demand keeps the indicator
+            // meaningful on a device with no actuator wired, which is every
+            // device until its zone is migrated.
+            return (demand > 0.0f) ? ReportedState::Heating : ReportedState::Idle;
+        }
+        switch (agreement) {
+            case Agreement::HeatingOk: return ReportedState::Heating;
+            case Agreement::ClosedOk: return ReportedState::Idle;
+            case Agreement::NoActuator: return ReportedState::Fault;
+            case Agreement::RelayRefused: return ReportedState::Fault;
+            case Agreement::Unknown: return ReportedState::Unknown;
+        }
+        return ReportedState::Unknown;
+    }
+
+    const char *reportedStateName(ReportedState s) {
+        switch (s) {
+            case ReportedState::Disabled: return "disabled";
+            case ReportedState::Idle: return "idle";
+            case ReportedState::Heating: return "heating";
+            case ReportedState::Unknown: return "unknown";
+            case ReportedState::Fault: return "fault";
         }
         return "unknown";
     }
@@ -152,6 +185,7 @@ namespace Actuator {
         lastConformance = checkConformance(cfg, MIN_LEASE_S);
         lastConformanceMs = nowMs;
         everChecked = true;
+        ++checks;
         if (lastConformance != before) {
             if (lastConformance == Conformance::Ok) {
                 ESP_LOGI(TAG, "Channel %d on %s is safe to drive", static_cast<int>(channel), host);

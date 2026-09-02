@@ -46,6 +46,35 @@ namespace Actuator {
     /** Stable machine-readable name for the API. */
     const char *agreementName(Agreement a);
 
+    /**
+     * What a display should say the controller is doing.
+     *
+     * Distinct from Agreement because a display has to fold in things the
+     * actuator knows nothing about — whether control is enabled at all, and
+     * whether a channel is even assigned.
+     */
+    enum class ReportedState : uint8_t {
+        Disabled, // control switched off
+        Idle,     // enabled, not currently heating
+        Heating,  // confirmed heating
+        Unknown,  // assigned but not observed recently — say so, do not guess
+        Fault     // relay and actuator disagree: dead head, or refused command
+    };
+
+    /**
+     * Fold controller and actuator state into one thing a display can render.
+     *
+     * With no channel assigned this falls back to reporting demand, because
+     * there is no actuator whose state could be confirmed and the demand is
+     * then the only observable fact. Once a channel is assigned the observed
+     * state governs, so a manifold outage shows as Unknown rather than as a
+     * confident "heating" the device cannot actually vouch for.
+     */
+    ReportedState reportedState(bool controlEnabled, bool assigned, Agreement agreement,
+                                float demand);
+
+    const char *reportedStateName(ReportedState s);
+
     class HeatingActuator {
     public:
         HeatingActuator();
@@ -87,6 +116,21 @@ namespace Actuator {
         float latchedDuty() const { return tpo.latchedDuty(); }
         uint32_t failedRequests() const { return failures; }
 
+        /**
+         * How many conformance checks have completed, and how long ago the last
+         * one was.
+         *
+         * Exposed because the *outcome* of a re-check is otherwise invisible
+         * when the verdict has not changed — which is the normal case while
+         * somebody is fixing the relay and re-checking. Without a counter, a
+         * working re-check and a dead button look identical.
+         */
+        uint32_t conformanceChecks() const { return checks; }
+        uint32_t conformanceAgeMs(uint32_t nowMs) const {
+            return everChecked ? (nowMs - lastConformanceMs) : 0;
+        }
+        bool everConformanceChecked() const { return everChecked; }
+
         // Renewal must be frequent enough that the relay's lease cannot expire
         // while the valve is meant to be open, and the lease must be wide
         // enough that one failed request does not move a valve that takes
@@ -123,6 +167,7 @@ namespace Actuator {
         Observation observed;
         uint32_t lastObserveMs = 0;
         uint32_t failures = 0;
+        uint32_t checks = 0;
     };
 
 }

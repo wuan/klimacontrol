@@ -71,6 +71,7 @@ void WebServerManager::setupControlRoutes() {
             doc["error"] = setpoint - temperature;
         }
 
+        doc["state"] = Actuator::reportedStateName(sensorController.getReportedState());
         doc["output"] = sensorController.getControlOutput();
         doc["integral"] = sensorController.getControlIntegral();
         doc["output_min"] = SensorController::getControlOutputMin();
@@ -164,6 +165,9 @@ void WebServerManager::setupControlRoutes() {
         doc["conformance"] = Actuator::conformanceName(act.conformance());
         doc["conformance_detail"] = Actuator::conformanceDetail(act.conformance());
         doc["conforming"] = act.isConforming();
+        doc["conformance_checks"] = act.conformanceChecks();
+        doc["conformance_age_ms"] = act.conformanceAgeMs(now);
+        doc["ever_checked"] = act.everConformanceChecked();
         doc["permitted"] = sensorController.isHeatingPermitted();
         doc["safety_shutoff"] = sensorController.isSafetyShutoffEngaged();
         doc["commanded_open"] = act.commandedOpen();

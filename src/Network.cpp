@@ -586,6 +586,11 @@ void Network::configureUsingAPMode() {
             heatingActuator.configure(config.getDeviceConfig());
             heatingActuator.tick(sensorController.getControlOutput(),
                                  sensorController.isHeatingPermitted(), now);
+            // Publish what the relay is actually doing, so isControlActive()
+            // and everything downstream report confirmed state rather than
+            // this controller's intent.
+            sensorController.publishActuatorState(heatingActuator.isAssigned(),
+                                                  heatingActuator.agreement(now));
         }
 
         // Repaint the e-paper display if the refresh policy calls for it. The

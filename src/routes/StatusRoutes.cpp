@@ -52,6 +52,9 @@ void WebServerManager::setupStatusRoutes() {
         doc["target_temperature"] = sensorController.getTargetTemperature();
         doc["control_enabled"] = sensorController.isControlEnabled();
         doc["control_active"] = sensorController.isControlActive();
+        // Richer than the boolean above: distinguishes "not heating" from
+        // "cannot say", which the boolean cannot express.
+        doc["control_state"] = Actuator::reportedStateName(sensorController.getReportedState());
 
         // Network info
         doc["wifi_connected"] = WiFiClass::status() == WL_CONNECTED;

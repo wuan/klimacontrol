@@ -56,7 +56,7 @@
             <button class="btn btn-primary" onclick="updateActuatorAssignment()">Save assignment</button>
 
             <div id="actVerdict" class="info-box" style="margin-top: 16px;">Loading&hellip;</div>
-            <button class="btn btn-sm" onclick="recheckActuator()">Re-check now</button>
+            <button class="btn btn-sm" id="actRecheckBtn" onclick="recheckActuator()">Re-check now</button>
             <small class="device-subtitle">After changing a setting in the Shelly's own web UI,
             re-check rather than waiting for the periodic check.</small>
 
@@ -430,9 +430,14 @@
         if (!el) return;
         if (!d.assigned) {
             el.className = 'info-box';
-            el.innerHTML = 'No channel assigned. Temperature control cannot be enabled until one is.';
+            el.innerHTML = 'No channel assigned. Temperature control cannot be enabled until one is. ' +
+                '<small>Re-check does nothing until a channel is assigned.</small>';
             return;
         }
+        const age = d.ever_checked
+            ? `<br><small>Checked ${Math.round((d.conformance_age_ms || 0) / 1000)}s ago ` +
+              `(${d.conformance_checks} checks since boot).</small>`
+            : '<br><small>Not checked yet.</small>';
         // The verdict is the useful part: it names the exact Shelly setting to
         // change, so a refused channel can be fixed without guesswork.
         if (d.conforming) {
@@ -440,10 +445,10 @@
             el.innerHTML = `<strong>Channel is safe to drive.</strong>` +
                 (d.observed_valid
                     ? ` Relay reports ${d.observed_output ? 'on' : 'off'}, ${Number(d.observed_power_w).toFixed(1)} W.`
-                    : ' No recent observation from the manifold.');
+                    : ' No recent observation from the manifold.') + age;
         } else {
             el.className = 'warning-box';
-            el.innerHTML = `<strong>Refused: ${d.conformance}</strong><br>${d.conformance_detail}`;
+            el.innerHTML = `<strong>Refused: ${d.conformance}</strong><br>${d.conformance_detail}` + age;
             if (d.failed_requests > 0) {
                 el.innerHTML += `<br><small>${d.failed_requests} request(s) to the manifold have failed.</small>`;
             }
@@ -493,13 +498,58 @@
         }
     }
 
+    // The verdict is usually unchanged after a re-check — you press it, read the
+    // message, go fix the relay, press again. So "the same text reappeared" must
+    // not be the only feedback, or a working button is indistinguishable from a
+    // dead one. Wait for the device's check counter to advance and say so.
     async function recheckActuator() {
+        const btn = document.getElementById('actRecheckBtn');
+        const before = await currentCheckCount();
+        if (btn) { btn.disabled = true; btn.textContent = 'Checking\u2026'; }
         try {
-            await fetch('/api/actuator/recheck', {method: 'POST', headers: ACT_HEADERS});
-            setTimeout(loadActuator, 12000);
+            const r = await fetch('/api/actuator/recheck', {method: 'POST', headers: ACT_HEADERS});
+            if (!r.ok) throw new Error('recheck rejected');
+
+            // The actuator re-reads on its own tick, so this can take a few
+            // seconds. Poll rather than guess a delay.
+            let advanced = false;
+            for (let i = 0; i < 12 && !advanced; i++) {
+                await new Promise(res => setTimeout(res, 2000));
+                const d = await fetchActuator();
+                if (d && d.conformance_checks > before) {
+                    renderActuatorVerdict(d);
+                    advanced = true;
+                }
+            }
+            if (!advanced) {
+                const el = document.getElementById('actVerdict');
+                if (el) {
+                    el.className = 'warning-box';
+                    el.innerHTML = '<strong>No check completed.</strong> The device did not re-read ' +
+                        'the channel. It only checks while a channel is assigned \u2014 assign one first.';
+                }
+            }
         } catch (e) {
             console.error('recheck failed', e);
+            const el = document.getElementById('actVerdict');
+            if (el) { el.className = 'warning-box'; el.innerHTML = 'Could not reach the device.'; }
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = 'Re-check now'; }
         }
+    }
+
+    async function fetchActuator() {
+        try {
+            const r = await fetch('/api/actuator');
+            return await r.json();
+        } catch (e) {
+            return null;
+        }
+    }
+
+    async function currentCheckCount() {
+        const d = await fetchActuator();
+        return d ? (d.conformance_checks || 0) : 0;
     }
 
     async function loadStatus() {

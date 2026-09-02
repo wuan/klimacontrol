@@ -134,6 +134,13 @@ namespace Display {
                 case Display::ControlState::ACTIVE_ON:
                     display.fillCircle(x, y, CONTROL_SYMBOL_RADIUS, GxEPD_BLACK);
                     break;
+                case Display::ControlState::UNCERTAIN:
+                    // A ring with a dot: recognisably related to the other two
+                    // without being mistakable for either. The GFX fonts carry
+                    // no glyph worth using at this size, so it is drawn.
+                    display.drawCircle(x, y, CONTROL_SYMBOL_RADIUS, GxEPD_BLACK);
+                    display.fillCircle(x, y, 2, GxEPD_BLACK);
+                    break;
             }
         }
 
@@ -352,7 +359,8 @@ namespace Display {
             // drawn even at zero demand, because "enabled but asking for
             // nothing" is worth distinguishing from "switched off".
             int16_t rightColumnLeftX = symbolLeftX;
-            if (controlState != Display::ControlState::INACTIVE) {
+            if (controlState != Display::ControlState::INACTIVE &&
+                controlState != Display::ControlState::UNCERTAIN) {
                 const int16_t barRightX = static_cast<int16_t>(symbolLeftX - DEMAND_BAR_GAP);
                 const int16_t barLeftX = static_cast<int16_t>(barRightX - DEMAND_BAR_W);
                 drawDemandBar(barLeftX, demandSegments);
@@ -464,6 +472,7 @@ namespace Display {
                     drawCentered(name, SPLASH_NAME_Y);
                 }
             }
+            display.setFont(nullptr);
             drawCentered("starting...", SPLASH_STATUS_Y);
         } while (display.nextPage());
         feedWatchdog();

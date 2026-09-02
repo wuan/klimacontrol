@@ -29,9 +29,14 @@ namespace Display {
      * is the Arduino-free half of the display code.
      */
     enum class ControlState {
-        INACTIVE,
-        ACTIVE_OFF,
-        ACTIVE_ON
+        INACTIVE,   // control switched off
+        ACTIVE_OFF, // enabled, valve confirmed closed
+        ACTIVE_ON,  // enabled, heating confirmed
+        // Enabled and a channel is assigned, but the actuator has not been
+        // observed recently, or the relay and the actuator disagree. Shown
+        // distinctly because the alternative is a confident symbol the device
+        // cannot vouch for — and the panel is the thing people actually look at.
+        UNCERTAIN
     };
 
     // A reading must move by at least this much before a refresh is considered.

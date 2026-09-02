@@ -130,14 +130,27 @@ namespace Display {
             const uint32_t epoch = network != nullptr ? network->getCurrentEpoch() : 0;
             const uint32_t clockMinute = epoch / 60u;
 
-            // Determine control state
+            // Determine control state.
+            //
+            // Driven by the actuator's reported state rather than by demand, so
+            // an unreachable manifold or a dead wax head shows as uncertain
+            // instead of as a confident symbol the device cannot vouch for.
             Display::ControlState controlState;
-            if (!controller.isControlEnabled()) {
-                controlState = Display::ControlState::INACTIVE;
-            } else if (controller.isControlActive()) {
-                controlState = Display::ControlState::ACTIVE_ON;
-            } else {
-                controlState = Display::ControlState::ACTIVE_OFF;
+            switch (controller.getReportedState()) {
+                case Actuator::ReportedState::Disabled:
+                    controlState = Display::ControlState::INACTIVE;
+                    break;
+                case Actuator::ReportedState::Heating:
+                    controlState = Display::ControlState::ACTIVE_ON;
+                    break;
+                case Actuator::ReportedState::Idle:
+                    controlState = Display::ControlState::ACTIVE_OFF;
+                    break;
+                case Actuator::ReportedState::Unknown:
+                case Actuator::ReportedState::Fault:
+                default:
+                    controlState = Display::ControlState::UNCERTAIN;
+                    break;
             }
 
             // Both are footer content the user can change from the web UI, so
