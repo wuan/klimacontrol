@@ -109,7 +109,9 @@ The project includes an [OpenAPI specification](docs/api/klimacontrol-api.yaml) 
 |----------|--------|-------------|
 | `/api/status` | GET | Device status, current temperature, humidity, and control state |
 | `/api/temperature/target` | POST | Set target temperature |
+| `/api/control` | GET | Live controller state, gains in force, and control interval |
 | `/api/control/enable` | POST | Enable/disable temperature control |
+| `/api/control/tuning` | POST | Set PID gains and the control interval |
 | `/api/sensors` | GET | Detailed sensor information |
 
 ## Configuration
@@ -117,7 +119,7 @@ The project includes an [OpenAPI specification](docs/api/klimacontrol-api.yaml) 
 All settings are persisted in ESP32 NVS (Non-Volatile Storage):
 
 - **WiFi Config**: SSID, password, connection status
-- **Device Config**: Device name, device ID, sensor I2C address
+- **Device Config**: Device name, device ID, sensor I2C address, PID gains and control interval
 - **Temperature Config**: Target temperature, control enabled flag
 - **MQTT Config**: Broker address, port, topics (if enabled)
 - **Syslog Config**: Syslog server address, port, enabled flag
@@ -172,7 +174,9 @@ tests/
   - Sensor Monitor Task - reads sensors and updates temperature control
 - **Thread-safe**: Direct method calls and shared data with proper synchronization
 - **Persistent storage**: All settings stored in ESP32 NVS
-- **Real-time operation**: Sensors read every second, temperature control updates continuously
+- **Real-time operation**: Sensors read every second; the PID recomputes on the
+  configured control interval (60 s by default), while the over-temperature
+  shutoff is evaluated on every sensor cycle
 
 ## Temperature Control
 
@@ -181,6 +185,39 @@ The temperature control system uses:
 - **Sensor averaging** - Multiple sensor readings averaged for accuracy
 - **Data logging** - All measurements and control states logged for analysis
 - **Configurable targets** - Set any temperature within sensor range
+
+### Tuning
+
+The gains and the control interval are stored in NVS and editable under
+Settings &rarr; Tuning or via `POST /api/control/tuning`. Values are validated
+on load and fall back per field; the API rejects an out-of-range value rather
+than clamping it.
+
+| Field | Range | Default |
+|---|---|---|
+| `kp` | 0.01&ndash;100 | 0.5 |
+| `ki` | 0&ndash;0.05 | 0.0001 |
+| `kd` | 0&ndash;600 | 0 |
+| `control_interval_s` | 1&ndash;600 | 60 |
+
+`ki` and `kd` may be zero; `kp` may not, because a zero proportional gain
+disables control while control still reports itself as enabled. The defaults are
+derived arithmetically rather than measured, and are consistent with the
+autotuner's own Tyreus&ndash;Luyben derivation, which produces a PI controller
+with `kd = 0` &mdash; on a floor whose time constant is hours, derivative action
+mostly amplifies sensor noise. Expect to revise them after the first converged
+autotune run on a real plant.
+
+The **control interval** decimates only the PID computation. Sensors still read
+every second, and both the over-temperature shutoff and the autotuner's sampling
+are evaluated on every sensor cycle regardless &mdash; a safety limit noticed a
+minute late is a weaker guarantee, and coarser autotune sampling would bias its
+amplitude measurement. Because elapsed time is measured rather than assumed, the
+interval does not change what `ki` means.
+
+Accepting an autotune result persists the derived gains. The controller adopts
+them on its next control tick rather than immediately, so `GET /api/control`
+reports the gains actually in force and is how a change is confirmed.
 
 ## MQTT Integration
 

@@ -66,12 +66,52 @@ private:
     // calling into the state machine mid-update.
     Control::RelayAutotuner autotuner;
 
+    // When the PID last computed, for the decimation in updateControl().
+    //
+    // Time-based rather than a tick count, because the sensor reading interval
+    // is itself settable: counting every Nth tick would make the configured
+    // "60 seconds" mean whatever 60 ticks happened to be. Unsigned, so
+    // `now - lastPidComputeMs` stays correct across the millis() rollover.
+    uint32_t lastPidComputeMs = 0;
+
+    /**
+     * Mark a tick on which the PID deliberately did not compute, and reseat the
+     * decimation baseline with it.
+     *
+     * The two belong together at every skip path: a resumed controller that
+     * kept a baseline from before the gap would compute against an interval it
+     * never actually waited. Note this is *not* called on a merely decimated
+     * tick — see updateControl(), where suspending would reset the integral on
+     * every computation and there would be no integral action at all.
+     */
+    void suspendPid(uint32_t nowMs);
+
     // Cross-task requests. exchange() makes consumption atomic, so a request
     // cannot be serviced twice, and the loop consumes cancel before start so a
     // pair arriving in the same tick resolves deterministically rather than by
     // arrival order.
     std::atomic<bool> autotuneStartRequested{false};
     std::atomic<bool> autotuneCancelRequested{false};
+
+    // A pending gain change, following the same pattern for the same reason.
+    //
+    // The web task used to call pid.setGains() directly from
+    // acceptAutotuneResult(), which raced the control task inside pid.update():
+    // a `running = false` written here could be overwritten by the `running =
+    // true` an in-flight update() writes on its way out, dropping the suspend
+    // and carrying an integral accumulated under the old gains into the new
+    // ones — exactly what setGains() exists to prevent. Three floats can also
+    // be read as a mix of old and new.
+    //
+    // So the gains travel in these plain fields and the flag publishes them:
+    // the producer writes the floats and then sets the flag with release
+    // ordering, the consumer acquires the flag and then reads the floats, which
+    // makes the set indivisible from the control task's point of view. Both
+    // entry points (requestGains() and acceptAutotuneResult()) run on the
+    // AsyncTCP task, so there is a single producer and no producer-producer
+    // race to order.
+    std::atomic<bool> gainsChangeRequested{false};
+    Control::PidGains pendingGains{0.0f, 0.0f, 0.0f};
 
     // Latched over-temperature state; see isSafetyShutoffEngaged().
     bool safetyShutoff = false;
@@ -266,11 +306,25 @@ public:
     void requestAutotuneCancel();
 
     /**
-     * Apply a converged autotune result to the running controller. In memory
-     * only — there is no configuration field for gains yet, so this is lost on
-     * restart. Returns false when no converged result exists.
+     * Persist a converged autotune result and ask the control loop to adopt it
+     * on its next tick. Returns false when no converged result exists.
+     *
+     * Persistence precedes the request, so the gains a caller is told were
+     * accepted are the ones that will survive a restart. Success therefore
+     * means "validated and accepted", not "already in force" — the control task
+     * applies them on a later tick, and getControlGains() is how a caller
+     * confirms it did.
      */
     bool acceptAutotuneResult();
+
+    /**
+     * Persist a tuning and ask the control loop to adopt it, as
+     * acceptAutotuneResult() does but for a hand-entered set. The values are
+     * expected to have been validated by the caller: this stores what it is
+     * given, and ConfigManager::updateTuning() falls back per field for
+     * anything untrustworthy rather than rejecting it.
+     */
+    void requestGains(Control::PidGains gains, uint16_t controlIntervalS);
 
     Control::AutotuneState getAutotuneState() const { return autotuner.state(); }
     Control::AutotuneAbort getAutotuneAbort() const { return autotuner.abortReason(); }

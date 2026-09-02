@@ -236,7 +236,7 @@ SHALL stay focused on at-a-glance environmental readings
 
 ### Requirement: Settings page sections
 
-The settings page SHALL organize configuration into distinct sections covering at least: Device Name, Elevation, Timezone, I2C Sensors, MQTT, E-Paper Display, Syslog, WiFi, Energy, OTA, System.
+The settings page SHALL organize configuration into distinct sections covering at least: Device Name, Elevation, Timezone, I2C Sensors, Tuning, MQTT, E-Paper Display, Syslog, WiFi, Energy, OTA, System.
 
 Sections SHALL be rendered as stacked blocks on a single page, each with its own heading and its own save action, so that saving one section does not submit the others.
 
@@ -290,24 +290,35 @@ The web UI SHALL provide a way to start an autotune run, abort a running one, vi
 
 ### Requirement: Autotune UI states its current limitations
 
-Because the device has no heating output, a run cannot converge: the plant does not respond to the relay, so every run ends in a timeout. The UI SHALL say so before a run is started, so that the expected outcome is not read as a malfunction.
+A run cannot converge unless the device can actually drive its zone: without a conforming actuator assignment the plant does not respond to the relay, so the run ends in a timeout. The UI SHALL state this **when it applies** — when no actuator channel is assigned, or when the assigned channel is refused — so that an expected timeout is not read as a malfunction. When a conforming actuator is assigned, the UI SHALL NOT display the warning, because a run can then converge and a standing warning would be misleading.
 
-The UI SHALL also state that an accepted result is applied in memory only and does not survive a restart, rather than presenting acceptance as a durable change.
+The UI SHALL NOT describe acceptance as temporary. Accepted gains are persisted and survive a restart.
 
-#### Scenario: Limitation stated before starting
+#### Scenario: Limitation stated when no actuator is assigned
 
-- **WHEN** the user views the autotune controls
-- **THEN** the UI SHALL state that runs cannot converge until a heating output exists
+- **WHEN** the user views the autotune controls with no actuator channel assigned
+- **THEN** the UI SHALL state that runs cannot converge until an actuator is assigned
+
+#### Scenario: Limitation stated when the channel is refused
+
+- **WHEN** the user views the autotune controls while the assigned channel is non-conforming
+- **THEN** the UI SHALL state that the channel is refused and that a run will end in a timeout
+
+#### Scenario: No warning with a working actuator
+
+- **WHEN** the user views the autotune controls with a conforming actuator assigned
+- **THEN** the UI SHALL NOT claim that runs cannot converge
 
 #### Scenario: Timeout is not presented as a fault
 
 - **WHEN** a run ends in a settling or run timeout
 - **THEN** the UI SHALL report the reason without implying a malfunction
 
-#### Scenario: Acceptance is described as temporary
+#### Scenario: Acceptance is described as durable
 
 - **WHEN** derived gains are offered for acceptance
-- **THEN** the UI SHALL state that they are not persisted and are lost on restart
+- **THEN** the UI SHALL NOT state that they are lost on restart
+- **AND** SHALL indicate that accepting stores them
 
 ### Requirement: Control parameters panel
 
@@ -348,3 +359,42 @@ The existing symbol SHALL be retained, as a glanceable summary that the e-paper 
 - **WHEN** the panel is open
 - **THEN** the three-state control symbol SHALL still be shown in the control bar
 
+### Requirement: Tuning section on the settings page
+
+The settings page SHALL provide a Tuning section covering the PID gains and the control interval, with its own save action like every other section.
+
+Each field SHALL be labelled with its unit and its permitted range, because a sensible `ki` is a small fraction whose order of magnitude is not obvious and is easy to mistype. The section SHALL additionally display the derived integral time `Ti = Kp / Ki` in seconds, which is the quantity with physical meaning and the one the autotuner's derivation actually produces.
+
+The section SHALL state that these values drive a physical valve, because this is the only settings section whose misconfiguration has a thermal consequence rather than a cosmetic one.
+
+Rejections from the write endpoint SHALL be surfaced with the offending field named, rather than reported as a generic failure, since an all-or-nothing validation that does not say which field failed leaves the user guessing.
+
+#### Scenario: Section rendering
+
+- **WHEN** the settings page loads
+- **THEN** a Tuning section SHALL be present as a headed block with its own save action
+
+#### Scenario: Current values shown
+
+- **WHEN** the Tuning section loads
+- **THEN** it SHALL show the gains in force and the configured control interval
+
+#### Scenario: Integral time is derived for the user
+
+- **WHEN** `Kp` is `0.5` and `Ki` is `0.0001`
+- **THEN** the section SHALL show an integral time of approximately 5000 seconds
+
+#### Scenario: Integral time with no integral action
+
+- **WHEN** `Ki` is zero
+- **THEN** the section SHALL indicate that there is no integral action rather than rendering a division by zero
+
+#### Scenario: Physical consequence stated
+
+- **WHEN** the Tuning section is displayed
+- **THEN** it SHALL state that these values drive a physical valve
+
+#### Scenario: Rejected field is named
+
+- **WHEN** a save is rejected because `ki` is out of range
+- **THEN** the section SHALL report that `ki` was the offending field and SHALL leave the form values as entered

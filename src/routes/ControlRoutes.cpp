@@ -52,7 +52,14 @@ void WebServerManager::setupControlRoutes() {
     // a timer and which already reopens NVS on each request. This is diagnostic
     // detail, fetched only while somebody is looking at it. No CSRF header: it
     // changes nothing.
-    server.on("/api/control", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    //
+    // Exact matching for the same reason /api/actuator needs it: the default
+    // BackwardCompatible matcher also matches any deeper path, and handlers are
+    // tried in registration order, so a plain "/api/control" registered first
+    // would swallow "/api/control/tuning". Only the differing HTTP method keeps
+    // that from biting today, which is not a property anybody can see at the
+    // call site.
+    server.on(AsyncURIMatcher::exact("/api/control"), HTTP_GET, [this](AsyncWebServerRequest *request) {
         JsonDocument doc;
 
         doc["enabled"] = sensorController.isControlEnabled();
@@ -77,15 +84,111 @@ void WebServerManager::setupControlRoutes() {
         doc["output_min"] = SensorController::getControlOutputMin();
         doc["output_max"] = SensorController::getControlOutputMax();
 
+        // From the running controller, not from DeviceConfig. A gain change is
+        // applied by the control task on a later tick, so reporting the stored
+        // values would show a pending change as already in force — and reading
+        // this back is exactly how a caller confirms that it landed.
         const Control::PidGains gains = sensorController.getControlGains();
         doc["kp"] = gains.kp;
         doc["ki"] = gains.ki;
         doc["kd"] = gains.kd;
+        doc["control_interval_s"] = config.getDeviceConfig().control_interval_s;
 
         String payload;
         serializeJson(doc, payload);
         request->send(200, CONTENT_TYPE_JSON, payload);
     });
+
+    // POST /api/control/tuning - the PID gains and the control interval.
+    //
+    // Exact matcher, as above. All four fields are required and validated
+    // together: gains are only meaningful as a set, so accepting three and
+    // reverting one would leave a controller nobody configured.
+    server.on(AsyncURIMatcher::exact("/api/control/tuning"), HTTP_POST,
+              []([[maybe_unused]] AsyncWebServerRequest *request) {},
+              nullptr,
+              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+                     [[maybe_unused]] size_t total) {
+                  if (index != 0) {
+                      return;
+                  }
+                  if (!verifyCsrfHeader(request)) {
+                      return;
+                  }
+                  JsonDocument doc;
+                  if (deserializeJson(doc, data, len)) {
+                      request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
+                      return;
+                  }
+
+                  // Absent fields are rejected rather than defaulted from the
+                  // current tuning. A form that failed to send `ki` would
+                  // otherwise silently keep the old one and report success,
+                  // which is indistinguishable from having stored what the user
+                  // typed.
+                  auto missing = [&](const char *field) {
+                      String body = R"({"success":false,"error":")";
+                      body += field;
+                      body += R"( required"})";
+                      request->send(400, CONTENT_TYPE_JSON, body);
+                  };
+                  if (!doc["kp"].is<float>()) { missing("kp"); return; }
+                  if (!doc["ki"].is<float>()) { missing("ki"); return; }
+                  if (!doc["kd"].is<float>()) { missing("kd"); return; }
+                  if (!doc["control_interval_s"].is<int>()) {
+                      missing("control_interval_s");
+                      return;
+                  }
+
+                  const float kp = doc["kp"];
+                  const float ki = doc["ki"];
+                  const float kd = doc["kd"];
+                  const int intervalS = doc["control_interval_s"];
+
+                  // Rejected rather than clamped, and the offending field is
+                  // named: the result drives a physical valve, so a silently
+                  // altered gain is indistinguishable from an accepted one, and
+                  // an all-or-nothing validation that does not say which field
+                  // failed leaves the user guessing. isfinite() screens NaN,
+                  // which a bare range comparison would pass on both sides.
+                  auto reject = [&](const char *field, const char *range) {
+                      String body = R"({"success":false,"error":")";
+                      body += field;
+                      body += " out of range ";
+                      body += range;
+                      body += R"(","field":")";
+                      body += field;
+                      body += R"("})";
+                      request->send(400, CONTENT_TYPE_JSON, body);
+                  };
+                  if (!std::isfinite(kp) || kp < Config::MIN_PID_KP || kp > Config::MAX_PID_KP) {
+                      // Zero lands here by construction: a zero proportional
+                      // gain disables control while control still reports
+                      // itself as enabled.
+                      reject("kp", "0.01-100");
+                      return;
+                  }
+                  if (!std::isfinite(ki) || ki < Config::MIN_PID_KI || ki > Config::MAX_PID_KI) {
+                      reject("ki", "0-0.05");
+                      return;
+                  }
+                  if (!std::isfinite(kd) || kd < Config::MIN_PID_KD || kd > Config::MAX_PID_KD) {
+                      reject("kd", "0-600");
+                      return;
+                  }
+                  if (intervalS < static_cast<int>(Config::MIN_CONTROL_INTERVAL_S) ||
+                      intervalS > static_cast<int>(Config::MAX_CONTROL_INTERVAL_S)) {
+                      reject("control_interval_s", "1-600");
+                      return;
+                  }
+
+                  // Persists, then asks the control task to adopt it. Success
+                  // therefore means accepted, not yet in force; GET
+                  // /api/control reports the gains actually running.
+                  sensorController.requestGains(Control::PidGains{kp, ki, kd},
+                                                static_cast<uint16_t>(intervalS));
+                  request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+              });
 
     // POST /api/temperature/target - Set target temperature
     server.on("/api/temperature/target", HTTP_POST,
@@ -368,9 +471,11 @@ void WebServerManager::setupControlRoutes() {
                     : "No actuator channel is assigned, so nothing can drive the room and a run will end in a timeout.";
         }
 
-        // Still true: DeviceConfig has no gain fields, so an accepted result
-        // lives only in RAM. Separate, still-unimplemented requirement.
-        doc["gains_persisted"] = false;
+        // Accepted gains are stored in NVS and survive a restart. Kept as a
+        // field rather than dropped so a UI built against the old firmware
+        // stops warning about durability instead of silently reading `false`
+        // from a missing key.
+        doc["gains_persisted"] = true;
 
         String payload;
         serializeJson(doc, payload);
@@ -405,12 +510,18 @@ void WebServerManager::setupControlRoutes() {
         if (!verifyCsrfHeader(request)) {
             return;
         }
+        // Persists synchronously, then hands the change to the control task.
+        // So success means the result was validated, stored and accepted — not
+        // that the running controller has already adopted it. A caller confirms
+        // that by reading the gains in force from GET /api/control, which is
+        // also what makes the change observable in the UI.
         if (!sensorController.acceptAutotuneResult()) {
             request->send(409, CONTENT_TYPE_JSON,
                           R"({"success":false,"error":"No converged result to accept"})");
             return;
         }
-        request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+        request->send(200, CONTENT_TYPE_JSON,
+                      R"({"success":true,"accepted":true,"persisted":true})");
     });
 
     // POST /api/control/enable - Enable temperature control

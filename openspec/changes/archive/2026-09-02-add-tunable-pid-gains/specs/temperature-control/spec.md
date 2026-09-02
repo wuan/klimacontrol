@@ -46,7 +46,9 @@ Gains SHALL be applied to the running controller only by the task that owns it. 
 
 The control loop SHALL run inside the Sensor Monitor task on each sensor read cycle (1-second cadence by default). On each iteration the controller SHALL call `updateControl()`. The call SHALL be skipped when control is disabled or when no valid sensor data is available; in those cases the controller's effective output SHALL be `0.0`.
 
-`updateControl()` SHALL be invoked on every sensor read cycle regardless of the control interval, so that ticks on which the PID does not compute are still marked as skipped. Decimating the invocation rather than the computation SHALL NOT be done, because the next computing tick would then measure an elapsed time spanning the whole gap and saturate the integral term on that tick.
+`updateControl()` SHALL be invoked on every sensor read cycle regardless of the control interval, so that a cycle on which the loop declines to compute — because control is disabled, no valid reading exists, the over-temperature shutoff is engaged, or an autotune run owns the output — is still marked as a skipped tick. Decimating the invocation rather than the computation SHALL NOT be done, because the next computing tick would then measure an elapsed time spanning the whole gap and saturate the integral term on that tick.
+
+A cycle on which the PID merely does not compute *because the control interval has not yet elapsed* SHALL NOT be marked as skipped. Marking it would make every computation a bumpless restart, so the integral accumulator would be discarded before it could ever carry from one computation to the next and `Ki` would have no effect at any configured value. Such a cycle SHALL leave the accumulated controller state untouched, and the elapsed time the next computation measures SHALL be the real interval since the last computation.
 
 The PID computation SHALL be decimated to a configurable control interval, defaulting to 60 seconds, because a plant whose time constant is measured in hours does not benefit from a 1-second loop and the derivative term at that cadence responds mostly to sensor noise. The interval SHALL be a lower bound on the spacing between computations rather than a schedule: a late tick SHALL compute late, and the elapsed time SHALL be measured rather than assumed. Interval arithmetic SHALL remain correct across the `millis()` rollover.
 
@@ -67,8 +69,18 @@ The following SHALL NOT be decimated, and SHALL be evaluated on every sensor rea
 
 #### Scenario: Skipped ticks are still marked
 
-- **WHEN** a sensor tick occurs on which the PID does not compute
-- **THEN** `updateControl()` SHALL still be invoked, and the controller SHALL NOT subsequently measure an elapsed time spanning the skipped ticks
+- **WHEN** a sensor tick occurs on which the loop declines to compute because control is disabled, no valid reading exists, the shutoff is engaged, or a run is active
+- **THEN** `updateControl()` SHALL still be invoked, the tick SHALL be marked as skipped, and the controller SHALL NOT subsequently measure an elapsed time spanning the skipped ticks
+
+#### Scenario: A merely decimated tick is not a skipped tick
+
+- **WHEN** a sensor tick occurs on which the PID does not compute only because the control interval has not yet elapsed
+- **THEN** the controller SHALL NOT be suspended, and the integral accumulated so far SHALL survive to the next computation
+
+#### Scenario: Integral action survives decimation
+
+- **WHEN** the controller runs for several control intervals against a sustained error with a non-zero `Ki`
+- **THEN** the integral term SHALL have accumulated, rather than having been reset on each computation
 
 #### Scenario: Safety shutoff is not delayed by the control interval
 

@@ -106,6 +106,40 @@ namespace Config {
     constexpr float TARGET_TEMPERATURE_MAX_C = 30.0f;
     constexpr float TARGET_TEMPERATURE_DEFAULT_C = 22.0f;
 
+    // PID gains and the control interval.
+    //
+    // The ranges are a guard against a mistyped order of magnitude, not a
+    // judgement about tuning quality: no range check can tell good tuning from
+    // bad, so the bounds are deliberately generous and only exclude values that
+    // could not have been meant. `ki` and `kd` may be zero — a P-only
+    // controller is droopy but legitimate — while `kp` may not, because a zero
+    // proportional gain disables control while control still reports itself as
+    // enabled.
+    //
+    // The defaults are derived arithmetically, not measured: at `kp = 0.5` a
+    // 2 K error saturates the output, and at `ki = 1e-4` a sustained 1 K error
+    // takes an hour to accumulate 0.36 of output — the right order for a plant
+    // whose time constant is hours. `kd = 0` is what the autotuner's
+    // Tyreus–Luyben derivation produces, because derivative action on a
+    // lag-dominant plant mostly amplifies sensor noise. They are expected to be
+    // revised once a zone is delivering heat and an autotune run has converged
+    // on the real plant; they only need to be safe and non-pathological, not
+    // optimal.
+    constexpr float MIN_PID_KP = 0.01f;
+    constexpr float MAX_PID_KP = 100.0f;
+    constexpr float DEFAULT_PID_KP = 0.5f;
+    constexpr float MIN_PID_KI = 0.0f;
+    constexpr float MAX_PID_KI = 0.05f;
+    constexpr float DEFAULT_PID_KI = 0.0001f;
+    constexpr float MIN_PID_KD = 0.0f;
+    constexpr float MAX_PID_KD = 600.0f;
+    constexpr float DEFAULT_PID_KD = 0.0f;
+
+    // 1 s preserves the pre-decimation behaviour for anyone who wants it.
+    constexpr uint16_t MIN_CONTROL_INTERVAL_S = 1;
+    constexpr uint16_t MAX_CONTROL_INTERVAL_S = 600;
+    constexpr uint16_t DEFAULT_CONTROL_INTERVAL_S = 60;
+
     /**
      * Device configuration structure
      */
@@ -128,6 +162,15 @@ namespace Config {
         uint16_t tpo_travel_s = DEFAULT_TPO_TRAVEL_S;
         float safety_max_c = DEFAULT_SAFETY_MAX_C;
         float safety_hyst_c = DEFAULT_SAFETY_HYST_C;
+
+        // PID gains and the cadence at which the PID computes. The sensor tick
+        // is unaffected: only the PID computation is decimated to this
+        // interval, and the elapsed time is measured rather than assumed, so
+        // the interval does not re-scale the meaning of `ki`.
+        float kp = DEFAULT_PID_KP;
+        float ki = DEFAULT_PID_KI;
+        float kd = DEFAULT_PID_KD;
+        uint16_t control_interval_s = DEFAULT_CONTROL_INTERVAL_S;
 
         // POSIX TZ string carrying both the UTC offset and the daylight-saving
         // transition rules, e.g. "CET-1CEST,M3.5.0,M10.5.0/3". Sits next to
@@ -261,6 +304,12 @@ namespace Config {
         static constexpr const char *TPO_TRAVEL = "tpo_travel";
         static constexpr const char *SAFETY_MAX = "safe_max";
         static constexpr const char *SAFETY_HYST = "safe_hyst";
+        static constexpr const char *PID_KP = "pid_kp";
+        static constexpr const char *PID_KI = "pid_ki";
+        static constexpr const char *PID_KD = "pid_kd";
+        // Abbreviated for the same reason "disp_intv" is: "control_interval_s"
+        // is 18 characters and would fail silently.
+        static constexpr const char *CONTROL_INTERVAL = "ctrl_intv";
 
         // NVS keys are capped at 15 characters (NVS_KEY_NAME_MAX_SIZE is 16
         // including the terminator). Preferences::putX() fails silently on a
@@ -284,6 +333,10 @@ namespace Config {
         static_assert(nvsKeyFits(TPO_TRAVEL), "NVS key too long");
         static_assert(nvsKeyFits(SAFETY_MAX), "NVS key too long");
         static_assert(nvsKeyFits(SAFETY_HYST), "NVS key too long");
+        static_assert(nvsKeyFits(PID_KP), "NVS key too long");
+        static_assert(nvsKeyFits(PID_KI), "NVS key too long");
+        static_assert(nvsKeyFits(PID_KD), "NVS key too long");
+        static_assert(nvsKeyFits(CONTROL_INTERVAL), "NVS key too long");
 
         // In-memory cache of device config — always read from here, never maintain separate copies
         DeviceConfig deviceConfig;
@@ -427,6 +480,16 @@ namespace Config {
          */
         void updateActuatorTiming(uint16_t cycleS, uint16_t travelS, float safetyMaxC,
                                   float safetyHystC);
+
+        /**
+         * PID gains and the control interval. Taken as a set because gains are
+         * only meaningful together: storing three of four and reverting one
+         * leaves a controller nobody configured. Each field independently falls
+         * back to its default if it is not trustworthy, matching how
+         * validateDeviceConfig() treats a corrupt NVS read; callers wanting a
+         * rejection rather than a fallback must validate before calling.
+         */
+        void updateTuning(float kp, float ki, float kd, uint16_t intervalS);
         void updateTimezone(const char* timezone);
         void updateSensorI2CAddress(uint8_t address);
 

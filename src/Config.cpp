@@ -147,6 +147,26 @@ namespace Config {
             config.safety_hyst_c > 10.0f) {
             config.safety_hyst_c = DEFAULT_SAFETY_HYST_C;
         }
+
+        // Gains fall back per field rather than as a set: a partial NVS
+        // corruption should cost the one field that was corrupted, not the
+        // three that survived it. `isfinite` rather than `isnan` because an
+        // infinity is equally untrustworthy and would pass a bare range check
+        // on only one side. Zero `kp` is out of range by construction
+        // (MIN_PID_KP is positive), so it falls back like any other bad value.
+        if (!std::isfinite(config.kp) || config.kp < MIN_PID_KP || config.kp > MAX_PID_KP) {
+            config.kp = DEFAULT_PID_KP;
+        }
+        if (!std::isfinite(config.ki) || config.ki < MIN_PID_KI || config.ki > MAX_PID_KI) {
+            config.ki = DEFAULT_PID_KI;
+        }
+        if (!std::isfinite(config.kd) || config.kd < MIN_PID_KD || config.kd > MAX_PID_KD) {
+            config.kd = DEFAULT_PID_KD;
+        }
+        if (config.control_interval_s < MIN_CONTROL_INTERVAL_S ||
+            config.control_interval_s > MAX_CONTROL_INTERVAL_S) {
+            config.control_interval_s = DEFAULT_CONTROL_INTERVAL_S;
+        }
     }
 
     DeviceConfig ConfigManager::loadDeviceConfig() {
@@ -179,6 +199,11 @@ namespace Config {
         deviceConfig.tpo_travel_s = guard.get().getUShort(TPO_TRAVEL, DEFAULT_TPO_TRAVEL_S);
         deviceConfig.safety_max_c = guard.get().getFloat(SAFETY_MAX, DEFAULT_SAFETY_MAX_C);
         deviceConfig.safety_hyst_c = guard.get().getFloat(SAFETY_HYST, DEFAULT_SAFETY_HYST_C);
+        deviceConfig.kp = guard.get().getFloat(PID_KP, DEFAULT_PID_KP);
+        deviceConfig.ki = guard.get().getFloat(PID_KI, DEFAULT_PID_KI);
+        deviceConfig.kd = guard.get().getFloat(PID_KD, DEFAULT_PID_KD);
+        deviceConfig.control_interval_s =
+            guard.get().getUShort(CONTROL_INTERVAL, DEFAULT_CONTROL_INTERVAL_S);
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
@@ -206,6 +231,10 @@ namespace Config {
         guard.get().putUShort(TPO_TRAVEL, validated.tpo_travel_s);
         guard.get().putFloat(SAFETY_MAX, validated.safety_max_c);
         guard.get().putFloat(SAFETY_HYST, validated.safety_hyst_c);
+        guard.get().putFloat(PID_KP, validated.kp);
+        guard.get().putFloat(PID_KI, validated.ki);
+        guard.get().putFloat(PID_KD, validated.kd);
+        guard.get().putUShort(CONTROL_INTERVAL, validated.control_interval_s);
 #endif
 
         // Also update in-memory cache
@@ -288,6 +317,31 @@ namespace Config {
         deviceConfig.tpo_travel_s = candidate.tpo_travel_s;
         deviceConfig.safety_max_c = candidate.safety_max_c;
         deviceConfig.safety_hyst_c = candidate.safety_hyst_c;
+    }
+
+    void ConfigManager::updateTuning([[maybe_unused]] float kp, [[maybe_unused]] float ki,
+                                     [[maybe_unused]] float kd,
+                                     [[maybe_unused]] uint16_t intervalS) {
+        DeviceConfig candidate = deviceConfig;
+        candidate.kp = kp;
+        candidate.ki = ki;
+        candidate.kd = kd;
+        candidate.control_interval_s = intervalS;
+        // Reuse the load-time validator so a stored value can never be one the
+        // firmware would have rejected on the way in.
+        validateDeviceConfig(candidate);
+
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putFloat(PID_KP, candidate.kp);
+        guard.get().putFloat(PID_KI, candidate.ki);
+        guard.get().putFloat(PID_KD, candidate.kd);
+        guard.get().putUShort(CONTROL_INTERVAL, candidate.control_interval_s);
+#endif
+        deviceConfig.kp = candidate.kp;
+        deviceConfig.ki = candidate.ki;
+        deviceConfig.kd = candidate.kd;
+        deviceConfig.control_interval_s = candidate.control_interval_s;
     }
 
     void ConfigManager::updateElevation([[maybe_unused]] float elevation) {

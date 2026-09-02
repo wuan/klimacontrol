@@ -22,19 +22,11 @@ namespace Control {
         float kd;
     };
 
-    // The gains and clamps the firmware ships. They lived in an anonymous
-    // namespace in SensorController.cpp, which made them not merely private but
-    // invisible outside that translation unit — so nothing could report what
-    // the controller was actually using.
-    //
-    // Still compile-time. Making them editable needs DeviceConfig, NVS,
-    // validation and a write endpoint; that is the separate, already-specified
-    // "PID parameter configurability" requirement.
-    constexpr PidGains DEFAULT_GAINS = {
-        2.0f, // Kp — proportional gain
-        0.1f, // Ki — integral gain
-        0.5f  // Kd — derivative gain
-    };
+    // The output clamps the firmware ships. The gains used to sit here too, as
+    // compile-time constants; they now live in DeviceConfig with NVS
+    // persistence, validation and a write endpoint, so the defaults are
+    // Config::DEFAULT_PID_KP and friends and there is deliberately no
+    // compile-time gain set left here to disagree with them.
     constexpr float DEFAULT_MIN_OUTPUT = 0.0f;
     constexpr float DEFAULT_MAX_OUTPUT = 1.0f;
 
@@ -56,10 +48,17 @@ namespace Control {
      * would re-saturate it from the stale timestamp.
      *
      * Resumption is detected inside update() rather than being pushed by a
-     * setter, which keeps this object single-writer. On the firmware, suspend()
-     * and update() are both called from the Sensor Monitor task; the web-server
-     * task that enables and disables control never touches PID state, so there
-     * is no read-modify-write race to guard against.
+     * setter, which keeps this object single-writer. On the firmware, suspend(),
+     * update() and setGains() are all called from the Sensor Monitor task, so
+     * there is no read-modify-write race to guard against.
+     *
+     * That invariant is load-bearing and was briefly violated: accepting an
+     * autotune result called setGains() from the web-server task, where the
+     * `running = false` it writes could be overwritten by an in-flight
+     * update() and the suspend silently dropped. Gain changes originating off
+     * the control task now go through SensorController's pending-gains request
+     * and are applied by the control tick, so setGains() has a single caller on
+     * a single task again. Keep it that way.
      */
     class PidController {
     public:

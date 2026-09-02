@@ -316,15 +316,76 @@ struct ControlLoop {
     PidController pid{SHIPPED_GAINS, OUTPUT_MIN, OUTPUT_MAX};
     float lastControlOutput = 0.0f;
 
+    // Decimation state, mirroring SensorController::lastPidComputeMs. The
+    // default interval is 1 s, i.e. the pre-decimation cadence, so the gating
+    // tests above are unaffected by its presence.
+    uint32_t controlIntervalS = 1;
+    uint32_t lastPidComputeMs = 0;
+
+    // Safety and autotune inputs. Both exist here only to assert that the
+    // decimation does not reach them: the whole change hinges on the guard
+    // sitting around the PID computation and nothing else.
+    float safetyMaxC = 35.0f;
+    float safetyHystC = 1.0f;
+    bool safetyShutoff = false;
+    bool autotuneActive = false;
+    unsigned autotuneTicks = 0;
+    unsigned pidComputations = 0;
+
     bool isControlActive() const { return lastControlOutput > 0.0f; }
+
+    void suspendPid(uint32_t nowMs) {
+        pid.suspend();
+        lastPidComputeMs = nowMs;
+    }
 
     float updateControl(bool controlEnabled, bool dataValid, float currentTemp, float targetTemp,
                         uint32_t nowMs) {
-        if (!controlEnabled || !dataValid || std::isnan(currentTemp)) {
-            pid.suspend();
+        // 1. Over-temperature shutoff — every tick, latching with hysteresis.
+        if (std::isnan(currentTemp) || !dataValid) {
+            safetyShutoff = true;
+        } else if (currentTemp > safetyMaxC) {
+            safetyShutoff = true;
+        } else if (safetyShutoff && currentTemp < safetyMaxC - safetyHystC) {
+            safetyShutoff = false;
+        }
+        if (safetyShutoff) {
+            suspendPid(nowMs);
+            autotuneActive = false;
             lastControlOutput = 0.0f;
             return 0.0f;
         }
+
+        // 2. The autotuner — every tick while a run is active.
+        if (autotuneActive) {
+            if (!controlEnabled) {
+                autotuneActive = false;
+                suspendPid(nowMs);
+                lastControlOutput = 0.0f;
+                return 0.0f;
+            }
+            suspendPid(nowMs);
+            ++autotuneTicks;
+            return lastControlOutput;
+        }
+
+        if (!controlEnabled || !dataValid || std::isnan(currentTemp)) {
+            suspendPid(nowMs);
+            lastControlOutput = 0.0f;
+            return 0.0f;
+        }
+
+        // 3. The PID — decimated, and the only decimated part. Unsigned
+        //    subtraction, so the comparison survives the millis() rollover.
+        if (nowMs - lastPidComputeMs < controlIntervalS * 1000u) {
+            // Deliberately no suspendPid(): this is a tick between
+            // computations, not a skipped one. The held output is what the
+            // actuator keeps reading across the interval.
+            return lastControlOutput;
+        }
+        lastPidComputeMs = nowMs;
+        ++pidComputations;
+
         lastControlOutput = pid.update(targetTemp - currentTemp, nowMs);
         return lastControlOutput;
     }
@@ -412,6 +473,171 @@ void test_loop_resumes_bumplessly_after_disabled_gap() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.2f, output);
 }
 
+// --- Control loop decimation ---
+
+void test_pid_computes_once_per_control_interval() {
+    ControlLoop c;
+    c.controlIntervalS = 60;
+
+    // 180 one-second sensor ticks with a 60 s control interval.
+    for (uint32_t t = 1000; t <= 180000; t += 1000) {
+        c.updateControl(true, true, 18.0f, 22.0f, t);
+    }
+
+    // t=1000 is eligible against a zero baseline, then 61000 and 121000.
+    TEST_ASSERT_EQUAL_UINT(3, c.pidComputations);
+}
+
+// The point of holding rather than zeroing: the actuator reads the stored
+// output continuously from the Network task, so a zeroed non-computing tick
+// would make the valve see one pulse per interval.
+void test_output_is_held_between_computations() {
+    ControlLoop c;
+    c.controlIntervalS = 60;
+
+    // The baseline starts at zero, so the first computation is one interval
+    // after boot rather than on the first tick.
+    for (uint32_t t = 1000; t <= 60000; t += 1000) {
+        c.updateControl(true, true, 18.0f, 22.0f, t);
+    }
+    const float computed = c.lastControlOutput;
+    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+    TEST_ASSERT_TRUE(computed > 0.0f);
+
+    for (uint32_t t = 61000; t <= 119000; t += 1000) {
+        const float held = c.updateControl(true, true, 18.0f, 22.0f, t);
+        TEST_ASSERT_FLOAT_WITHIN(0.0001f, computed, held);
+        TEST_ASSERT_TRUE(c.isControlActive());
+    }
+    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+}
+
+// The integral must accumulate across the interval. If a non-computing tick
+// suspended the controller, every computation would be a bumpless restart and
+// ki would have no effect at all whatever it was set to.
+void test_integral_accumulates_across_the_interval() {
+    ControlLoop c;
+    c.controlIntervalS = 60;
+
+    for (uint32_t t = 1000; t <= 180000; t += 1000) {
+        c.updateControl(true, true, 18.0f, 22.0f, t);
+    }
+
+    TEST_ASSERT_TRUE(c.pid.isRunning());
+    TEST_ASSERT_TRUE(c.pid.getIntegral() > 0.0f);
+}
+
+void test_safety_shutoff_not_delayed_by_control_interval() {
+    ControlLoop c;
+    c.controlIntervalS = 60;
+
+    for (uint32_t t = 1000; t <= 60000; t += 1000) {
+        c.updateControl(true, true, 18.0f, 22.0f, t);
+    }
+    TEST_ASSERT_TRUE(c.isControlActive());
+    TEST_ASSERT_FALSE(c.safetyShutoff);
+
+    // The very next sensor tick, 59 s before the PID would next compute.
+    const float output = c.updateControl(true, true, 40.0f, 22.0f, 61000);
+
+    TEST_ASSERT_TRUE(c.safetyShutoff);
+    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, output);
+    TEST_ASSERT_FALSE(c.isControlActive());
+}
+
+void test_safety_shutoff_releases_on_a_sensor_tick() {
+    ControlLoop c;
+    c.controlIntervalS = 60;
+    c.updateControl(true, true, 40.0f, 22.0f, 1000);
+    TEST_ASSERT_TRUE(c.safetyShutoff);
+
+    // Hysteresis: still latched just below the limit, released a band below it.
+    c.updateControl(true, true, 34.5f, 22.0f, 2000);
+    TEST_ASSERT_TRUE(c.safetyShutoff);
+
+    c.updateControl(true, true, 33.0f, 22.0f, 3000);
+    TEST_ASSERT_FALSE(c.safetyShutoff);
+}
+
+void test_autotuner_ticks_every_sensor_cycle() {
+    ControlLoop c;
+    c.controlIntervalS = 60;
+    c.autotuneActive = true;
+
+    for (uint32_t t = 1000; t <= 120000; t += 1000) {
+        c.updateControl(true, true, 22.0f, 22.0f, t);
+    }
+
+    // Every one of the 120 ticks, not two. Coarser sampling would
+    // under-estimate the oscillation amplitude and over-estimate Ku.
+    TEST_ASSERT_EQUAL_UINT(120, c.autotuneTicks);
+    TEST_ASSERT_EQUAL_UINT(0, c.pidComputations);
+}
+
+void test_decimation_survives_millis_rollover() {
+    ControlLoop c;
+    c.controlIntervalS = 60;
+
+    // Last computation 1 s before the wrap.
+    const uint32_t beforeWrap = 0xFFFFFC18u;
+    c.updateControl(true, true, 18.0f, 22.0f, beforeWrap);
+    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+
+    // 30 s past the wrap: not yet eligible. Signed arithmetic here would see a
+    // vast negative elapsed time; a naive `now >= last + interval` would stall
+    // for the length of the counter.
+    c.updateControl(true, true, 18.0f, 22.0f, 29000u);
+    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+
+    // 60 s past the last computation, across the wrap.
+    c.updateControl(true, true, 18.0f, 22.0f, 59000u);
+    TEST_ASSERT_EQUAL_UINT(2, c.pidComputations);
+}
+
+// A skip path reseats the baseline, so the interval stays a genuine floor on
+// the spacing between computations rather than being satisfied by a gap the
+// controller spent suspended.
+void test_resumed_controller_computes_on_first_eligible_tick() {
+    ControlLoop c;
+    c.controlIntervalS = 60;
+
+    for (uint32_t t = 1000; t <= 60000; t += 1000) {
+        c.updateControl(true, true, 18.0f, 22.0f, t);
+    }
+    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+
+    // Switched off for an hour.
+    for (uint32_t t = 61000; t <= 3600000; t += 1000) {
+        c.updateControl(false, true, 18.0f, 22.0f, t);
+    }
+    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+
+    // Back on. The baseline was reseated by the last skipped tick, so the
+    // first tick after resuming is not yet eligible.
+    c.updateControl(true, true, 18.0f, 22.0f, 3601000);
+    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+
+    // One interval after the resume it computes, and bumplessly: the
+    // proportional term alone, with no integral charged from the hour off.
+    const float output = c.updateControl(true, true, 21.9f, 22.0f, 3660001);
+    TEST_ASSERT_EQUAL_UINT(2, c.pidComputations);
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.2f, output);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f, c.pid.getIntegral());
+}
+
+// An interval of 1 s is the documented way to keep the pre-decimation
+// behaviour, so it must not accidentally skip a tick.
+void test_one_second_interval_computes_every_tick() {
+    ControlLoop c;
+    c.controlIntervalS = 1;
+
+    for (uint32_t t = 1000; t <= 10000; t += 1000) {
+        c.updateControl(true, true, 18.0f, 22.0f, t);
+    }
+
+    TEST_ASSERT_EQUAL_UINT(10, c.pidComputations);
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_pid_proportional_term_only);
@@ -441,6 +667,16 @@ int runUnityTests() {
     RUN_TEST(test_control_disabled_returns_zero);
     RUN_TEST(test_nan_sensor_reading_returns_zero);
     RUN_TEST(test_loop_resumes_bumplessly_after_disabled_gap);
+
+    RUN_TEST(test_pid_computes_once_per_control_interval);
+    RUN_TEST(test_output_is_held_between_computations);
+    RUN_TEST(test_integral_accumulates_across_the_interval);
+    RUN_TEST(test_safety_shutoff_not_delayed_by_control_interval);
+    RUN_TEST(test_safety_shutoff_releases_on_a_sensor_tick);
+    RUN_TEST(test_autotuner_ticks_every_sensor_cycle);
+    RUN_TEST(test_decimation_survives_millis_rollover);
+    RUN_TEST(test_resumed_controller_computes_on_first_eligible_tick);
+    RUN_TEST(test_one_second_interval_computes_every_tick);
     return UNITY_END();
 }
 

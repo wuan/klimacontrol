@@ -171,22 +171,42 @@ A pending request SHALL be consumed exactly once. When a cancel and a start are 
 - **THEN** the run may not yet be active on the immediately following status read
 - **AND** the status endpoint SHALL remain the authority on whether a run is active
 
-### Requirement: Derived gains are applied in memory only
+### Requirement: Derived gains are persisted when accepted
 
-Accepting a derived result SHALL apply the gains to the running controller and SHALL suspend it, treating the change as a discontinuity. The gains SHALL NOT be persisted, because no configuration field exists for them; a restart SHALL return the compiled-in defaults. Any interface offering acceptance SHALL make that plain rather than implying the change is durable.
+Accepting a derived result SHALL persist the gains and apply them to the running controller, suspending it so that the change is treated as a discontinuity. The gains SHALL survive a restart, because a run costs hours of the plant's time and a result whose lifetime is shorter than the experiment that produced it is not worth the experiment.
+
+Persistence SHALL precede application, so that the gains a user is shown as being in force are the gains that will survive a restart.
+
+Acceptance SHALL remain an explicit request rather than being applied automatically when a run converges. A run that silently rewrote the gains of a heating system while nobody was watching is a poor default, and derived values are worth a human glance given what they cost to obtain.
+
+Because the gains are applied by the task that owns the controller, acceptance SHALL be reported as a request that was validated and accepted rather than as a change already applied. The gains actually in force SHALL be observable separately, so that a caller can confirm the outcome.
 
 #### Scenario: Accepting applies and suspends
 
 - **WHEN** a derived result is accepted
 - **THEN** the controller SHALL adopt the gains and restart bumplessly on its next tick
 
-#### Scenario: Accepted gains do not survive a restart
+#### Scenario: Accepted gains survive a restart
 
 - **WHEN** the device restarts after a result was accepted
-- **THEN** the compiled-in default gains SHALL be in force
+- **THEN** the accepted gains SHALL be in force rather than the compiled-in defaults
 
 #### Scenario: Accepting without a result
 
 - **WHEN** acceptance is requested and no converged result exists
-- **THEN** the request SHALL be refused and the gains SHALL be unchanged
+- **THEN** the request SHALL be refused, and neither the stored nor the running gains SHALL change
 
+#### Scenario: Convergence alone does not change the gains
+
+- **WHEN** a run converges and no acceptance is requested
+- **THEN** the gains in force SHALL be unchanged, and the derived values SHALL be reported as available for acceptance
+
+#### Scenario: A failed write does not leave divergent state
+
+- **WHEN** persisting an accepted result fails
+- **THEN** the running controller SHALL NOT be left using gains that would not survive a restart
+
+#### Scenario: The applied result is observable
+
+- **WHEN** acceptance has been requested and accepted
+- **THEN** the gains in force SHALL be readable, so that the caller can confirm the control task applied them

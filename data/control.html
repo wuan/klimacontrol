@@ -708,7 +708,10 @@
                         <tr><td>Derived Ki</td><td>${(a.derived_ki || 0).toFixed(4)} <small>(now ${(a.ki || 0).toFixed(4)})</small></td></tr>
                         <tr><td>Derived Kd</td><td>${(a.derived_kd || 0).toFixed(3)} <small>(now ${(a.kd || 0).toFixed(3)})</small></td></tr>
                     </table>
-                    <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="acceptAutotune()">Apply these gains</button>`;
+                    <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="acceptAutotune()">Store these gains</button>
+                    <small class="device-subtitle">Storing writes them to the device and they survive
+                    a restart. The controller adopts them on its next tick, so the &ldquo;now&rdquo;
+                    values above update a moment later.</small>`;
             } else {
                 resultEl.style.display = 'none';
                 resultEl.innerHTML = '';
@@ -723,8 +726,11 @@
                     'The output cannot drive the room, so a run will end in a timeout.';
                 notes.push(`<strong>A run cannot converge yet.</strong> ${esc(why)} That is expected, not a fault.`);
             }
+            // Kept as a check rather than dropped: firmware that persists gains
+            // reports true, and only an older build would still say false. The
+            // note must not claim acceptance is temporary when it is not.
             if (a.gains_persisted === false) {
-                notes.push('Applied gains are held in memory only and are lost on restart.');
+                notes.push('This firmware cannot store gains, so accepted gains are lost on restart.');
             }
             noteEl.innerHTML = notes.join('<br>');
         }
@@ -755,7 +761,7 @@
 
         const startAutotune = () => autotunePost('/api/autotune/start', 'Could not start autotune.');
         const abortAutotune = () => autotunePost('/api/autotune/abort', 'Could not abort autotune.');
-        const acceptAutotune = () => autotunePost('/api/autotune/accept', 'Could not apply gains.');
+        const acceptAutotune = () => autotunePost('/api/autotune/accept', 'Could not store gains.');
 
         async function showControlParams() {
             controlParamsVisible = true;

@@ -30,60 +30,6 @@
         </div>
 
         <div class="section">
-            <h2>Heating Actuator</h2>
-            <p>Which manifold channel this room's valve is on. <strong>These settings switch a real
-            valve.</strong> The device refuses to drive a channel whose own failsafe is not
-            configured &mdash; see the verdict below.</p>
-
-            <div class="form-group">
-                <label for="actHost">Manifold host (IP or mDNS name)</label>
-                <input type="text" id="actHost" placeholder="192.168.110.152" style="width: 260px;">
-                <small class="device-subtitle">An IP with a DHCP reservation is more reliable than an
-                mDNS name: the device's resolver has been seen to miss the name on first use.</small>
-            </div>
-
-            <div class="form-group">
-                <label for="actChannel">Channel</label>
-                <select id="actChannel" style="width: 120px;">
-                    <option value="-1">Unassigned</option>
-                    <option value="0">0</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                </select>
-            </div>
-
-            <button class="btn btn-primary" onclick="updateActuatorAssignment()">Save assignment</button>
-
-            <div id="actVerdict" class="info-box" style="margin-top: 16px;">Loading&hellip;</div>
-            <button class="btn btn-sm" id="actRecheckBtn" onclick="recheckActuator()">Re-check now</button>
-            <small class="device-subtitle">After changing a setting in the Shelly's own web UI,
-            re-check rather than waiting for the periodic check.</small>
-
-            <h2 style="margin-top: 24px; font-size: 1em;">Timing and safety</h2>
-            <div class="form-group">
-                <label for="actCycle">Cycle period (seconds)</label>
-                <input type="number" id="actCycle" step="30" min="60" max="7200" style="width: 120px;">
-            </div>
-            <div class="form-group">
-                <label for="actTravel">Actuator travel time (seconds)</label>
-                <input type="number" id="actTravel" step="10" min="10" max="900" style="width: 120px;">
-                <small class="device-subtitle">How long a wax head takes to complete a stroke. The
-                cycle must be at least 4&times; this, or intermediate duties cannot be represented
-                at all.</small>
-            </div>
-            <div class="form-group">
-                <label for="actSafeMax">Over-temperature shutoff (&deg;C)</label>
-                <input type="number" id="actSafeMax" step="0.5" min="20" max="60" style="width: 120px;">
-            </div>
-            <div class="form-group">
-                <label for="actSafeHyst">Shutoff release hysteresis (K)</label>
-                <input type="number" id="actSafeHyst" step="0.1" min="0.1" max="10" style="width: 120px;">
-            </div>
-            <button class="btn btn-primary" onclick="updateActuatorTiming()">Save timing</button>
-        </div>
-
-        <div class="section">
             <h2>Elevation</h2>
             <p>Set the station elevation (meters above sea level) to calculate sea-level pressure from the sensor pressure.</p>
 
@@ -138,6 +84,114 @@
             <div class="warning-box" id="sensorRestartNote" style="display:none; margin-top: 10px;">
                 <strong>Note:</strong> The device will restart after saving sensor settings to apply changes.
             </div>
+        </div>
+
+        <div class="section">
+            <h2>Heating Actuator</h2>
+            <p>Which manifold channel this room's valve is on. <strong>These settings switch a real
+            valve.</strong> The device refuses to drive a channel whose own failsafe is not
+            configured &mdash; see the verdict below.</p>
+
+            <div class="form-group">
+                <label for="actHost">Manifold host (IP or mDNS name)</label>
+                <div class="field-row">
+                    <input type="text" id="actHost" placeholder="192.168.110.152" style="width: 260px;">
+                    <small class="device-subtitle">An IP with a DHCP reservation is more reliable than an
+                    mDNS name: the device's resolver has been seen to miss the name on first use.</small>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="actChannel">Channel</label>
+                <select id="actChannel" style="width: 120px;">
+                    <option value="-1">Unassigned</option>
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                </select>
+            </div>
+
+            <button class="btn btn-primary" onclick="updateActuatorAssignment()">Save assignment</button>
+
+            <div id="actVerdict" class="info-box" style="margin-top: 16px;">Loading&hellip;</div>
+            <button class="btn btn-sm" id="actRecheckBtn" onclick="recheckActuator()">Re-check now</button>
+            <small class="device-subtitle">After changing a setting in the Shelly's own web UI,
+            re-check rather than waiting for the periodic check.</small>
+
+            <h2 style="margin-top: 24px; font-size: 1em;">Timing and safety</h2>
+            <div class="form-group">
+                <label for="actCycle">Cycle period (seconds)</label>
+                <input type="number" id="actCycle" step="30" min="60" max="7200" style="width: 120px;">
+            </div>
+            <div class="form-group">
+                <label for="actTravel">Actuator travel time (seconds)</label>
+                <div class="field-row">
+                    <input type="number" id="actTravel" step="10" min="10" max="900" style="width: 120px;">
+                    <small class="device-subtitle">How long a wax head takes to complete a stroke. The
+                    cycle must be at least 4&times; this, or intermediate duties cannot be represented
+                    at all.</small>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="actSafeMax">Over-temperature shutoff (&deg;C)</label>
+                <input type="number" id="actSafeMax" step="0.5" min="20" max="60" style="width: 120px;">
+            </div>
+            <div class="form-group">
+                <label for="actSafeHyst">Shutoff release hysteresis (K)</label>
+                <input type="number" id="actSafeHyst" step="0.1" min="0.1" max="10" style="width: 120px;">
+            </div>
+            <button class="btn btn-primary" onclick="updateActuatorTiming()">Save timing</button>
+        </div>
+
+        <div class="section">
+            <h2>Tuning</h2>
+            <p>The PID gains and how often the controller recomputes. <strong>These values drive a
+            real valve.</strong> A badly tuned loop will overshoot or hunt; the over-temperature
+            shutoff still applies regardless of the gains.</p>
+
+            <div class="form-group">
+                <label for="pidKp">Proportional gain K<sub>p</sub> (output per K of error)</label>
+                <div class="field-row">
+                    <input type="number" id="pidKp" step="0.05" min="0.01" max="100" style="width: 120px;">
+                    <small class="device-subtitle">Range 0.01&ndash;100. At 0.5 a 2&nbsp;K error saturates
+                    the output. Zero is not accepted &mdash; it would disable control while still
+                    reporting it as enabled.</small>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="pidKi">Integral gain K<sub>i</sub> (output per K&middot;s of error)</label>
+                <div class="field-row">
+                    <input type="number" id="pidKi" step="0.0001" min="0" max="0.05" style="width: 120px;">
+                    <small class="device-subtitle">Range 0&ndash;0.05, and a sensible value is a small
+                    fraction &mdash; at 0.0001 a sustained 1&nbsp;K error takes an hour to accumulate
+                    0.36 of output. Zero is allowed and gives a proportional-only controller, which
+                    settles with a standing offset.</small>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="pidKd">Derivative gain K<sub>d</sub> (output per K/s of error)</label>
+                <div class="field-row">
+                    <input type="number" id="pidKd" step="1" min="0" max="600" style="width: 120px;">
+                    <small class="device-subtitle">Range 0&ndash;600. Zero is the default and what the
+                    autotuner produces: on a floor whose time constant is hours, derivative action
+                    mostly amplifies sensor noise.</small>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="pidInterval">Control interval (seconds)</label>
+                <div class="field-row">
+                    <input type="number" id="pidInterval" step="5" min="1" max="600" style="width: 120px;">
+                    <small class="device-subtitle">Range 1&ndash;600. How often the PID recomputes;
+                    sensors keep reading every second, and the over-temperature shutoff is evaluated
+                    every second regardless. 1 keeps the old per-second behaviour.</small>
+                </div>
+            </div>
+
+            <div class="info-box" id="pidTi" style="margin-bottom: 12px;">&nbsp;</div>
+
+            <button class="btn btn-primary" onclick="updateTuning()">Save tuning</button>
+            <div id="pidMsg" style="margin-top: 12px;"></div>
         </div>
 
         <div class="section">
@@ -497,6 +551,92 @@
             alert('Could not reach device.');
         }
     }
+
+    // --- Tuning ---
+
+    async function loadTuning() {
+        try {
+            const r = await fetch('/api/control');
+            const d = await r.json();
+            // The gains reported are the ones in force in the running
+            // controller, not the stored ones, so a change that the control
+            // task has not yet picked up shows as still pending here.
+            document.getElementById('pidKp').value = d.kp;
+            document.getElementById('pidKi').value = d.ki;
+            document.getElementById('pidKd').value = d.kd;
+            document.getElementById('pidInterval').value = d.control_interval_s;
+            renderIntegralTime();
+        } catch (e) {
+            console.error('Failed to load tuning:', e);
+        }
+    }
+
+    // Ti = Kp / Ki is the quantity with physical meaning — it is what
+    // Tyreus-Luyben actually derives — and it is far easier to sanity-check than
+    // a bare Ki of 0.0001.
+    function renderIntegralTime() {
+        const el = document.getElementById('pidTi');
+        if (!el) return;
+        const kp = parseFloat(document.getElementById('pidKp').value);
+        const ki = parseFloat(document.getElementById('pidKi').value);
+        if (!isFinite(kp) || !isFinite(ki)) {
+            el.innerHTML = '&nbsp;';
+            return;
+        }
+        if (ki === 0) {
+            // Not a division by zero to be rendered as Infinity or NaN: with no
+            // integral action there is no integral time to report.
+            el.innerHTML = '<strong>No integral action.</strong> With K<sub>i</sub> at zero the ' +
+                'controller is proportional-only and will settle below the setpoint.';
+            return;
+        }
+        const ti = kp / ki;
+        const hours = ti / 3600;
+        el.innerHTML = `<strong>Integral time T<sub>i</sub> = K<sub>p</sub> / K<sub>i</sub> ` +
+            `&asymp; ${Math.round(ti)} s</strong> (${hours.toFixed(2)} h).`;
+    }
+
+    async function updateTuning() {
+        const msg = document.getElementById('pidMsg');
+        const body = {
+            kp: parseFloat(document.getElementById('pidKp').value),
+            ki: parseFloat(document.getElementById('pidKi').value),
+            kd: parseFloat(document.getElementById('pidKd').value),
+            control_interval_s: parseInt(document.getElementById('pidInterval').value, 10)
+        };
+        try {
+            const r = await fetch('/api/control/tuning', {
+                method: 'POST', headers: ACT_HEADERS, body: JSON.stringify(body)
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                // The device rejects the whole set rather than clamping one
+                // field, and names the field it refused. Deliberately no
+                // reload: the entered values stay in the form so the offending
+                // one can be corrected rather than retyped.
+                msg.className = 'warning-box';
+                msg.textContent = d.error ? `Not saved: ${d.error}.` : 'Not saved.';
+                return;
+            }
+            // Accepted and stored, but adopted by the control loop on its next
+            // tick, so read back rather than assuming.
+            msg.className = 'success-box';
+            msg.textContent = 'Saved. The controller adopts it on its next tick\u2026';
+            setTimeout(async () => {
+                await loadTuning();
+                msg.className = 'success-box';
+                msg.textContent = 'Saved. These are the gains now in force.';
+            }, 2000);
+        } catch (e) {
+            msg.className = 'warning-box';
+            msg.textContent = 'Could not reach device.';
+        }
+    }
+
+    ['pidKp', 'pidKi'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', renderIntegralTime);
+    });
 
     // The verdict is usually unchanged after a re-check — you press it, read the
     // message, go fix the relay, press again. So "the same text reappeared" must
@@ -1414,6 +1554,7 @@
         await loadDisplayConfig();
         await loadTimezoneConfig();
         await loadActuator();
+        await loadTuning();
         await loadEnergyConfig();
     }
     loadAll();

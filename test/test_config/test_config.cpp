@@ -286,6 +286,176 @@ void test_validate_device_config_i2c_address_at_bounds() {
     TEST_ASSERT_EQUAL(Config::MAX_SENSOR_I2C_ADDRESS, config.sensor_i2c_address);
 }
 
+// --- validateDeviceConfig: PID gains and control interval ---
+
+void test_device_config_tuning_defaults() {
+    Config::DeviceConfig config;
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.5f, config.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.00001f, 0.0001f, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f, config.kd);
+    TEST_ASSERT_EQUAL(60, config.control_interval_s);
+}
+
+void test_validate_device_config_tuning_valid_unchanged() {
+    Config::DeviceConfig config;
+    config.kp = 1.25f;
+    config.ki = 0.002f;
+    config.kd = 30.0f;
+    config.control_interval_s = 120;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.25f, config.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.00001f, 0.002f, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 30.0f, config.kd);
+    TEST_ASSERT_EQUAL(120, config.control_interval_s);
+}
+
+void test_validate_device_config_tuning_at_bounds_preserved() {
+    Config::DeviceConfig config;
+    config.kp = Config::MIN_PID_KP;
+    config.ki = Config::MIN_PID_KI;
+    config.kd = Config::MIN_PID_KD;
+    config.control_interval_s = Config::MIN_CONTROL_INTERVAL_S;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::MIN_PID_KP, config.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::MIN_PID_KI, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::MIN_PID_KD, config.kd);
+    TEST_ASSERT_EQUAL(Config::MIN_CONTROL_INTERVAL_S, config.control_interval_s);
+
+    config.kp = Config::MAX_PID_KP;
+    config.ki = Config::MAX_PID_KI;
+    config.kd = Config::MAX_PID_KD;
+    config.control_interval_s = Config::MAX_CONTROL_INTERVAL_S;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::MAX_PID_KP, config.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::MAX_PID_KI, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::MAX_PID_KD, config.kd);
+    TEST_ASSERT_EQUAL(Config::MAX_CONTROL_INTERVAL_S, config.control_interval_s);
+}
+
+// Zero integral and derivative action are legitimate choices — a P-only
+// controller is droopy, not broken — so they must survive validation rather
+// than being "corrected" to the default.
+void test_validate_device_config_zero_ki_and_kd_preserved() {
+    Config::DeviceConfig config;
+    config.ki = 0.0f;
+    config.kd = 0.0f;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f, config.kd);
+}
+
+// A zero kp disables control while control still reports itself as enabled,
+// which is the one gain value that must not be kept.
+void test_validate_device_config_zero_kp_falls_back() {
+    Config::DeviceConfig config;
+    config.kp = 0.0f;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KP, config.kp);
+}
+
+void test_validate_device_config_negative_gains_fall_back() {
+    Config::DeviceConfig config;
+    config.kp = -1.0f;
+    config.ki = -0.001f;
+    config.kd = -5.0f;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KP, config.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KI, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KD, config.kd);
+}
+
+void test_validate_device_config_gains_above_max_fall_back() {
+    Config::DeviceConfig config;
+    config.kp = 1000.0f;
+    config.ki = 0.1f; // the old shipped default, now above the maximum
+    config.kd = 5000.0f;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KP, config.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KI, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KD, config.kd);
+}
+
+void test_validate_device_config_nan_gains_fall_back() {
+    Config::DeviceConfig config;
+    config.kp = NAN;
+    config.ki = NAN;
+    config.kd = NAN;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KP, config.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KI, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KD, config.kd);
+}
+
+void test_validate_device_config_infinite_gains_fall_back() {
+    Config::DeviceConfig config;
+    config.kp = INFINITY;
+    config.ki = -INFINITY;
+    config.kd = INFINITY;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KP, config.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KI, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KD, config.kd);
+}
+
+// Per-field fallback: a partial corruption costs the corrupted field only.
+void test_validate_device_config_one_bad_gain_leaves_others() {
+    Config::DeviceConfig config;
+    config.kp = 2.5f;
+    config.ki = 999.0f; // out of range
+    config.kd = 12.0f;
+    config.control_interval_s = 90;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 2.5f, config.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KI, config.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 12.0f, config.kd);
+    TEST_ASSERT_EQUAL(90, config.control_interval_s);
+}
+
+void test_validate_device_config_interval_out_of_range_falls_back() {
+    Config::DeviceConfig config;
+    config.control_interval_s = 0;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_EQUAL(Config::DEFAULT_CONTROL_INTERVAL_S, config.control_interval_s);
+
+    config.control_interval_s = 5000;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_EQUAL(Config::DEFAULT_CONTROL_INTERVAL_S, config.control_interval_s);
+}
+
+// --- ConfigManager::updateTuning ---
+
+void test_update_tuning_round_trip() {
+    Config::ConfigManager manager;
+    manager.updateTuning(1.5f, 0.003f, 20.0f, 30);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.5f, stored.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.00001f, 0.003f, stored.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 20.0f, stored.kd);
+    TEST_ASSERT_EQUAL(30, stored.control_interval_s);
+}
+
+void test_update_tuning_validates_before_storing() {
+    Config::ConfigManager manager;
+    manager.updateTuning(0.0f, 0.001f, 0.0f, 45);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    // kp was refused and fell back; the other three were trustworthy and kept.
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KP, stored.kp);
+    TEST_ASSERT_FLOAT_WITHIN(0.00001f, 0.001f, stored.ki);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f, stored.kd);
+    TEST_ASSERT_EQUAL(45, stored.control_interval_s);
+}
+
+// updateTuning is a partial update: it must not disturb the fields it does not
+// name, the way updateActuatorTiming() does not disturb the gains.
+void test_update_tuning_leaves_other_fields_alone() {
+    Config::ConfigManager manager;
+    manager.updateTargetTemperature(24.0f);
+    manager.updateTuning(3.0f, 0.004f, 1.0f, 15);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 24.0f, stored.target_temperature);
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 3.0f, stored.kp);
+}
+
 // --- validateMqttConfig ---
 
 void test_validate_mqtt_config_valid_values_unchanged() {
@@ -472,6 +642,21 @@ int runUnityTests() {
     RUN_TEST(test_validate_device_config_i2c_address_too_low);
     RUN_TEST(test_validate_device_config_i2c_address_too_high);
     RUN_TEST(test_validate_device_config_i2c_address_at_bounds);
+
+    RUN_TEST(test_device_config_tuning_defaults);
+    RUN_TEST(test_validate_device_config_tuning_valid_unchanged);
+    RUN_TEST(test_validate_device_config_tuning_at_bounds_preserved);
+    RUN_TEST(test_validate_device_config_zero_ki_and_kd_preserved);
+    RUN_TEST(test_validate_device_config_zero_kp_falls_back);
+    RUN_TEST(test_validate_device_config_negative_gains_fall_back);
+    RUN_TEST(test_validate_device_config_gains_above_max_fall_back);
+    RUN_TEST(test_validate_device_config_nan_gains_fall_back);
+    RUN_TEST(test_validate_device_config_infinite_gains_fall_back);
+    RUN_TEST(test_validate_device_config_one_bad_gain_leaves_others);
+    RUN_TEST(test_validate_device_config_interval_out_of_range_falls_back);
+    RUN_TEST(test_update_tuning_round_trip);
+    RUN_TEST(test_update_tuning_validates_before_storing);
+    RUN_TEST(test_update_tuning_leaves_other_fields_alone);
     // MqttConfig validation
     RUN_TEST(test_validate_mqtt_config_valid_values_unchanged);
     RUN_TEST(test_validate_mqtt_config_zero_port_reset);
