@@ -60,17 +60,24 @@ it.
 
 Every other candidate mechanism shares fate with the network:
 
-| mechanism | survives firmware hang | survives WiFi loss | survives broker loss |
+| mechanism | survives firmware hang | survives WiFi loss | survives an unreachable manifold |
 |---|---|---|---|
 | re-assertion from the controller | no | no | no |
-| MQTT Last Will | no | partly | no |
 | a watchdog elsewhere on the network | yes | no | no |
 | **`auto_off` in the relay** | **yes** | **yes** | **yes** |
 
-`auto_off` runs inside the device holding the contactor. It needs no broker, no
-WiFi and no ESP32. That is the whole reason it is the failsafe and everything
-else is advisory — and `source: "timer"` on the bathroom fan is that mechanism
-observed firing autonomously in production.
+`auto_off` runs inside the device holding the contactor. It needs no network and
+no ESP32. That is the whole reason it is the failsafe and everything else is
+advisory — and `source: "timer"` on the bathroom fan is that mechanism observed
+firing autonomously in production.
+
+Direct HTTP RPC improves the *advisory* half without touching this: a failed
+`Switch.Set` returns an error the firmware records and surfaces
+(`failed_requests`, `agreement`), so ordinary command loss becomes visible
+instead of silent. It does nothing for a controller that has stopped acting
+altogether, which is exactly the case the lease covers. The lease is not
+made redundant by the transport choice; it is made the only remaining
+dependency.
 
 With `auto_off` and `initial_state: off` set, every failure terminates:
 
@@ -78,23 +85,49 @@ With `auto_off` and `initial_state: off` set, every failure terminates:
 |---|---|
 | firmware crash or hang | auto_off, locally |
 | device WiFi loss | auto_off, locally |
-| broker down | auto_off, locally |
+| manifold unreachable from the device | auto_off, locally |
 | relay loses WiFi | auto_off — needs no network |
 | relay reboots | `initial_state: off` |
 | sensor fails | firmware stops renewing → auto_off |
 | mains cut to the manifold | the NC actuator de-energises physically |
 
-## What `enable_rpc` costs
+### The lease must span several renewals
 
-It is **device-wide, not per-channel**: enabling it on Heizverteiler1 exposes
-all four zones to MQTT commanding at once. It is additive — HTTP RPC keeps
-working, so the legacy controller is unaffected — and nothing commands anything
-until a KlimaControl device is pointed at a channel. So it is safe to do early.
+The firmware renews an open command every 30 s (`RENEW_MS`) and refuses a
+channel whose lease is shorter than 120 s (`MIN_LEASE_S`, four renewals). So the
+runbook's `auto_off_delay: 180` is not arbitrary: it clears the firmware's
+own floor with margin, and it means three consecutive failed renewals still
+leave the valve where it is. A wax head takes 3–5 minutes per stroke, so a lease
+that trips on one lost packet would move a valve for no reason.
 
-The consideration is not safety but exposure: the Plus1PM's MQTT config showed
-`user: null`. If the manifolds are the same, `enable_rpc: true` means anything
-that can reach the broker can command a house's heating. Local network only, so
-this is a decision to make consciously rather than an alarm.
+## What the transport costs — and what it no longer costs
+
+The earlier draft of this design turned on `Mqtt.enable_rpc` per manifold, and
+noted that this is **device-wide, not per-channel**: it would have exposed all
+four zones on a manifold to anything reaching a broker with `user: null`. That
+step is gone. `add-shelly-actuator` commands the channel over HTTP RPC, which is
+the interface the legacy controller already uses, so the cutover adds no new
+exposure surface at all. `enable_rpc` stays `false` on both manifolds.
+
+What HTTP RPC costs instead is one constraint on the manifolds:
+
+```
+  HeatingActuator::request()  →  snprintf("http://%s%s", host, path)
+                                 no credentials, no digest auth
+```
+
+The firmware has no way to authenticate. **HTTP auth must remain disabled on
+both manifolds**, and turning it on later would lock every migrated zone out of
+its actuator with no configuration path back. Same local-network trust
+assumption as before, arrived at by not changing anything rather than by opening
+something — but now it is a standing constraint on shared infrastructure, not a
+one-time decision. Worth recording where whoever administers the Shellys will
+see it.
+
+The other side of the trade: control is now per-device point-to-point, so eight
+zones have eight independent failure domains instead of one shared broker. A
+device that cannot reach its manifold loses only its own zone, and the lease
+closes that zone's valve locally.
 
 ## Two things the electrics cannot tell you
 

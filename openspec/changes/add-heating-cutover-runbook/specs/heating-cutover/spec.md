@@ -39,6 +39,8 @@ The relay's local auto-off lease and its power-on state SHALL be configured duri
 
 Enabling the lease SHALL NOT be relied upon to close a relay that is already on, because the countdown conventionally starts when the output turns on.
 
+The lease delay SHALL be set to at least the minimum the firmware will accept, which is several times its renewal interval. A channel left at its factory delay SHALL be treated as unconfigured even once the lease flag is enabled, because a delay shorter than that minimum is refused.
+
 #### Scenario: Lease configured in the gap
 
 - **WHEN** the channel is unowned
@@ -50,50 +52,52 @@ Enabling the lease SHALL NOT be relied upon to close a relay that is already on,
 - **WHEN** the legacy controller still owns a channel
 - **THEN** the auto-off lease SHALL NOT be enabled on that channel
 
-### Requirement: Control is refused against an unverified actuator
+#### Scenario: Factory delay is not sufficient
 
-Before a KlimaControl device commands a channel, the actuator's configuration SHALL be read back and checked: the auto-off lease enabled with an acceptable delay, the power-on state set to off, and the input mode detached so a physical input cannot override the controller. The device SHALL refuse to enable temperature control when the check fails.
+- **WHEN** the lease flag is enabled but the delay is left at its factory value below the firmware's accepted minimum
+- **THEN** the channel SHALL NOT be considered configured, and control SHALL remain refused
 
-This is the MQTT-era counterpart of the wiring contract a directly-driven relay would have needed. Unlike a soldered wire, the actuator can be interrogated over the same channel used to command it, so a misconfigured relay SHALL surface as an error rather than remaining a latent hazard.
+### Requirement: The actuator interface stays reachable without credentials
 
-#### Scenario: Missing lease refuses control
+The manifold's HTTP RPC interface SHALL remain unauthenticated for as long as any zone on it is owned by a KlimaControl device, because the firmware issues plain unauthenticated requests and has no configuration surface for credentials. Enabling authentication on a manifold SHALL be treated as a change that removes control from every zone migrated to it, with no path back short of reconfiguring the manifold.
 
-- **WHEN** the target channel reports auto-off disabled
-- **THEN** the device SHALL refuse to enable temperature control and SHALL report why
+This is a standing constraint on shared infrastructure, not a step in the procedure, and SHALL be recorded where whoever administers the manifolds will encounter it. The trust assumption is the local network — the same one the legacy controller already relies on, since it commands the same interface.
 
-#### Scenario: Restore-last refuses control
+Commanding over the shared MQTT broker SHALL NOT be enabled as part of a cutover. It is unnecessary once commands go directly over HTTP, and it is device-wide rather than per-channel, so enabling it would expose every zone on a manifold to anything able to reach the broker.
 
-- **WHEN** the target channel reports a power-on state that restores its previous output
-- **THEN** the device SHALL refuse to enable temperature control
+#### Scenario: Authentication enabled on a migrated manifold
 
-#### Scenario: A conforming actuator is accepted
+- **WHEN** HTTP authentication is enabled on a manifold with migrated zones
+- **THEN** those zones SHALL lose actuator control, and the condition SHALL be recognised as a configuration change rather than a firmware fault
 
-- **WHEN** the target channel reports auto-off enabled, power-on state off, and input detached
-- **THEN** control MAY be enabled
+#### Scenario: Broker commanding is not enabled
 
-### Requirement: Energisation is confirmed by power draw
-
-A commanded-on channel SHALL be confirmed by the actuator's measured power draw, not by the relay's contact state alone. A closed contact proves the relay switched; only current proves a thermal actuator is present and working. A failed or disconnected wax head is otherwise undetectable — the room simply never warms.
-
-#### Scenario: Actuator confirmed
-
-- **WHEN** a channel is commanded on and reports a power draw consistent with a thermal actuator
-- **THEN** the zone SHALL be treated as actuated
-
-#### Scenario: Actuator missing
-
-- **WHEN** a channel is commanded on, reports its contact closed, and draws approximately no power
-- **THEN** the condition SHALL be surfaced as a fault rather than treated as successful actuation
+- **WHEN** a zone is migrated
+- **THEN** the manifold's MQTT RPC control SHALL be left disabled
 
 ### Requirement: The lease is proven by an induced failure
 
 A zone SHALL NOT be considered migrated until the lease has been demonstrated by removing the controller mid-demand. Every other check exercises the command path; only this one exercises the property the design actually depends on.
+
+The firmware's revocation of a channel that stops conforming SHALL likewise be demonstrated rather than assumed, by reconfiguring the channel from the relay's own interface while control is enabled. The one-time gate at assignment and the periodic re-check are different mechanisms, and only the second one protects a channel that a person reconfigures months later.
+
+Neither demonstration SHALL be performed first on a zone with a live sensor and an occupant. A zone with no sensor competing for it SHALL be used to rehearse the full sequence.
 
 #### Scenario: Controller removed mid-demand
 
 - **WHEN** power is removed from the KlimaControl device while its zone is commanded on
 - **THEN** the relay SHALL turn off within approximately the configured lease delay
 - **AND** the relay SHALL attribute the change to its own timer rather than to a command
+
+#### Scenario: Failsafe removed from under a running controller
+
+- **WHEN** the auto-off lease is disabled on a channel while a KlimaControl device has control enabled for it
+- **THEN** the device SHALL disable control and command the valve closed within its re-check interval
+
+#### Scenario: Rehearsal precedes a live zone
+
+- **WHEN** the procedure is executed for the first time
+- **THEN** it SHALL be executed against a zone with no sensor assigned, and both induced failures SHALL pass there before a sensored zone is migrated
 
 ### Requirement: Channel-to-room mapping is physically verified
 

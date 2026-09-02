@@ -2,13 +2,13 @@
 
 ## Why
 
-The heating actuator will be a Shelly relay commanded over MQTT, one channel per
+The heating actuator is a Shelly relay commanded over HTTP RPC, one channel per
 room. The hardware already exists and is already in service:
 
 ```
-  Heizverteiler1  shellypro4pm  192.168.110.152  shellies/heating1
+  Heizverteiler1  shellypro4pm  192.168.110.152
     ch0 Bad          ch1 Wohnzimmer     ch2 Charlotte   ch3 Gästebad
-  Heizverteiler2  shellypro4pm  192.168.110.168  shellies/heating2
+  Heizverteiler2  shellypro4pm  192.168.110.168
     ch0 Jungs        ch1 Schlafzimmer   ch2 Küche       ch3 Eingangsbereich
 ```
 
@@ -24,8 +24,35 @@ either direction has consequences: a contested channel wears a wax actuator that
 takes minutes per stroke, and an unowned-but-open channel heats a floor until
 somebody notices.
 
-This change writes the procedure down before the first zone moves, and captures
-the firmware requirements the procedure implies.
+This change writes the procedure down before the first zone moves.
+
+## The firmware now exists, over HTTP rather than MQTT
+
+This proposal was first written while the output path was still undecided and
+assumed a boolean actuator commanded over the shared MQTT broker.
+`add-shelly-actuator` has since shipped and been archived, and it chose **direct
+HTTP RPC** instead: `http://<manifold>/rpc/Switch.Set?id=<ch>&on=<bool>`, each
+device addressing its own manifold. Request/response makes a lost command an
+error rather than a silent drop, and no broker outage can remove control from
+all eight zones at once.
+
+That closes the blocker this change was written against, and it simplifies the
+procedure in one specific way: **`Mqtt.enable_rpc` stays `false`**. The
+per-manifold preparation step that would have opened every channel on a manifold
+to anything reaching the broker is not needed at all. HTTP RPC is the interface
+the legacy controller already uses (`source: "HTTP_in"`), so the cutover changes
+who calls it, not what is exposed.
+
+It also moves one prerequisite from the broker to the manifold: the firmware
+builds a plain `http://` URL with no credentials, so **HTTP authentication must
+remain disabled** on both manifolds. Enabling `Shelly.SetAuth` would lock the
+firmware out with no way to configure a password.
+
+The firmware requirements this procedure implies are no longer speculative —
+they are shipped and specified in the `heating-actuator` capability: conformance
+refusal before enabling control, periodic re-checking, explicit close rather than
+lease expiry, and agreement between commanded and observed state including power
+draw. This change therefore specifies only what remains procedure.
 
 ## The finding that makes this urgent
 
@@ -50,20 +77,22 @@ would not survive that transition.
 
 - A **runbook**: per-manifold preparation, a per-zone cutover sequence, and the
   verification gates that must pass before a zone is considered migrated.
-- **Spec requirements** the runbook depends on, so the firmware is built to
-  support it rather than retrofitted: single-writer ownership, verifying the
-  actuator's failsafe configuration before commanding it, and confirming
-  energisation by power draw rather than by the relay's own contact state.
+- **Spec requirements** that are genuinely procedure rather than firmware:
+  single-writer ownership per channel, the ordering constraint that routes a
+  handover through unowned rather than contested, when the relay's failsafe is
+  configured, physical verification of channel-to-room mapping, proving the
+  lease by induced failure, and reversibility at every step.
 - The device inventory above, recorded so it is not rediscovered.
 
 ## Non-goals
 
-- **The MQTT actuator itself.** This change is the deployment design; the
-  firmware that publishes `Switch.Set` does not exist yet and is not proposed
-  here. This is deliberately written first, because the procedure constrains
-  the firmware and not the other way round.
+- **The actuator firmware.** Shipped and archived as `add-shelly-actuator`. The
+  requirements on it live in the `heating-actuator` capability and are not
+  restated here.
 - **Control tuning.** The cutover is rehearsable now; evaluating control quality
-  needs a house that is actually losing heat. Separate milestones.
+  needs a house that is actually losing heat. Separate milestones. Note that
+  `Kp`/`Ki`/`Kd` are still compile-time constants, so a converged autotune run
+  has nowhere to write its answer — tracked separately.
 - **Migrating all eight zones.** Five have no sensor. They stay legacy.
 - Anything about the legacy controller's internals beyond "it must stop writing
   a given channel".
@@ -78,12 +107,13 @@ would not survive that transition.
 
 ## Impact
 
-- **Documentation**: a runbook, executed once per zone.
-- **Firmware** (future, gated on this): configuration verification before
-  enabling control, power-draw confirmation, and per-device zone assignment
-  (manifold topic prefix + channel id).
-- **Devices outside this project**: `enable_rpc` must be turned on per manifold,
-  and `auto_off` / `initial_state` set per channel. Those are changes to shared
-  home infrastructure, not to this repository.
-- **Blocked on**: the MQTT actuator firmware. This change can be written and
-  reviewed now; it cannot be executed until something can command a relay.
+- **Documentation**: a runbook, executed once per manifold and once per zone.
+- **Firmware**: none. Everything the procedure needs is shipped — the
+  conformance gate, the periodic re-check, agreement reporting, and per-device
+  assignment via `actuator_host` + `actuator_channel` (`POST /api/actuator`).
+- **Devices outside this project**: per channel, `auto_off: true` with
+  `auto_off_delay` ≥ 120 s, `initial_state: "off"` and `in_mode: "detached"`.
+  Device-wide, HTTP authentication must stay disabled. Those are changes to
+  shared home infrastructure, not to this repository. `Mqtt.enable_rpc` stays
+  `false` — no longer required by this design.
+- **Not blocked.** The first zone can be migrated now.
