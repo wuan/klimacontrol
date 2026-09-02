@@ -26,4 +26,4 @@ jobs:
       - name: Validate OpenSpec changes and specs
         # Runs from the repo root, where openspec/ lives. The CLI silently
         # validates nothing ("No items found") if run from a dir without it.
-        run: npx -y @fission-ai/openspec@latest validate --all --strict --no-interactive
+        run: npx -y @fission-ai/openspec@1.10.0 validate --all --strict --no-interactive
