@@ -93,13 +93,22 @@ runbook's per-zone assignment step requires a terminal.
 
 ## Verification on hardware
 
-- [ ] Conformance refusal: point at a channel with `auto_off: false` and
-      confirm control cannot be enabled
+- [x] Conformance refusal: point at a channel with `auto_off: false` and
+      confirm control cannot be enabled — verified against Gästebad
+      (heating1 ch3) as found: `auto_off_disabled`, `conforming=false`,
+      `permitted=false`, `commanded_open=false`, and no command ever issued
 - [ ] A 0.30 duty produces a ~4.5 min open phase in a 15 min cycle
-- [ ] Power draw confirms actuation (~2–3 W); baseline is 0.0 W at ~234 V
-- [ ] Pull the manifold off the network mid-demand: sensing continues, state
-      goes unknown, and the relay's own lease closes the valve
-- [ ] Over-temperature shutoff closes the valve and holds it through hysteresis
+- [x] Power draw confirms actuation — **1.9 W observed** on heating1 ch0
+      ("Bad") while commanded open, against a 0.0 W baseline at ~234 V. Above
+      the 0.5 W threshold, so `agreement` reads `heating` rather than
+      `no_actuator`
+- [x] Pull the manifold off the network mid-demand: sensing continues, state
+      goes unknown, and the relay's own lease closes the valve — **verified by
+      the maintainer**. This is the acceptance test for the whole design: it is
+      the only check that demonstrates the lease actually fires, rather than
+      being a property the configuration merely claims
+- [x] Over-temperature shutoff closes the valve and holds it through hysteresis
+      — **verified by the maintainer**
 - [ ] Then run `add-heating-cutover-runbook` against Gästebad
 
 ## Follow-ups deliberately not here

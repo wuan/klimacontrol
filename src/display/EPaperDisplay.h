@@ -95,6 +95,14 @@ namespace Display {
         // refresh.
         void drawDemandBar(int16_t leftX, uint8_t filledSegments);
 
+        // Paints the header band: the brand mark flush left, the firmware
+        // version flush right, both in the built-in 5x7 font. Called from
+        // inside the paged draw loop, where a partial refresh clips it away —
+        // the band lies above the partial window and so carries only
+        // compile-time-constant content. Leaves the built-in font selected, so
+        // callers must set the font they need next.
+        void drawHeader();
+
         void runPagedDraw(const char *tempStr, const char *humStr,
                           const char *footerName, const char *footerDateTime,
                           ControlState controlState, const char *setpointStr,

@@ -206,12 +206,21 @@ An optional Waveshare 1.54" e-paper module (200×200, SSD1681) shows the current
 temperature and relative humidity. Disabled by default; enable it under
 *Settings → E-Paper Display* or via the `/api/display` endpoint.
 
+The layout is a header band in a small font (`KlimaControl` top left, the
+running firmware version top right), the temperature and humidity, then a
+two-line footer carrying the device name, the wall clock, the setpoint, the
+controller demand bar and the control-state symbol.
+
 - **Zero idle power**: e-paper keeps its image with no power between refreshes
 - **Paged rendering**: 625-byte page buffer rather than a 5 KB framebuffer, to
   keep internal SRAM above the OTA pre-flight gate
 - **Refresh policy**: value hysteresis (±0.2 °C / ±1 %RH), a configurable
   minimum interval (default 60 s), and a full refresh every 12 partials to clear
   ghosting
+- **Version at a glance**: the header band sits above the partial-refresh
+  window, so it is repainted only by a full refresh — and therefore holds only
+  compile-time-constant content. After an OTA update the first paint on the new
+  firmware is a full refresh, so the version shown is always the one running
 - **Fails safe**: a disconnected panel is detected after three timed-out
   refreshes and stops being driven, without touching the saved configuration
 

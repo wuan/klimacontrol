@@ -353,10 +353,23 @@ void WebServerManager::setupControlRoutes() {
         doc["ki"] = active.ki;
         doc["kd"] = active.kd;
 
-        // No heating output exists, so a run cannot converge. Advertised here
-        // rather than hard-coded in the page, so the UI stops claiming it the
-        // moment the firmware can actually drive something.
-        doc["can_converge"] = false;
+        // A run can only converge if the output can actually deliver heat, so
+        // the plant responds to the relay. Derived rather than hard-coded: an
+        // earlier version pinned this to false and the warning could therefore
+        // never clear, which is precisely the bug that wording was meant to
+        // avoid.
+        const Actuator::HeatingActuator &act = network.getHeatingActuator();
+        const bool canConverge = act.isAssigned() && act.isConforming();
+        doc["can_converge"] = canConverge;
+        if (!canConverge) {
+            doc["converge_note"] =
+                act.isAssigned()
+                    ? "The assigned actuator channel is refused, so nothing can drive the room and a run will end in a timeout."
+                    : "No actuator channel is assigned, so nothing can drive the room and a run will end in a timeout.";
+        }
+
+        // Still true: DeviceConfig has no gain fields, so an accepted result
+        // lives only in RAM. Separate, still-unimplemented requirement.
         doc["gains_persisted"] = false;
 
         String payload;

@@ -714,11 +714,14 @@
                 resultEl.innerHTML = '';
             }
 
-            // Driven by the firmware, not hard-coded, so the warnings disappear
-            // by themselves once the device can actually drive a heater.
+            // The firmware decides whether a run can converge and supplies the
+            // reason; the page only renders it. Hard-coding the reason here is
+            // what let an obsolete warning survive the arrival of an actuator.
             const notes = [];
             if (a.can_converge === false) {
-                notes.push('<strong>No heating output is wired yet</strong>, so the room cannot respond to the test. A run will exercise the machinery and then stop on a timeout \u2014 that is expected, not a fault.');
+                const why = a.converge_note ||
+                    'The output cannot drive the room, so a run will end in a timeout.';
+                notes.push(`<strong>A run cannot converge yet.</strong> ${esc(why)} That is expected, not a fault.`);
             }
             if (a.gains_persisted === false) {
                 notes.push('Applied gains are held in memory only and are lost on restart.');
