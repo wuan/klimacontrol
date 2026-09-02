@@ -13,6 +13,7 @@
 #include "MqttClient.h"
 #include "sensor/Sensor.h"
 #include "SensorController.h"
+#include "actuator/HeatingActuator.h"
 #include "task/SensorMonitor.h"
 #include "support/NetworkWatchdog.h"
 
@@ -40,6 +41,12 @@ class Network {
 private:
     Config::ConfigManager &config;
     SensorController &sensorController;
+
+    // Drives the heating valve. Lives on this task rather than the control loop
+    // because an unreachable manifold takes seconds to time out, and the Sensor
+    // Monitor task feeds a watchdog every second.
+    Actuator::HeatingActuator heatingActuator;
+    unsigned long lastActuatorTickMs = 0;
     Task::SensorMonitor &sensorMonitor;
     NetworkMode mode;
 
@@ -141,6 +148,12 @@ public:
      *                  mode via setMode() from the network task.
      */
     Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, StatusLed &statusLed, WebServerManager *webServer);
+
+    /** Read-only view of the heating actuator, for the API and displays. */
+    const Actuator::HeatingActuator &getHeatingActuator() const { return heatingActuator; }
+
+    /** Ask the actuator to re-read its channel configuration promptly. */
+    void requestActuatorRecheck() { heatingActuator.requestRecheck(); }
 
     // disable copy constructor
     Network(const Network &) = delete;

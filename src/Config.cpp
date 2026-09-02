@@ -116,6 +116,37 @@ namespace Config {
         if (config.sensor_i2c_address < MIN_SENSOR_I2C_ADDRESS || config.sensor_i2c_address > MAX_SENSOR_I2C_ADDRESS) {
             config.sensor_i2c_address = DEFAULT_SENSOR_I2C_ADDRESS;
         }
+
+        if (config.actuator_channel < 0 ||
+            config.actuator_channel > static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
+            config.actuator_channel = ACTUATOR_CHANNEL_UNASSIGNED;
+        }
+
+        // The cycle and the travel time are only meaningful as a pair: a cycle
+        // that cannot fit several full strokes reduces the controller to
+        // bang-bang without saying so. If either is out of range, or the pair
+        // is inconsistent, both go back to defaults rather than leaving a
+        // half-trusted combination in force.
+        const bool travelSane = config.tpo_travel_s >= MIN_TPO_TRAVEL_S &&
+                                config.tpo_travel_s <= MAX_TPO_TRAVEL_S;
+        const bool cycleSane = config.tpo_cycle_s >= MIN_TPO_CYCLE_S &&
+                               config.tpo_cycle_s <= MAX_TPO_CYCLE_S;
+        const bool pairSane =
+            travelSane && cycleSane &&
+            config.tpo_cycle_s >= config.tpo_travel_s * TPO_MIN_STROKES_PER_CYCLE;
+        if (!pairSane) {
+            config.tpo_cycle_s = DEFAULT_TPO_CYCLE_S;
+            config.tpo_travel_s = DEFAULT_TPO_TRAVEL_S;
+        }
+
+        if (std::isnan(config.safety_max_c) || config.safety_max_c < MIN_SAFETY_MAX_C ||
+            config.safety_max_c > MAX_SAFETY_MAX_C) {
+            config.safety_max_c = DEFAULT_SAFETY_MAX_C;
+        }
+        if (std::isnan(config.safety_hyst_c) || config.safety_hyst_c <= 0.0f ||
+            config.safety_hyst_c > 10.0f) {
+            config.safety_hyst_c = DEFAULT_SAFETY_HYST_C;
+        }
     }
 
     DeviceConfig ConfigManager::loadDeviceConfig() {
@@ -140,6 +171,14 @@ namespace Config {
         deviceConfig.elevation = guard.get().getFloat(ELEVATION, 0.0f);
         guard.get().getString(TIMEZONE, deviceConfig.timezone, sizeof(deviceConfig.timezone));
         deviceConfig.sensor_i2c_address = guard.get().getUChar(SENSOR_I2C_ADDRESS, DEFAULT_SENSOR_I2C_ADDRESS);
+        guard.get().getString(ACTUATOR_HOST, deviceConfig.actuator_host,
+                              sizeof(deviceConfig.actuator_host));
+        deviceConfig.actuator_channel =
+            static_cast<int8_t>(guard.get().getChar(ACTUATOR_CHANNEL, ACTUATOR_CHANNEL_UNASSIGNED));
+        deviceConfig.tpo_cycle_s = guard.get().getUShort(TPO_CYCLE, DEFAULT_TPO_CYCLE_S);
+        deviceConfig.tpo_travel_s = guard.get().getUShort(TPO_TRAVEL, DEFAULT_TPO_TRAVEL_S);
+        deviceConfig.safety_max_c = guard.get().getFloat(SAFETY_MAX, DEFAULT_SAFETY_MAX_C);
+        deviceConfig.safety_hyst_c = guard.get().getFloat(SAFETY_HYST, DEFAULT_SAFETY_HYST_C);
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
@@ -161,6 +200,12 @@ namespace Config {
         guard.get().putFloat(ELEVATION, validated.elevation);
         guard.get().putString(TIMEZONE, validated.timezone);
         guard.get().putUChar(SENSOR_I2C_ADDRESS, validated.sensor_i2c_address);
+        guard.get().putString(ACTUATOR_HOST, validated.actuator_host);
+        guard.get().putChar(ACTUATOR_CHANNEL, static_cast<int8_t>(validated.actuator_channel));
+        guard.get().putUShort(TPO_CYCLE, validated.tpo_cycle_s);
+        guard.get().putUShort(TPO_TRAVEL, validated.tpo_travel_s);
+        guard.get().putFloat(SAFETY_MAX, validated.safety_max_c);
+        guard.get().putFloat(SAFETY_HYST, validated.safety_hyst_c);
 #endif
 
         // Also update in-memory cache
@@ -199,6 +244,50 @@ namespace Config {
         guard.get().putBool(TEMPERATURE_CONTROL_ENABLED, enabled);
 #endif
         deviceConfig.temperature_control_enabled = enabled;
+    }
+
+    void ConfigManager::updateActuatorAssignment([[maybe_unused]] const char *actuatorHost,
+                                                 [[maybe_unused]] int8_t actuatorChannel) {
+        char hostBuf[sizeof(deviceConfig.actuator_host)] = "";
+        int8_t ch = ACTUATOR_CHANNEL_UNASSIGNED;
+        if (actuatorHost != nullptr && actuatorHost[0] != '\0' && actuatorChannel >= 0 &&
+            actuatorChannel <= static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
+            strlcpy(hostBuf, actuatorHost, sizeof(hostBuf));
+            ch = actuatorChannel;
+        }
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putString(ACTUATOR_HOST, hostBuf);
+        guard.get().putChar(ACTUATOR_CHANNEL, ch);
+#endif
+        strlcpy(deviceConfig.actuator_host, hostBuf, sizeof(deviceConfig.actuator_host));
+        deviceConfig.actuator_channel = ch;
+    }
+
+    void ConfigManager::updateActuatorTiming([[maybe_unused]] uint16_t cycleS,
+                                             [[maybe_unused]] uint16_t travelS,
+                                             [[maybe_unused]] float safetyMaxC,
+                                             [[maybe_unused]] float safetyHystC) {
+        DeviceConfig candidate = deviceConfig;
+        candidate.tpo_cycle_s = cycleS;
+        candidate.tpo_travel_s = travelS;
+        candidate.safety_max_c = safetyMaxC;
+        candidate.safety_hyst_c = safetyHystC;
+        // Reuse the load-time validator so a stored value can never be one the
+        // firmware would have rejected on the way in.
+        validateDeviceConfig(candidate);
+
+#ifdef ARDUINO
+        PreferencesGuard guard(prefs, NAMESPACE, false);
+        guard.get().putUShort(TPO_CYCLE, candidate.tpo_cycle_s);
+        guard.get().putUShort(TPO_TRAVEL, candidate.tpo_travel_s);
+        guard.get().putFloat(SAFETY_MAX, candidate.safety_max_c);
+        guard.get().putFloat(SAFETY_HYST, candidate.safety_hyst_c);
+#endif
+        deviceConfig.tpo_cycle_s = candidate.tpo_cycle_s;
+        deviceConfig.tpo_travel_s = candidate.tpo_travel_s;
+        deviceConfig.safety_max_c = candidate.safety_max_c;
+        deviceConfig.safety_hyst_c = candidate.safety_hyst_c;
     }
 
     void ConfigManager::updateElevation([[maybe_unused]] float elevation) {

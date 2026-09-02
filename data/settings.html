@@ -30,6 +30,60 @@
         </div>
 
         <div class="section">
+            <h2>Heating Actuator</h2>
+            <p>Which manifold channel this room's valve is on. <strong>These settings switch a real
+            valve.</strong> The device refuses to drive a channel whose own failsafe is not
+            configured &mdash; see the verdict below.</p>
+
+            <div class="form-group">
+                <label for="actHost">Manifold host (IP or mDNS name)</label>
+                <input type="text" id="actHost" placeholder="192.168.110.152" style="width: 260px;">
+                <small class="device-subtitle">An IP with a DHCP reservation is more reliable than an
+                mDNS name: the device's resolver has been seen to miss the name on first use.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="actChannel">Channel</label>
+                <select id="actChannel" style="width: 120px;">
+                    <option value="-1">Unassigned</option>
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                </select>
+            </div>
+
+            <button class="btn btn-primary" onclick="updateActuatorAssignment()">Save assignment</button>
+
+            <div id="actVerdict" class="info-box" style="margin-top: 16px;">Loading&hellip;</div>
+            <button class="btn btn-sm" onclick="recheckActuator()">Re-check now</button>
+            <small class="device-subtitle">After changing a setting in the Shelly's own web UI,
+            re-check rather than waiting for the periodic check.</small>
+
+            <h2 style="margin-top: 24px; font-size: 1em;">Timing and safety</h2>
+            <div class="form-group">
+                <label for="actCycle">Cycle period (seconds)</label>
+                <input type="number" id="actCycle" step="30" min="60" max="7200" style="width: 120px;">
+            </div>
+            <div class="form-group">
+                <label for="actTravel">Actuator travel time (seconds)</label>
+                <input type="number" id="actTravel" step="10" min="10" max="900" style="width: 120px;">
+                <small class="device-subtitle">How long a wax head takes to complete a stroke. The
+                cycle must be at least 4&times; this, or intermediate duties cannot be represented
+                at all.</small>
+            </div>
+            <div class="form-group">
+                <label for="actSafeMax">Over-temperature shutoff (&deg;C)</label>
+                <input type="number" id="actSafeMax" step="0.5" min="20" max="60" style="width: 120px;">
+            </div>
+            <div class="form-group">
+                <label for="actSafeHyst">Shutoff release hysteresis (K)</label>
+                <input type="number" id="actSafeHyst" step="0.1" min="0.1" max="10" style="width: 120px;">
+            </div>
+            <button class="btn btn-primary" onclick="updateActuatorTiming()">Save timing</button>
+        </div>
+
+        <div class="section">
             <h2>Elevation</h2>
             <p>Set the station elevation (meters above sea level) to calculate sea-level pressure from the sensor pressure.</p>
 
@@ -352,6 +406,102 @@
     }
 
     // Load device name, elevation, and WiFi SSID from a single /api/status call
+    // --- Heating actuator ---
+
+    const ACT_HEADERS = {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'};
+
+    async function loadActuator() {
+        try {
+            const r = await fetch('/api/actuator');
+            const d = await r.json();
+            document.getElementById('actHost').value = d.host || '';
+            document.getElementById('actChannel').value = String(d.channel);
+            document.getElementById('actCycle').value = d.cycle_s;
+            document.getElementById('actTravel').value = d.travel_s;
+            document.getElementById('actSafeMax').value = d.safety_max_c;
+            renderActuatorVerdict(d);
+        } catch (e) {
+            console.error('Failed to load actuator config:', e);
+        }
+    }
+
+    function renderActuatorVerdict(d) {
+        const el = document.getElementById('actVerdict');
+        if (!el) return;
+        if (!d.assigned) {
+            el.className = 'info-box';
+            el.innerHTML = 'No channel assigned. Temperature control cannot be enabled until one is.';
+            return;
+        }
+        // The verdict is the useful part: it names the exact Shelly setting to
+        // change, so a refused channel can be fixed without guesswork.
+        if (d.conforming) {
+            el.className = 'success-box';
+            el.innerHTML = `<strong>Channel is safe to drive.</strong>` +
+                (d.observed_valid
+                    ? ` Relay reports ${d.observed_output ? 'on' : 'off'}, ${Number(d.observed_power_w).toFixed(1)} W.`
+                    : ' No recent observation from the manifold.');
+        } else {
+            el.className = 'warning-box';
+            el.innerHTML = `<strong>Refused: ${d.conformance}</strong><br>${d.conformance_detail}`;
+            if (d.failed_requests > 0) {
+                el.innerHTML += `<br><small>${d.failed_requests} request(s) to the manifold have failed.</small>`;
+            }
+        }
+    }
+
+    async function updateActuatorAssignment() {
+        const host = document.getElementById('actHost').value.trim();
+        const channel = parseInt(document.getElementById('actChannel').value, 10);
+        if (host !== '' && (isNaN(channel) || channel < 0)) {
+            alert('Choose a channel, or clear the host to unassign.');
+            return;
+        }
+        try {
+            const r = await fetch('/api/actuator', {
+                method: 'POST', headers: ACT_HEADERS,
+                body: JSON.stringify({host: host, channel: host === '' ? -1 : channel})
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) { alert(d.error || 'Could not save assignment'); return; }
+            alert('Assignment saved. Checking the channel...');
+            setTimeout(loadActuator, 12000);
+        } catch (e) {
+            alert('Could not reach device.');
+        }
+    }
+
+    async function updateActuatorTiming() {
+        const body = {
+            cycle_s: parseInt(document.getElementById('actCycle').value, 10),
+            travel_s: parseInt(document.getElementById('actTravel').value, 10),
+            safety_max_c: parseFloat(document.getElementById('actSafeMax').value),
+            safety_hyst_c: parseFloat(document.getElementById('actSafeHyst').value)
+        };
+        try {
+            const r = await fetch('/api/actuator/timing', {
+                method: 'POST', headers: ACT_HEADERS, body: JSON.stringify(body)
+            });
+            const d = await r.json().catch(() => ({}));
+            // The device rejects rather than clamping, so show its reason
+            // instead of silently accepting something different.
+            if (!r.ok) { alert(d.error || 'Could not save timing'); await loadActuator(); return; }
+            alert('Timing saved.');
+            await loadActuator();
+        } catch (e) {
+            alert('Could not reach device.');
+        }
+    }
+
+    async function recheckActuator() {
+        try {
+            await fetch('/api/actuator/recheck', {method: 'POST', headers: ACT_HEADERS});
+            setTimeout(loadActuator, 12000);
+        } catch (e) {
+            console.error('recheck failed', e);
+        }
+    }
+
     async function loadStatus() {
         try {
             const response = await fetch('/api/status');
@@ -1213,6 +1363,7 @@
         await loadSyslogConfig();
         await loadDisplayConfig();
         await loadTimezoneConfig();
+        await loadActuator();
         await loadEnergyConfig();
     }
     loadAll();

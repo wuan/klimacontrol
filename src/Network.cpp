@@ -574,6 +574,20 @@ void Network::configureUsingAPMode() {
 
         statusLed.update();
 
+        // Heating actuator. Deliberately here and not in the control loop: a
+        // manifold that has gone away blocks for the HTTP timeout, and stalling
+        // the Sensor Monitor task would starve its watchdog.
+        //
+        // Stood down during an OTA, which owns the network for minutes and
+        // squeezes internal SRAM; the relay's own lease closes the valve if the
+        // download outlasts it, which is exactly what the lease is for.
+        if (!otaActive && now - lastActuatorTickMs >= Actuator::HeatingActuator::TICK_MS) {
+            lastActuatorTickMs = now;
+            heatingActuator.configure(config.getDeviceConfig());
+            heatingActuator.tick(sensorController.getControlOutput(),
+                                 sensorController.isHeatingPermitted(), now);
+        }
+
         // Repaint the e-paper display if the refresh policy calls for it. The
         // common case returns immediately without touching SPI; an actual
         // refresh blocks ~0.5-2.6 s on the panel's BUSY line and feeds the task

@@ -485,8 +485,42 @@ bool SensorController::acceptAutotuneResult() {
     return true;
 }
 
+bool SensorController::isHeatingPermitted() const {
+    return config.getDeviceConfig().temperature_control_enabled && !safetyShutoff &&
+           isDataValid() && !std::isnan(getTemperature());
+}
+
 float SensorController::updateControl() {
     const uint32_t now = millis();
+
+    // Over-temperature shutoff, evaluated before anything else so a saturated
+    // integral cannot override it, and latched so releasing needs the
+    // temperature to fall a hysteresis band below the limit rather than merely
+    // touch it. An unavailable reading engages it too: an unknown temperature
+    // is not a safe basis for delivering heat.
+    {
+        const Config::DeviceConfig &cfg = config.getDeviceConfig();
+        const float t = getTemperature();
+        if (std::isnan(t) || !isDataValid()) {
+            safetyShutoff = true;
+        } else if (t > cfg.safety_max_c) {
+            if (!safetyShutoff) {
+                ESP_LOGW(TAG, "Over-temperature shutoff: %.1f C above limit %.1f C",
+                         static_cast<double>(t), static_cast<double>(cfg.safety_max_c));
+            }
+            safetyShutoff = true;
+        } else if (safetyShutoff && t < cfg.safety_max_c - cfg.safety_hyst_c) {
+            ESP_LOGI(TAG, "Over-temperature shutoff released at %.1f C", static_cast<double>(t));
+            safetyShutoff = false;
+        }
+    }
+
+    if (safetyShutoff) {
+        pid.suspend();
+        autotuner.cancel();
+        lastControlOutput = 0.0f;
+        return 0.0f;
+    }
 
     // Cross-task requests are consumed here, on the only task allowed to mutate
     // autotuner state. Cancel first, so a cancel and a start arriving in the

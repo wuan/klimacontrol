@@ -73,6 +73,30 @@ namespace Config {
         WiFiConfig() = default;
     };
 
+    // Heating actuator defaults. The cycle and the travel time are specified
+    // together and validated together: an earlier draft picked 15 min and 5 min
+    // independently, which violates the four-strokes-per-cycle rule they are
+    // both subject to. 20 and 3 satisfy it.
+    constexpr uint16_t DEFAULT_TPO_CYCLE_S = 20 * 60;
+    constexpr uint16_t DEFAULT_TPO_TRAVEL_S = 3 * 60;
+    constexpr uint16_t MIN_TPO_TRAVEL_S = 10;
+    constexpr uint16_t MAX_TPO_TRAVEL_S = 15 * 60;
+    constexpr uint16_t MIN_TPO_CYCLE_S = 60;
+    constexpr uint16_t MAX_TPO_CYCLE_S = 2 * 3600;
+    constexpr uint8_t TPO_MIN_STROKES_PER_CYCLE = 4;
+
+    // Over-temperature shutoff. Above any plausible setpoint, and released with
+    // hysteresis so the valve does not chatter at the threshold.
+    constexpr float DEFAULT_SAFETY_MAX_C = 35.0f;
+    constexpr float DEFAULT_SAFETY_HYST_C = 1.0f;
+    constexpr float MIN_SAFETY_MAX_C = 20.0f;
+    constexpr float MAX_SAFETY_MAX_C = 60.0f;
+
+    // No default channel: guessing which zone a device heats is worse than
+    // refusing to act, so an unassigned device cannot enable control.
+    constexpr int8_t ACTUATOR_CHANNEL_UNASSIGNED = -1;
+    constexpr uint8_t MAX_ACTUATOR_CHANNEL = 3; // Shelly Pro 4PM
+
     // Accepted range for the temperature control setpoint, in degrees Celsius.
     // Three layers enforce it for different reasons — the route handler rejects
     // user input outside it, SensorController clamps non-HTTP callers, and
@@ -94,6 +118,16 @@ namespace Config {
         float target_temperature = TARGET_TEMPERATURE_DEFAULT_C; // Target temperature for control
         bool temperature_control_enabled = false; // Temperature control enabled
         float elevation = 0.0f; // Meters above sea level, for sea-level pressure calculation
+
+        // Heating actuator: which manifold, and which channel on it. The host
+        // accepts an mDNS name or an IP — both manifolds answer to
+        // `shellypro4pm-<mac>.local`, so a DHCP change need not orphan a zone.
+        char actuator_host[64] = "";
+        int8_t actuator_channel = ACTUATOR_CHANNEL_UNASSIGNED;
+        uint16_t tpo_cycle_s = DEFAULT_TPO_CYCLE_S;
+        uint16_t tpo_travel_s = DEFAULT_TPO_TRAVEL_S;
+        float safety_max_c = DEFAULT_SAFETY_MAX_C;
+        float safety_hyst_c = DEFAULT_SAFETY_HYST_C;
 
         // POSIX TZ string carrying both the UTC offset and the daylight-saving
         // transition rules, e.g. "CET-1CEST,M3.5.0,M10.5.0/3". Sits next to
@@ -221,6 +255,12 @@ namespace Config {
         static constexpr const char *ENERGY_WIFI_SLEEP = "wifi_sleep";
         static constexpr const char *SENSOR_I2C_ADDRESS = "sensor_i2c";
         static constexpr const char *TIMEZONE = "timezone";
+        static constexpr const char *ACTUATOR_HOST = "act_host";
+        static constexpr const char *ACTUATOR_CHANNEL = "act_ch";
+        static constexpr const char *TPO_CYCLE = "tpo_cycle";
+        static constexpr const char *TPO_TRAVEL = "tpo_travel";
+        static constexpr const char *SAFETY_MAX = "safe_max";
+        static constexpr const char *SAFETY_HYST = "safe_hyst";
 
         // NVS keys are capped at 15 characters (NVS_KEY_NAME_MAX_SIZE is 16
         // including the terminator). Preferences::putX() fails silently on a
@@ -238,6 +278,12 @@ namespace Config {
         static_assert(nvsKeyFits(ENERGY_WIFI_SLEEP), "NVS key too long");
         static_assert(nvsKeyFits(SENSOR_I2C_ADDRESS), "NVS key too long");
         static_assert(nvsKeyFits(TIMEZONE), "NVS key too long");
+        static_assert(nvsKeyFits(ACTUATOR_HOST), "NVS key too long");
+        static_assert(nvsKeyFits(ACTUATOR_CHANNEL), "NVS key too long");
+        static_assert(nvsKeyFits(TPO_CYCLE), "NVS key too long");
+        static_assert(nvsKeyFits(TPO_TRAVEL), "NVS key too long");
+        static_assert(nvsKeyFits(SAFETY_MAX), "NVS key too long");
+        static_assert(nvsKeyFits(SAFETY_HYST), "NVS key too long");
 
         // In-memory cache of device config — always read from here, never maintain separate copies
         DeviceConfig deviceConfig;
@@ -364,6 +410,23 @@ namespace Config {
         void updateTargetTemperature(float temperature);
         void updateTemperatureControlEnabled(bool enabled);
         void updateElevation(float elevation);
+
+        /**
+         * Assign this device to a manifold channel. Validated as a pair — an
+         * empty host or an out-of-range channel clears the assignment
+         * entirely, because a half-assignment is not a thing that can be acted
+         * on safely.
+         */
+        void updateActuatorAssignment(const char *actuatorHost, int8_t actuatorChannel);
+
+        /**
+         * Cycle period, actuator travel time and the over-temperature limit.
+         * Applied as a set: validateDeviceConfig() reverts the cycle/travel
+         * pair together if they are inconsistent, so callers should check the
+         * pair before offering it.
+         */
+        void updateActuatorTiming(uint16_t cycleS, uint16_t travelS, float safetyMaxC,
+                                  float safetyHystC);
         void updateTimezone(const char* timezone);
         void updateSensorI2CAddress(uint8_t address);
 

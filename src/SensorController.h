@@ -72,6 +72,9 @@ private:
     std::atomic<bool> autotuneStartRequested{false};
     std::atomic<bool> autotuneCancelRequested{false};
 
+    // Latched over-temperature state; see isSafetyShutoffEngaged().
+    bool safetyShutoff = false;
+
     // Consecutive read cycles in which I2C sensors are present but none returned
     // valid data. After I2C_RECOVERY_FAILURE_STREAK cycles the bus is assumed
     // wedged and a recovery is attempted. Reset on any valid I2C reading.
@@ -244,6 +247,20 @@ public:
         return autotuner.state() == Control::AutotuneState::Settling ||
                autotuner.state() == Control::AutotuneState::Oscillating;
     }
+
+    /**
+     * True while the over-temperature shutoff is engaged. Latching: it releases
+     * only once the temperature has fallen a hysteresis band below the limit,
+     * so the valve does not chatter at the threshold.
+     */
+    bool isSafetyShutoffEngaged() const { return safetyShutoff; }
+
+    /**
+     * Whether the actuator may drive the valve at all. False when control is
+     * disabled, the shutoff is engaged, or there is no valid reading — an
+     * unknown temperature is not a safe basis for delivering heat.
+     */
+    bool isHeatingPermitted() const;
 
     float updateControl();
     uint32_t getTimeSinceLastReading() const;
