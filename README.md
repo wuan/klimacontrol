@@ -182,7 +182,7 @@ tests/
 
 The temperature control system uses:
 - **PID algorithm** - Calculates control output based on temperature error
-- **Sensor averaging** - Multiple sensor readings averaged for accuracy
+- **Per-driver range validation** - Each sensor driver rejects implausible readings before they reach the controller (averaging multiple sensors is intentionally not used: a faulty reading diluted by a healthy one would still contaminate the loop)
 - **Data logging** - All measurements and control states logged for analysis
 - **Configurable targets** - Set any temperature within sensor range
 

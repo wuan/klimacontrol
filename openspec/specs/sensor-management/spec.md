@@ -64,6 +64,20 @@ Sensor readings SHALL be expressed as `Sensor::Measurement` records with fields 
 - **WHEN** an SHT4x sensor returns a value
 - **THEN** the measurement SHALL hold `float` in its `value` variant, with `unit = "°C"` for temperature and `unit = "%"` for relative humidity
 
+### Requirement: Per-driver range validation
+
+Each sensor driver SHALL validate the plausibility of values returned by its hardware before publishing them as a measurement. A value outside the documented operating range of the physical quantity — for example a temperature below the sensor's lower bound, or any `NaN`/`Inf` float — SHALL be discarded at the driver boundary and SHALL NOT appear in `getMeasurements()`. The exact plausibility bounds are driver-specific (e.g. `SHT4x` temperature plausibly lies in `[−40 °C, +125 °C]`); the rule that they exist and are enforced is what is normative here.
+
+#### Scenario: Temperature sensor returns out-of-range value
+
+- **WHEN** an `SHT4x` driver decodes a frame whose temperature field is `−273.15 °C` (below any physical plausibility bound)
+- **THEN** the driver SHALL discard the reading and `getMeasurements()` SHALL NOT contain a temperature measurement for this cycle
+
+#### Scenario: Sensor returns NaN
+
+- **WHEN** a driver decodes a frame whose numeric field is `NaN` or `Inf`
+- **THEN** the driver SHALL discard the reading and `getMeasurements()` SHALL NOT contain that measurement type for this cycle
+
 ### Requirement: Calculated measurements
 
 `SensorController` SHALL emit calculated measurements derived from sensed values. Dew point SHALL be calculated from temperature and relative humidity using the Magnus formula with constants `a = 17.625`, `b = 243.04`. Sea-level pressure SHALL be calculated from absolute pressure and configured elevation using the hypsometric formula.
@@ -80,12 +94,12 @@ Sensor readings SHALL be expressed as `Sensor::Measurement` records with fields 
 
 ### Requirement: SensorController aggregation
 
-`SensorController` SHALL own all sensor instances, expose `addSensor(std::unique_ptr<Sensor::Sensor>)`, `readSensors()`, `getMeasurements()`, `getTemperature()`, `getRelativeHumidity()`, `getDewPoint()`, `hasConnectedSensors()`, and `isDataValid()`. When multiple sensors of the same measurement type are present, the controller SHALL average their values.
+`SensorController` SHALL own all sensor instances, expose `addSensor(std::unique_ptr<Sensor::Sensor>)`, `readSensors()`, `getMeasurements()`, `getTemperature()`, `getRelativeHumidity()`, `getDewPoint()`, `hasConnectedSensors()`, and `isDataValid()`. When multiple sensors of the same measurement type are present, `getTemperature()` / `getRelativeHumidity()` / `getDewPoint()` SHALL return the value from the first sensor that reported the type, in the order returned by the sorted sensor list. Averaging across sensors is **not** used because a faulty reading (e.g. a wiring fault reporting −40 °C) diluted by a healthy reading would still produce a contaminated value; the defence against bad readings is per-driver range validation at the point of acquisition (see `sensor-management` → "Per-driver range validation"), not averaging.
 
-#### Scenario: Two temperature sensors
+#### Scenario: Two temperature sensors, first is healthy
 
-- **WHEN** two `SHT4x` sensors report temperatures `T1` and `T2`
-- **THEN** `getTemperature()` SHALL return `(T1 + T2) / 2`
+- **WHEN** two `SHT4x` sensors are present and the first sensor in the sorted order reports a valid temperature `T1`
+- **THEN** `getTemperature()` SHALL return `T1`
 
 #### Scenario: No connected sensors
 

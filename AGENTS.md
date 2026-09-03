@@ -126,30 +126,29 @@ main.cpp (setup)
 **Sensor architecture**:
 - `SensorController` manages multiple sensor instances
 - `SHT4x` sensor implementation for temperature/humidity
-- Sensor data is averaged across all connected sensors
+- Per-driver range validation rejects implausible readings before they reach the controller (see `openspec/specs/sensor-management/spec.md` → "Per-driver range validation"). Multiple sensors are not averaged — averaging a faulty reading with a healthy one would still produce a contaminated value
 - Data logging for historical analysis
 
 **Control flow**:
 1. Sensors are read at configured intervals (default: 1 second)
-2. `SensorController::readSensors()` collects and averages data
+2. `SensorController::readSensors()` collects and validates data
 3. Temperature control algorithm calculates output (PID control)
 4. Status LED shows yellow during measurement, green when idle
 5. Web interface displays real-time data and control status
-6. Sensor data is averaged across multiple sensors for accuracy
-7. Temperature control algorithm runs every second
-8. All measurements and control states are logged for analysis
+6. Temperature control algorithm runs every second
+7. All measurements and control states are logged for analysis
 
 **Temperature Control Flow**:
 1. Sensors read at configured interval (default: 1 second)
 2. `SensorController::readSensors()` collects and validates data
-3. Valid readings are averaged and stored
+3. Valid readings are stored
 4. Temperature control calculates output using PID algorithm
 5. Status LED provides visual feedback during each phase
 6. Web interface updates in real-time via API
 
 ### Sensor Architecture
 
-**Sensor Management**: The `SensorController` manages multiple sensor instances with automatic averaging and validation.
+**Sensor Management**: The `SensorController` manages multiple sensor instances with per-driver range validation and `SensorStatus` tracking (`Online`, `InitFailed`, `ReadFailing`).
 
 **SHT4x Integration**: Primary temperature/humidity sensor with:
 - Range: -40°C to +125°C, 0-100% RH
@@ -249,7 +248,8 @@ Sensors are managed through the `SensorController` with a clean interface:
 auto sht4x = std::make_unique<Sensor::SHT4x>(sensor_address);
 sensorController.addSensor(std::move(sht4x));
 
-// Reading sensors (automatically averages multiple sensors)
+// Reading sensors (each sensor reports its own measurements; per-driver range
+// validation rejects implausible values before they reach the controller)
 Sensor::SensorData data = sensorController.readSensors();
 if (data.valid) {
     float temperature = data.temperature;
