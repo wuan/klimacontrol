@@ -67,7 +67,7 @@ in the controller's accessor.
 
 ## HIGH severity
 
-### 3. `reserveSensorSlots()` is called too late to do its job
+### 3. ~~`reserveSensorSlots()` is called too late to do its job~~ (resolved)
 
 `main.cpp:265` runs `sensorController.begin()` (which itself `push_back`s a
 `DeviceSensor` at `SensorController.cpp:91`), then the I2C scan loop adds
@@ -78,8 +78,12 @@ says the reserve must precede the scan loop. The native test at
 fixture calls `reserve()` *before* `addSensor()` in the right order.
 
 **Fix.** Move `reserveSensorSlots()` to run *before* the I2C scan loop (or
-document that `begin()` doesn't require pre-reservation). Move `DeviceSensor`
-addition out of `begin()` if strict contract fidelity is desired.
+ document that `begin()` doesn't require pre-reservation). Move `DeviceSensor`
+ addition out of `begin()` if strict contract fidelity is desired.
+
+**Resolution.**
+- `src/main.cpp:206` now calls `reserveSensorSlots(MAX_KNOWN_SENSORS)` before the I2C sensor assignment block and before `sensorController.begin()`.
+- Verified with `pio test -e native` (460 tests passed) and `pio run -e adafruit_qtpy_esp32s2` (success).
 
 ### 4. `Support::Stats` is shared across tasks without synchronization (torn-read data race)
 
@@ -93,7 +97,7 @@ via non-atomic compare-store.
 **Fix.** Snapshot under a short mutex, or use `std::atomic<uint32_t>` (the
 values are cycle durations in ms — 49-day max fits comfortably).
 
-### 5. `deviceConfig` is a multi-task shared struct with no synchronization
+### 5. ~~`deviceConfig` is a multi-task shared struct with no synchronization~~ (resolved)
 
 `Config::ConfigManager::deviceConfig` (~250 B, multiple `char[]`, floats, etc.)
 is written without locking by every `updateXxx()` from the AsyncTCP task
@@ -104,8 +108,33 @@ can see a mix of old and new — exactly the race the project already solved
 for PID gains via `pendingGains` / `gainsChangeRequested` at
 `SensorController.h:113-114`.
 
-**Fix.** Cache a copy of needed fields under a single mutex take at the top of
-`updateControl()`, mirroring the gains pattern.
+**Resolution.**
+
+- `src/Config.h:344-365` — new `deviceConfigLock` spinlock plus
+  `lockDeviceConfig()` / `unlockDeviceConfig()` next to the existing
+  `restartLock` precedent; `getDeviceConfigSnapshot()` returns an indivisible
+  `DeviceConfig` copy taken under that lock.
+- `src/Config.cpp` — every `updateXxx()` method, `loadDeviceConfig()` and
+  `saveDeviceConfig()` now wraps its cache write(s) in
+  `lockDeviceConfig()` / `unlockDeviceConfig()`. The NVS write stays
+  outside the lock so a Settings-save does not stall cross-task readers
+  for the duration of the flash commit.
+- `src/SensorController.cpp` — `updateControl()` takes one
+  `const Config::DeviceConfig cfg = config.getDeviceConfigSnapshot()` at
+  the top and reads every field from `cfg`; `isHeatingPermitted()` does the
+  same for `temperature_control_enabled`.
+- `src/Network.cpp:586` — `heatingActuator.configure(...)` now binds a
+  snapshot local before the call, so `configure()` reads the host and
+  channel as a single indivisible pair.
+- Spec requirements added under `configuration` ("DeviceConfig snapshots
+  are indivisible") and `system-architecture` ("Cross-task DeviceConfig
+  reads use the snapshot accessor"). See change
+  `fix-device-config-cross-task-race` for design and rationale.
+- Verified with `pio test -e native` (465 tests passed, including a new
+  5-case `test_device_config_snapshot` that drives concurrent writers and
+  readers and asserts every snapshot matches a committed pair) and
+  `pio run -e adafruit_qtpy_esp32s2` (success, same flash / RAM shape as
+  baseline).
 
 ### 6. `/api/actuator` accepts arbitrary host string — SSRF on the LAN
 
@@ -652,9 +681,9 @@ Silent flash failure — should log a warning and increment a counter.
 1. ~~**#1** syslog NVS key mismatch — functional bug, ~2-line fix.~~ Resolved.
 2. ~~**#2** sensor averaging — spec violation~~ — resolved by correcting the
    spec (averaging was the wrong defence); the real work is #24.
-3. **#5** `deviceConfig` cross-task read — same pattern the project already
-   solved for gains.
-4. **#3** `reserveSensorSlots` ordering — documented contract not honored.
+3. ~~**#5** `deviceConfig` cross-task read — same pattern the project already
+   solved for gains.~~ Resolved.
+4. ~~**#3** `reserveSensorSlots` ordering — documented contract not honored.~~
 5. **#4** `Stats` race — `/api/about` reads torn 64-bit values today.
 6. **#7** XSS in OTA UI — straightforward `textContent` substitution.
 7. **#8** test filter excludes ~half the suite — `pio test -e native`

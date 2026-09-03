@@ -583,7 +583,12 @@ void Network::configureUsingAPMode() {
         // download outlasts it, which is exactly what the lease is for.
         if (!otaActive && now - lastActuatorTickMs >= Actuator::HeatingActuator::TICK_MS) {
             lastActuatorTickMs = now;
-            heatingActuator.configure(config.getDeviceConfig());
+            // Snapshot the config: configure() reads the host and channel as
+            // a pair, and a concurrent updateActuatorAssignment() on the web
+            // task could otherwise leave us with the new host and the old
+            // channel (or vice versa) — a corrupted assignment.
+            const Config::DeviceConfig cfg = config.getDeviceConfigSnapshot();
+            heatingActuator.configure(cfg);
             heatingActuator.tick(sensorController.getControlOutput(),
                                  sensorController.isHeatingPermitted(), now);
             // Publish what the relay is actually doing, so isControlActive()

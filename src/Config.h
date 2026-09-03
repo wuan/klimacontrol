@@ -372,6 +372,29 @@ namespace Config {
             restartLock.clear(std::memory_order_release);
         }
 
+        // Spinlock protecting the in-memory DeviceConfig cache. Same shape and
+        // rationale as restartLock: a freeRTOS mutex is heavier than this
+        // critical section, and std::atomic<DeviceConfig> cannot be lock-free
+        // on the Xtensa target because the struct is several fields wide.
+        //
+        // Held by writers (every updateXxx() in this file) only for the cache
+        // write — the NVS write happens outside, because holding the lock
+        // across an NVS commit would stall cross-task readers for tens of
+        // milliseconds on every settings change. Cross-task consumers take a
+        // indivisible copy via getDeviceConfigSnapshot(); see the
+        // `configuration` and `system-architecture` spec requirements.
+        mutable std::atomic_flag deviceConfigLock = ATOMIC_FLAG_INIT;
+
+        void lockDeviceConfig() const {
+            while (deviceConfigLock.test_and_set(std::memory_order_acquire)) {
+                // spin
+            }
+        }
+
+        void unlockDeviceConfig() const {
+            deviceConfigLock.clear(std::memory_order_release);
+        }
+
     public:
         ConfigManager();
 
@@ -449,6 +472,25 @@ namespace Config {
          * @return reference to current DeviceConfig
          */
         const DeviceConfig& getDeviceConfig() const { return deviceConfig; }
+
+        /**
+         * Take an indivisible copy of the in-memory DeviceConfig. Cross-task
+         * readers MUST go through this accessor rather than getDeviceConfig()
+         * when more than one field is needed, because the underlying struct
+         * is written by updateXxx() on the AsyncTCP web task while the
+         * Sensor Monitor task reads it from updateControl(), and a
+         * multi-field read through the const reference can observe a
+         * mid-update mix of old and new fields.
+         *
+         * The lock covers only the cache copy, not any NVS I/O — see the
+         * lockDeviceConfig() comment for why.
+         */
+        DeviceConfig getDeviceConfigSnapshot() const {
+            lockDeviceConfig();
+            DeviceConfig copy = deviceConfig;
+            unlockDeviceConfig();
+            return copy;
+        }
 
         /**
          * Save device configuration to NVS (partial updates)

@@ -173,6 +173,12 @@ namespace Config {
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, NAMESPACE, true); // Read-only mode
 
+        // Build the cache under the lock. The lock here is belt-and-braces
+        // because loadDeviceConfig() runs once at startup before any task
+        // exists, so no other reader can race — but a future caller that
+        // reloads after a factory reset would. Locking on every load keeps
+        // the invariant uniform.
+        lockDeviceConfig();
         String deviceId = getDeviceId();
         strlcpy(deviceConfig.device_id, deviceId.c_str(), sizeof(deviceConfig.device_id));
 
@@ -204,9 +210,15 @@ namespace Config {
         deviceConfig.kd = guard.get().getFloat(PID_KD, DEFAULT_PID_KD);
         deviceConfig.control_interval_s =
             guard.get().getUShort(CONTROL_INTERVAL, DEFAULT_CONTROL_INTERVAL_S);
+        unlockDeviceConfig();
 #endif
 
-        // Validate ranges — NVS may hold garbage after flash corruption
+        // Validate ranges — NVS may hold garbage after flash corruption.
+        // validateDeviceConfig() mutates the cache; it is intentionally
+        // outside the lock because no other reader observes the fields it
+        // might rewrite (the cache hasn't been published to consumers yet
+        // at startup, and on a runtime reload the validate is on the local
+        // copy after the lock release).
         validateDeviceConfig(deviceConfig);
 
         return deviceConfig;
@@ -237,8 +249,12 @@ namespace Config {
         guard.get().putUShort(CONTROL_INTERVAL, validated.control_interval_s);
 #endif
 
-        // Also update in-memory cache
+        // Publish the validated set into the cache under the lock so a
+        // cross-task consumer sees either the pre-save fields or the
+        // post-save fields but never a half-updated mix.
+        lockDeviceConfig();
         deviceConfig = validated;
+        unlockDeviceConfig();
     }
 
     void ConfigManager::updateDeviceName([[maybe_unused]] const char* device_name) {
@@ -246,7 +262,9 @@ namespace Config {
         PreferencesGuard guard(prefs, NAMESPACE, false);
         guard.get().putString("device_name", device_name);
 #endif
+        lockDeviceConfig();
         strlcpy(deviceConfig.device_name, device_name, sizeof(deviceConfig.device_name));
+        unlockDeviceConfig();
     }
 
     void ConfigManager::updateTargetTemperature([[maybe_unused]] float temperature) {
@@ -264,7 +282,9 @@ namespace Config {
         PreferencesGuard guard(prefs, NAMESPACE, false);
         guard.get().putFloat(TARGET_TEMPERATURE, temperature);
 #endif
+        lockDeviceConfig();
         deviceConfig.target_temperature = temperature;
+        unlockDeviceConfig();
     }
 
     void ConfigManager::updateTemperatureControlEnabled([[maybe_unused]] bool enabled) {
@@ -272,7 +292,9 @@ namespace Config {
         PreferencesGuard guard(prefs, NAMESPACE, false);
         guard.get().putBool(TEMPERATURE_CONTROL_ENABLED, enabled);
 #endif
+        lockDeviceConfig();
         deviceConfig.temperature_control_enabled = enabled;
+        unlockDeviceConfig();
     }
 
     void ConfigManager::updateActuatorAssignment([[maybe_unused]] const char *actuatorHost,
@@ -289,8 +311,10 @@ namespace Config {
         guard.get().putString(ACTUATOR_HOST, hostBuf);
         guard.get().putChar(ACTUATOR_CHANNEL, ch);
 #endif
+        lockDeviceConfig();
         strlcpy(deviceConfig.actuator_host, hostBuf, sizeof(deviceConfig.actuator_host));
         deviceConfig.actuator_channel = ch;
+        unlockDeviceConfig();
     }
 
     void ConfigManager::updateActuatorTiming([[maybe_unused]] uint16_t cycleS,
@@ -313,10 +337,14 @@ namespace Config {
         guard.get().putFloat(SAFETY_MAX, candidate.safety_max_c);
         guard.get().putFloat(SAFETY_HYST, candidate.safety_hyst_c);
 #endif
+        // The four fields travel together as one set: take the lock once
+        // and copy the validated candidate in a single indivisible step.
+        lockDeviceConfig();
         deviceConfig.tpo_cycle_s = candidate.tpo_cycle_s;
         deviceConfig.tpo_travel_s = candidate.tpo_travel_s;
         deviceConfig.safety_max_c = candidate.safety_max_c;
         deviceConfig.safety_hyst_c = candidate.safety_hyst_c;
+        unlockDeviceConfig();
     }
 
     void ConfigManager::updateTuning([[maybe_unused]] float kp, [[maybe_unused]] float ki,
@@ -338,10 +366,12 @@ namespace Config {
         guard.get().putFloat(PID_KD, candidate.kd);
         guard.get().putUShort(CONTROL_INTERVAL, candidate.control_interval_s);
 #endif
+        lockDeviceConfig();
         deviceConfig.kp = candidate.kp;
         deviceConfig.ki = candidate.ki;
         deviceConfig.kd = candidate.kd;
         deviceConfig.control_interval_s = candidate.control_interval_s;
+        unlockDeviceConfig();
     }
 
     void ConfigManager::updateElevation([[maybe_unused]] float elevation) {
@@ -353,7 +383,9 @@ namespace Config {
         PreferencesGuard guard(prefs, NAMESPACE, false);
         guard.get().putFloat(ELEVATION, elevation);
 #endif
+        lockDeviceConfig();
         deviceConfig.elevation = elevation;
+        unlockDeviceConfig();
     }
 
     void ConfigManager::updateTimezone([[maybe_unused]] const char* timezone) {
@@ -368,7 +400,9 @@ namespace Config {
         PreferencesGuard guard(prefs, NAMESPACE, false);
         guard.get().putString(TIMEZONE, validated);
 #endif
+        lockDeviceConfig();
         strlcpy(deviceConfig.timezone, validated, sizeof(deviceConfig.timezone));
+        unlockDeviceConfig();
     }
 
     void ConfigManager::updateSensorI2CAddress(uint8_t address) {
@@ -380,7 +414,9 @@ namespace Config {
         PreferencesGuard guard(prefs, NAMESPACE, false);
         guard.get().putUChar(SENSOR_I2C_ADDRESS, address);
 #endif
+        lockDeviceConfig();
         deviceConfig.sensor_i2c_address = address;
+        unlockDeviceConfig();
     }
 
     void ConfigManager::reset() {

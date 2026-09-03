@@ -517,8 +517,13 @@ void SensorController::requestGains(Control::PidGains gains, uint16_t controlInt
 }
 
 bool SensorController::isHeatingPermitted() const {
-    return config.getDeviceConfig().temperature_control_enabled && !safetyShutoff &&
-           isDataValid() && !std::isnan(getTemperature());
+    // Snapshot the cross-task config read so the enabled flag is observed
+    // consistently with anything else the same caller might want from the
+    // struct. isHeatingPermitted() only reads one field today, but it runs
+    // from both the Network task and the AsyncTCP web task and the writer
+    // (a web-task updateTemperatureControlEnabled) is on the AsyncTCP task.
+    return config.getDeviceConfigSnapshot().temperature_control_enabled &&
+           !safetyShutoff && isDataValid() && !std::isnan(getTemperature());
 }
 
 void SensorController::suspendPid(uint32_t nowMs) {
@@ -528,6 +533,16 @@ void SensorController::suspendPid(uint32_t nowMs) {
 
 float SensorController::updateControl() {
     const uint32_t now = millis();
+
+    // Take an indivisible snapshot of every DeviceConfig field this tick
+    // reads, before any of them. The web task can be in the middle of an
+    // updateActuatorTiming() (or any other updateXxx()) on a different core,
+    // and reading through the const reference would let this tick see the
+    // new safety limit paired with the old hysteresis, the new target
+    // paired with the old control interval, or any other half-updated
+    // combination. The snapshot collapses the read set to one indivisible
+    // copy, mirroring the gains pattern at SensorController.h:113-114.
+    const Config::DeviceConfig cfg = config.getDeviceConfigSnapshot();
 
     // Adopt a pending gain change first, on the only task allowed to write PID
     // state. setGains() suspends, so whichever path below runs on this tick
@@ -547,9 +562,10 @@ float SensorController::updateControl() {
     // integral cannot override it, and latched so releasing needs the
     // temperature to fall a hysteresis band below the limit rather than merely
     // touch it. An unavailable reading engages it too: an unknown temperature
-    // is not a safe basis for delivering heat.
+    // is not a safe basis for delivering heat. Both the limit and the
+    // hysteresis are taken from the snapshot taken above so a writer that
+    // changes one without the other cannot produce a torn observation.
     {
-        const Config::DeviceConfig &cfg = config.getDeviceConfig();
         const float t = getTemperature();
         if (std::isnan(t) || !isDataValid()) {
             safetyShutoff = true;
@@ -580,17 +596,17 @@ float SensorController::updateControl() {
         autotuner.cancel();
     }
     if (autotuneStartRequested.exchange(false)) {
-        if (config.getDeviceConfig().temperature_control_enabled && !isAutotuneActive()) {
+        if (cfg.temperature_control_enabled && !isAutotuneActive()) {
             ESP_LOGI(TAG, "Autotune starting around %.1f C",
-                     static_cast<double>(config.getDeviceConfig().target_temperature));
-            autotuner.start(config.getDeviceConfig().target_temperature, now);
+                     static_cast<double>(cfg.target_temperature));
+            autotuner.start(cfg.target_temperature, now);
         }
     }
 
     if (isAutotuneActive()) {
         // A run switched off underneath itself would be driving an output
         // nobody enabled.
-        if (!config.getDeviceConfig().temperature_control_enabled) {
+        if (!cfg.temperature_control_enabled) {
             autotuner.cancel();
             suspendPid(now);
             lastControlOutput = 0.0f;
@@ -615,7 +631,7 @@ float SensorController::updateControl() {
     }
 
     float currentTemp = getTemperature();
-    if (!config.getDeviceConfig().temperature_control_enabled || !isDataValid() ||
+    if (!cfg.temperature_control_enabled || !isDataValid() ||
         std::isnan(currentTemp)) {
         // Tell the PID it skipped a tick, so the next one that does run
         // restarts bumplessly instead of charging its integral with the whole
@@ -639,7 +655,7 @@ float SensorController::updateControl() {
     // than the plant can take — from a run that reports convergence. Only the
     // PID computation below is decimated.
     const uint32_t intervalMs =
-        static_cast<uint32_t>(config.getDeviceConfig().control_interval_s) * 1000u;
+        static_cast<uint32_t>(cfg.control_interval_s) * 1000u;
     if (now - lastPidComputeMs < intervalMs) {
         // A tick between computations, not a skipped one — so pointedly no
         // suspendPid() here. Suspending would make every computation a bumpless
@@ -656,7 +672,7 @@ float SensorController::updateControl() {
 
     const bool restarting = !pid.isRunning();
 
-    float targetTemperature = config.getDeviceConfig().target_temperature;
+    float targetTemperature = cfg.target_temperature;
     float error = targetTemperature - currentTemp;
     float output = pid.update(error, now);
 

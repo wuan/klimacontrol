@@ -200,6 +200,11 @@ void setup() {
     // the long-lived wiring before the network task starts.
     network.setWebServer(&webServer);
 
+    // Reserve the sensor + measurement vector capacity so the I2C scan loop's
+    // addSensor() calls do not reallocate. Must happen before the scan loop —
+    // see spec `memory-management` → "Vector capacities are reserved at boot".
+    sensorController.reserveSensorSlots(MAX_KNOWN_SENSORS);
+
 #ifdef ARDUINO
     Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
 
@@ -263,10 +268,6 @@ void setup() {
 
     // Initialize sensor controller
     sensorController.begin();
-    // Reserve the sensor + measurement vector capacity so the I2C scan loop's
-    // addSensor() calls do not reallocate. Must happen before the scan loop —
-    // see spec `memory-management` → "Vector capacities are reserved at boot".
-    sensorController.reserveSensorSlots(MAX_KNOWN_SENSORS);
 
     // Apply sensor configuration from the already loaded deviceConfig
     sensorController.setTargetTemperature(deviceConfig.target_temperature);
