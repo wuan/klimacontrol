@@ -93,12 +93,14 @@ void WebServerManager::setupStatusRoutes() {
         statsJson["has_connected_sensors"] = sensorController.hasConnectedSensors();
         statsJson["time_since_last_reading"] = sensorController.getTimeSinceLastReading();
 
-        // Cycle delay statistics
-        const auto& cycleStats = sensorMonitor.getStats();
-        statsJson["cycle_count"] = cycleStats.get_count();
-        statsJson["avg_cycle_delay"] = cycleStats.get_average();
-        statsJson["min_cycle_delay"] = cycleStats.get_min();
-        statsJson["max_cycle_delay"] = cycleStats.get_max();
+        // Cycle delay statistics — read under one snapshot so the four
+        // counters describe one logical instant. Four separate getters would
+        // let a concurrent add() slip between them and produce a torn set.
+        const Support::StatsSnapshot cycleStats = sensorMonitor.getStatsSnapshot();
+        statsJson["cycle_count"] = cycleStats.count;
+        statsJson["avg_cycle_delay"] = cycleStats.average;
+        statsJson["min_cycle_delay"] = cycleStats.min;
+        statsJson["max_cycle_delay"] = cycleStats.max;
 
         // Chip info
         doc["chip_model"] = ESP.getChipModel();

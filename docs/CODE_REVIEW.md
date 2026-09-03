@@ -85,17 +85,39 @@ fixture calls `reserve()` *before* `addSensor()` in the right order.
 - `src/main.cpp:206` now calls `reserveSensorSlots(MAX_KNOWN_SENSORS)` before the I2C sensor assignment block and before `sensorController.begin()`.
 - Verified with `pio test -e native` (460 tests passed) and `pio run -e adafruit_qtpy_esp32s2` (success).
 
-### 4. `Support::Stats` is shared across tasks without synchronization (torn-read data race)
+### 4. ~~`Support::Stats` is shared across tasks without synchronization (torn-read data race)~~ (resolved)
 
 `Stats::add()` runs on the Sensor Monitor task at `task/SensorMonitor.cpp:85`;
-`get_min()`, `get_max()`, `get_average()`, `get_count()` are called from the
-AsyncTCP task at `routes/StatusRoutes.cpp:98-101`. All four fields are
-`uint64_t` — 64-bit aligned reads can tear on ESP32 across the two 32-bit bus
-cycles. `min` and `max` are particularly susceptible because they're updated
-via non-atomic compare-store.
+`get_min()`, `get_max()`, `get_average()`, `get_count()` were called from the
+AsyncTCP task at `routes/StatusRoutes.cpp:98-101`. All four fields were
+`uint64_t` — 64-bit aligned reads could tear on ESP32 across the two 32-bit bus
+cycles, and `min` and `max` were updated via non-atomic compare-store.
 
-**Fix.** Snapshot under a short mutex, or use `std::atomic<uint32_t>` (the
-values are cycle durations in ms — 49-day max fits comfortably).
+**Resolution.**
+
+- `src/support/Stats.h:11-65` — added a `StatsSnapshot` POD and a
+  `std::atomic_flag` spinlock mirroring `deviceConfigLock`
+  (`src/Config.h:386-396`); `Stats::add()` and every getter now serialise
+  against the snapshot accessor.
+- `src/support/Stats.cpp` — `snapshot()` reads all four counters under
+  one acquisition and returns them as an indivisible copy; `add()` and
+  the four legacy getters take the same lock.
+- `src/task/SensorMonitor.h:62-70` — `getStatsSnapshot()` returns the
+  indivisible copy; `getStats()` remains for same-task callers.
+- `src/routes/StatusRoutes.cpp:96-103` — the four
+  `cycleStats.get_*()` calls are now one `getStatsSnapshot()` read into
+  the four JSON fields.
+- `test/test_stats_snapshot/test_stats_snapshot.cpp` — new native suite
+  (4 cases) driving concurrent writers and readers and asserting that
+  every snapshot satisfies `min ≤ max`, `min ≤ average ≤ max`, and that
+  `min` / `max` are drawn from the writer's insert set. Registered in
+  the `native` `build_src_filter` (`platformio.ini:17`).
+- Spec requirement added under `system-architecture`
+  ("Cross-task reads of `Support::Stats` use a snapshot accessor"). See
+  change `fix-stats-cross-task-race` for design and rationale.
+- Verified with `pio test -e native` (469 tests passed, including the
+  new 4-case suite) and `pio run -e adafruit_qtpy_esp32s2` (success,
+  same flash / RAM shape as baseline).
 
 ### 5. ~~`deviceConfig` is a multi-task shared struct with no synchronization~~ (resolved)
 
@@ -684,7 +706,7 @@ Silent flash failure — should log a warning and increment a counter.
 3. ~~**#5** `deviceConfig` cross-task read — same pattern the project already
    solved for gains.~~ Resolved.
 4. ~~**#3** `reserveSensorSlots` ordering — documented contract not honored.~~
-5. **#4** `Stats` race — `/api/about` reads torn 64-bit values today.
+5. ~~**#4** `Stats` race — `/api/about` reads torn 64-bit values today.~~
 6. **#7** XSS in OTA UI — straightforward `textContent` substitution.
 7. **#8** test filter excludes ~half the suite — `pio test -e native`
    silently green.

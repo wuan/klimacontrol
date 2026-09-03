@@ -58,6 +58,16 @@ namespace Task {
          * Get cycle delay stats
          */
         const Support::Stats& getStats() const { return stats; }
+
+        /**
+         * Take an indivisible copy of the cycle-delay counters. Cross-task
+         * readers (e.g. GET /api/about on the AsyncTCP task) SHALL go
+         * through this accessor rather than the per-field getters —
+         * see the "Cross-task reads of `Support::Stats` use a snapshot
+         * accessor" requirement in
+         * openspec/specs/system-architecture/spec.md.
+         */
+        Support::StatsSnapshot getStatsSnapshot() const { return stats.snapshot(); }
         
     private:
         /**
