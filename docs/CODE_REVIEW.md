@@ -191,18 +191,39 @@ release tag can run script in the user's browser session.
   (882, 910, 962, 975, 993) only ever receive hardcoded string literals
   and are unaffected.
 
-### 8. Native test `build_src_filter` excludes ~14 test directories — `pio test -e native` reports green without running them
+### 8. ~~Native test `build_src_filter` excludes ~14 test directories — `pio test -e native` reports green without running them~~ (resolved)
 
-`platformio.ini:16` includes 14 of 28 test directories. Missing:
-`test_actuator_report`, `test_mqtt_client`, `test_relay_autotuner`,
-`test_request_diag`, `test_sensor_controller`, `test_sensor_base`,
-`test_sensor_utils`, `test_shelly_channel`, `test_sht4x`, `test_status_led`
-(only `test_status_led_error` is in the filter), `test_support`,
-`test_temperature_control`, `test_tpo`. The temperature-control test suite
-(~685 lines, 30+ cases) is silently dropped.
+The original review flagged `platformio.ini:16` as listing only 14 of 28 test
+directories and concluded the other 14 were "silently dropped" because they
+were absent from `build_src_filter`. **The diagnosis was incorrect.**
+`build_src_filter` controls which source files from `src/` are compiled into
+the test binary; it does not control test discovery. PlatformIO discovers
+tests by walking the `test/` tree — every test directory is found and run
+regardless of what `build_src_filter` contains. The review's central claim
+(`pio test -e native` reports green without running them) is testably
+false: removing every `+<test/test_X/>` entry from `build_src_filter` leaves
+the run identical.
 
-**Fix.** Add the missing `+<test/test_X/>` entries, or invert the filter to
-exclude-only.
+Verified with `pio test -e native --list-tests` (30/30 collected,
+including all 13 "missing" suites) and `pio test -e native -v` (469/469
+cases passed, including the 36-case `test_temperature_control` the review
+called "silently dropped").
+
+**Resolution.**
+
+- `platformio.ini:16` — removed every `+<test/test_X/>` entry from
+  `build_src_filter`. The line is now ~200 characters shorter and lists
+  only the 16 source files that actually need to be compiled natively
+  (everything else in `src/` pulls in Arduino headers that aren't
+  available under `platform = native`). The 30 test directories are
+  discovered and run by PlatformIO automatically — the explicit list
+  was redundant and misleading.
+- The `test/` paths were never load-bearing; they were a fossil from a
+  configuration where every test directory had to be enumerated before
+  it would be picked up. That is no longer how PlatformIO 6.x works.
+- Verified with `pio test -e native` (469 cases passed, same shape as
+  before the cleanup) and `pio run -e adafruit_qtpy_esp32s2`
+  (success, unchanged).
 
 ### 9. Network task uses heap-allocated stack — inconsistent with OTA's static-stack hardening
 
@@ -720,8 +741,9 @@ Silent flash failure — should log a warning and increment a counter.
 4. ~~**#3** `reserveSensorSlots` ordering — documented contract not honored.~~
 5. ~~**#4** `Stats` race — `/api/about` reads torn 64-bit values today.~~
 6. ~~**#7** XSS in OTA UI — straightforward `textContent` substitution.~~ Resolved.
-7. **#8** test filter excludes ~half the suite — `pio test -e native`
-   silently green.
+7. ~~**#8** test filter excludes ~half the suite — `pio test -e native`
+   silently green.~~ Resolved (misdiagnosis — `build_src_filter` never
+   controlled test discovery; the 30 suites were always being run).
 8. **#10**, **#11**, **#12**, **#13** — documentation/spec drift
    corrections, cheap.
 9. **#6**, **#19** — SSRF + open AP together make LAN-side reconfiguration
