@@ -865,13 +865,13 @@
                 btn.textContent = 'Update Available!';
             } else if (data.status === 'error' || data.error) {
                 resultDiv.className = 'warning-box';
-                resultDiv.innerHTML = '<strong>Update check failed</strong><br>' + (data.error || 'Unknown error');
+                resultDiv.innerHTML = '<strong>Update check failed</strong><br>' + esc(data.error || 'Unknown error');
                 resultDiv.style.display = 'block';
                 btn.textContent = 'Check for Updates';
                 btn.disabled = false;
             } else {
                 resultDiv.className = 'info-box';
-                resultDiv.innerHTML = 'Up to date &mdash; latest release is <strong>' + data.latest_version + '</strong>';
+                resultDiv.innerHTML = 'Up to date &mdash; latest release is <strong>' + esc(data.latest_version) + '</strong>';
                 resultDiv.style.display = 'block';
                 btn.textContent = 'Check for Updates';
                 btn.disabled = false;
@@ -980,7 +980,7 @@
                 progressDiv.style.display = 'none';
                 resultDiv.className = 'warning-box';
                 resultDiv.innerHTML = '<strong>Update failed</strong><br>' +
-                    (data.error || 'Unknown error') +
+                    esc(data.error || 'Unknown error') +
                     '<br>The device is still running the previous firmware.';
                 resultDiv.style.display = 'block';
                 document.getElementById('checkUpdateBtn').disabled = false;
@@ -999,6 +999,11 @@
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+    function esc(s) {
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
     }
 
     // MQTT Functions

@@ -169,15 +169,27 @@ internal services and read back the response via `GET /api/actuator`.
 **Fix.** Validate `^[A-Za-z0-9._-]{1,253}$` or a clean IPv4 literal; reject
 `/`, `?`, `#`, `@`, whitespace.
 
-### 7. XSS via `innerHTML` of OTA error / version fields in the web UI
+### 7. ~~XSS via `innerHTML` of OTA error / version fields in the web UI~~ (resolved)
 
-`data/settings.html:868`, `:874`, `:982` insert `data.error` and
+`data/settings.html:868`, `:874`, `:982` inserted `data.error` and
 `data.latest_version` into the DOM via `innerHTML` without escaping. A LAN
 attacker who can MITM the GitHub response (DNS poisoning) or a malicious
 release tag can run script in the user's browser session.
 
-**Fix.** Use `textContent` or `esc()` (already defined in
-`data/about.html:57-61`).
+**Resolution.**
+
+- `data/settings.html:1003-1007` — added `esc(s)` helper (identical to the
+  one already defined in `data/about.html:57-61` and
+  `data/control.html:254-257`); sits next to `formatBytes()` in the OTA
+  section.
+- `data/settings.html:868`, `:874`, `:982` — each `data.error` and
+  `data.latest_version` is now routed through `esc(...)` before it is
+  concatenated into the static markup. Static markup stays as `innerHTML`;
+  only the dynamic values need escaping.
+- Verified with `pio run -e adafruit_qtpy_esp32s2` (success, same flash /
+  RAM shape as baseline). Other `innerHTML` sites in `settings.html`
+  (882, 910, 962, 975, 993) only ever receive hardcoded string literals
+  and are unaffected.
 
 ### 8. Native test `build_src_filter` excludes ~14 test directories — `pio test -e native` reports green without running them
 
@@ -707,7 +719,7 @@ Silent flash failure — should log a warning and increment a counter.
    solved for gains.~~ Resolved.
 4. ~~**#3** `reserveSensorSlots` ordering — documented contract not honored.~~
 5. ~~**#4** `Stats` race — `/api/about` reads torn 64-bit values today.~~
-6. **#7** XSS in OTA UI — straightforward `textContent` substitution.
+6. ~~**#7** XSS in OTA UI — straightforward `textContent` substitution.~~ Resolved.
 7. **#8** test filter excludes ~half the suite — `pio test -e native`
    silently green.
 8. **#10**, **#11**, **#12**, **#13** — documentation/spec drift
