@@ -553,22 +553,22 @@ namespace Config {
     SyslogConfig ConfigManager::loadSyslogConfig() {
         SyslogConfig config;
 #ifdef ARDUINO
-        PreferencesGuard guard(prefs, NAMESPACE, true);
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, true);
 
-        config.enabled = guard.get().getBool("syslog_on", false);
-        config.port = guard.get().getUShort("syslog_port", 514);
-        guard.get().getString("syslog_host", config.host, sizeof(config.host));
+        config.enabled = guard.get().getBool(PrefsKeys::SYSLOG_ENABLED, false);
+        config.port = guard.get().getUShort(PrefsKeys::SYSLOG_PORT, 514);
+        guard.get().getString(PrefsKeys::SYSLOG_HOST, config.host, sizeof(config.host));
 #endif
         return config;
     }
 
     void ConfigManager::saveSyslogConfig([[maybe_unused]] const SyslogConfig &config) {
 #ifdef ARDUINO
-        PreferencesGuard guard(prefs, NAMESPACE, false);
+        PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false);
 
-        guard.get().putBool("syslog_on", config.enabled);
-        guard.get().putUShort("syslog_port", config.port);
-        guard.get().putString("syslog_host", config.host);
+        guard.get().putBool(PrefsKeys::SYSLOG_ENABLED, config.enabled);
+        guard.get().putUShort(PrefsKeys::SYSLOG_PORT, config.port);
+        guard.get().putString(PrefsKeys::SYSLOG_HOST, config.host);
 
         ESP_LOGD(TAG, "Saved syslog configuration");
 #endif

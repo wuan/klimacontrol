@@ -57,6 +57,15 @@ namespace PrefsKeys {
     constexpr const char* SYSLOG_ENABLED = "syslog_enabled";
     constexpr const char* SYSLOG_HOST = "syslog_host";
     constexpr const char* SYSLOG_PORT = "syslog_port";
+
+    // Enforce the 15-character NVS key limit at compile time, matching the
+    // discipline in Config.h. NVS keys longer than this fail silently in
+    // Preferences::putX(); a future careless rename would otherwise re-introduce
+    // the syslog "key mismatch" bug fixed alongside this assertion. Requires
+    // Config.h to be included first so Config::nvsKeyFits is visible.
+    static_assert(Config::nvsKeyFits(SYSLOG_ENABLED), "NVS key too long");
+    static_assert(Config::nvsKeyFits(SYSLOG_HOST), "NVS key too long");
+    static_assert(Config::nvsKeyFits(SYSLOG_PORT), "NVS key too long");
 }
 
 #endif // KLIMACONTROL_PREFS_KEYS_H
