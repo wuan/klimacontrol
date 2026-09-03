@@ -194,6 +194,14 @@ public:
     void startTask();
 
     /**
+     * Size of the AP password buffer: 8 hex chars from
+     * `Support::computeApPassword` plus a NUL terminator. Public so
+     * main.cpp can size its stack buffer without depending on the
+     * private `apPassword` member.
+     */
+    static constexpr size_t AP_PASSWORD_BUF_SIZE = 9;
+
+    /**
      * Static trampoline function for FreeRTOS
      */
     static void taskWrapper(void *pvParameters);

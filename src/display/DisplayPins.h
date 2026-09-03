@@ -27,9 +27,19 @@
 //   CS      18    A0
 //   DC       8    A3
 //   RST      9    A2
-//   BUSY    17    A1     (input, active HIGH)
+//   BUSY    17    A1     (input, active LOW: LOW = busy, HIGH = idle)
 //   VCC      -    3V
 //   GND      -    GND
+//
+//   BUSY is active LOW for the SSD1681 controller on the Waveshare 1.54"
+//   V2 panel: the panel pulls BUSY LOW while it is processing (reset,
+//   SPI command execution, refresh), and releases it HIGH when idle.
+//   GxEPD2 documents this via its constructor's `busy_level` argument,
+//   which is HIGH for this panel — i.e. HIGH is the idle level, LOW is
+//   the busy level. `EPaperDisplay::probe()` reads the pin directly, so
+//   anyone adding a new probe path must use the same LOW = busy
+//   convention.
+//
 //
 // WHY CS IS NOT ON GPIO37 (the MI pad), even though the panel is write-only and
 // that pad carries no signal:

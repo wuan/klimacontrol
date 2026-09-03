@@ -312,6 +312,22 @@ namespace Display {
         feedWatchdog();
         noteDuration(millis() - start, "Display init");
 
+        // GxEPD2's `display.init()` does not fail when no panel is
+        // connected — the SPI writes silently succeed and it returns
+        // true. The absence check therefore does NOT live here; it
+        // lives in `EPaperDisplay::probe()` (the BUSY-transition
+        // check described in `display/spec.md` → *E-paper panel can
+        // be probed by BUSY pin transition*) and is called from
+        // `DisplayManager::tryBeginForApInfo()` BEFORE this `begin()`
+        // runs on the deferred-probe path. The normal path through
+        // `DisplayManager::begin()` here is reached only after the
+        // user has explicitly enabled the display via the web UI and
+        // the panel has either passed that probe (deferred path) or
+        // is expected to be present (boot path); the boot splash is
+        // the visual feedback that the panel is alive — if it stays
+        // blank, the user knows the hardware is bad and can recover
+        // via factory reset.
+
         display.setRotation(rotation);
         display.setTextColor(GxEPD_BLACK);
         display.setTextWrap(false);
@@ -322,6 +338,96 @@ namespace Display {
 
         hibernate();
         return !faulted;
+    }
+
+    bool EPaperDisplay::probe(uint32_t timeoutMs) {
+        // Pin-level presence check. Per the display spec, the only
+        // observable signal a connected panel emits is BUSY: the
+        // SSD1681 drives BUSY LOW while it is processing the reset
+        // pulse and releases it HIGH once it is back in the idle
+        // "waiting for commands" state. A missing panel does not
+        // drive BUSY at all — the line stays HIGH (panel-internal
+        // pull-up on the connector) or LOW (external interference /
+        // a damaged line), and we treat both as "no panel". The
+        // spec'd four-step sequence below distinguishes the two
+        // outcomes:
+        //
+        //   1. Configure pins (CS HIGH / DC LOW / RST HIGH out,
+        //      BUSY in).
+        //   2. Manual reset pulse: RST HIGH → LOW → HIGH with ≥10 ms
+        //      in each state, then ≥20 ms settle so the panel has
+        //      time to start its busy cycle.
+        //   3. Watch BUSY: must go LOW (panel is processing), then
+        //      HIGH (panel finished its reset, idle again).
+        //   4. Return true only if both transitions are observed
+        //      within `timeoutMs`.
+        //
+        // We previously tried a hand-rolled "reset pulse + SPI
+        // SWRESET + wait for BUSY=HIGH" sequence; that one timed
+        // out on real panels because the SSD1681 needs the full
+        // GxEPD2 init register sequence after the reset, not just
+        // SWRESET, to release BUSY. The BUSY-LOW transition happens
+        // reliably during the reset itself, though — which is what
+        // this probe checks. `GxEPD2_EPD::_waitWhileBusy` uses the
+        // same "BUSY=LOW means busy" contract internally
+        // (`_busy_level = HIGH` for this panel).
+        //
+        // The probe does NOT touch the SPI bus, does NOT call
+        // `display.init()`, and does NOT modify `initialised` or
+        // `faulted`. It is purely a presence check; the subsequent
+        // `panel.begin()` call (in `DisplayManager::tryBeginForApInfo`)
+        // runs the proven GxEPD2 init path.
+        pinMode(DisplayPins::CS, OUTPUT);
+        pinMode(DisplayPins::DC, OUTPUT);
+        pinMode(DisplayPins::RST, OUTPUT);
+        pinMode(DisplayPins::BUSY, INPUT);
+        digitalWrite(DisplayPins::CS, HIGH);  // deselect
+        digitalWrite(DisplayPins::DC, LOW);    // command mode
+        digitalWrite(DisplayPins::RST, HIGH);  // start in idle
+
+        const uint32_t start = millis();
+
+        // Reset pulse: HIGH idle (≥10 ms), then LOW for ≥10 ms, then
+        // HIGH for ≥10 ms, then ≥20 ms settle so the panel can start
+        // its busy cycle before we begin polling BUSY.
+        delay(10);
+        digitalWrite(DisplayPins::RST, LOW);
+        delay(10);
+        digitalWrite(DisplayPins::RST, HIGH);
+        delay(20);
+
+        // Step 3a: wait for BUSY to go LOW (panel processing reset).
+        // A missing panel never drives BUSY LOW — it stays HIGH the
+        // whole time — so this is the key absence check.
+        bool sawBusyLow = false;
+        while (millis() - start < timeoutMs) {
+            if (digitalRead(DisplayPins::BUSY) == LOW) {
+                sawBusyLow = true;
+                break;
+            }
+            delay(1);
+        }
+        if (!sawBusyLow) {
+            ESP_LOGW(TAG, "Display probe: BUSY never went LOW — no panel responding");
+            return false;
+        }
+
+        // Step 3b: wait for BUSY to go HIGH (panel finished reset,
+        // back to idle). A panel that goes LOW and stays LOW is
+        // either stuck mid-reset or has a damaged BUSY line; either
+        // way, we cannot trust it, so return false (the safer
+        // failure mode — open AP rather than lock the user out).
+        while (millis() - start < timeoutMs) {
+            if (digitalRead(DisplayPins::BUSY) == HIGH) {
+                ESP_LOGI(TAG, "Display probe: panel responded in %u ms",
+                         static_cast<unsigned>(millis() - start));
+                return true;
+            }
+            delay(1);
+        }
+        ESP_LOGW(TAG, "Display probe: BUSY stuck LOW past %u ms — panel stuck",
+                 static_cast<unsigned>(timeoutMs));
+        return false;
     }
 
     void EPaperDisplay::drawDemandBar(int16_t leftX, uint8_t filledSegments) {
@@ -549,6 +655,68 @@ namespace Display {
 
         ESP_LOGI(TAG, "Splash shown");
         hibernate();
+    }
+
+    void EPaperDisplay::showApInfo(const char *ssid, const char *password, const char *ip) {
+        if (!initialised || faulted) {
+            return;
+        }
+
+        // Full-window refresh: the user just joined the AP and is looking at
+        // the panel — they want to read the password. A partial refresh is
+        // faster but the panel is in deep sleep coming into this call, and
+        // the boot splash (if any) is already gone.
+        const uint32_t start = millis();
+        feedWatchdog();
+        display.setFullWindow();
+        display.firstPage();
+        do {
+            display.fillScreen(GxEPD_WHITE);
+            // Same header band as the normal display — gives the panel a
+            // recognisable layout rather than a separate screen.
+            drawHeader();
+
+            // Three labelled lines. Padding between rows is generous so a
+            // hand tremor with a small font is still readable. The label
+            // and the value share the same baseline, separated by a fixed
+            // gap; this is cheaper than computing the width of every
+            // label and works because all three labels are short and
+            // constant-width.
+            constexpr int16_t BODY_LEFT_X = FOOTER_MARGIN_X;
+            constexpr int16_t LABEL_BASELINE_Y = 60;
+            constexpr int16_t VALUE_BASELINE_Y = 60;
+            constexpr int16_t LABEL_WIDTH = 70;   // "Password: " fits with slack
+            constexpr int16_t LINE_GAP = 32;
+
+            display.setFont(&FreeSans9pt7b);
+            display.setTextColor(GxEPD_BLACK);
+
+            // Line 1: SSID.
+            display.setCursor(BODY_LEFT_X, LABEL_BASELINE_Y);
+            display.print("SSID:");
+            display.setCursor(BODY_LEFT_X + LABEL_WIDTH, VALUE_BASELINE_Y);
+            display.print(ssid != nullptr ? ssid : "");
+
+            // Line 2: password.
+            display.setCursor(BODY_LEFT_X, LABEL_BASELINE_Y + LINE_GAP);
+            display.print("Pass:");
+            display.setCursor(BODY_LEFT_X + LABEL_WIDTH, VALUE_BASELINE_Y + LINE_GAP);
+            display.print(password != nullptr ? password : "");
+
+            // Line 3: AP IP.
+            display.setCursor(BODY_LEFT_X, LABEL_BASELINE_Y + 2 * LINE_GAP);
+            display.print("IP:");
+            display.setCursor(BODY_LEFT_X + LABEL_WIDTH, VALUE_BASELINE_Y + 2 * LINE_GAP);
+            display.print(ip != nullptr ? ip : "");
+        } while (display.nextPage());
+        feedWatchdog();
+        noteDuration(millis() - start, "AP info");
+
+        ESP_LOGI(TAG, "AP info shown");
+        // Note: we do not hibernate here. The caller (DisplayManager
+        // wrapper) decides whether to hibernate based on whether the
+        // panel is in normal operation or was inited just for this
+        // screen.
     }
 
     void EPaperDisplay::hibernate() {

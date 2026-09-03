@@ -5,6 +5,7 @@
 #include "Network.h"
 #include "SensorController.h"
 #include "support/RequestDiag.h"
+#include "support/HostValidation.h"
 
 #include <cmath>
 
@@ -313,6 +314,20 @@ void WebServerManager::setupControlRoutes() {
                   }
                   const char *host = doc["host"] | "";
                   const int ch = doc["channel"] | -1;
+
+                  // SSRF guard. A non-empty host must match the DNS-name
+                  // character class (with underscores) and be at most 253
+                  // characters; anything else would let
+                  // `snprintf("http://%s%s", host, path)` inside the
+                  // HeatingActuator be redirected away from the configured
+                  // manifold. Empty host stays valid (it clears the
+                  // assignment). See change
+                  // 2026-09-03-harden-config-ap-and-actuator-host.
+                  if (host[0] != '\0' && !Support::isValidActuatorHost(host)) {
+                      request->send(400, CONTENT_TYPE_JSON,
+                                    R"({"success":false,"error":"host must be empty, an IPv4 address, or a DNS hostname"})");
+                      return;
+                  }
 
                   // Host and channel are validated together: a host with no
                   // channel, or a channel with no host, is not something that

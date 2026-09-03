@@ -19,6 +19,7 @@
 #endif
 #include "support/NetworkWatchdog.h"
 #include "support/WifiBackoff.h"
+#include "support/ApPassword.h"
 
 #ifdef ARDUINO
 #include <esp_pm.h>
@@ -131,13 +132,69 @@ void Network::startAP() {
 #ifdef ARDUINO
     mode = NetworkMode::AP;
 
-    // Get device ID for AP SSID
-    String ap_ssid = Constants::AP_SSID_PREFIX + DeviceId::getDeviceId();
+    const String deviceId = DeviceId::getDeviceId();
+    String ap_ssid = Constants::AP_SSID_PREFIX + deviceId;
 
-    ESP_LOGI(TAG, "Starting Access Point: %s", ap_ssid.c_str());
+    // Decide the AP security mode by probing for an e-paper panel.
+    //   - Panel responds (manager already enabled, OR the probe
+    //     passes and the subsequent panel.begin() succeeds): use
+    //     WPA2-PSK and render the password on the panel via
+    //     showApInfo().
+    //   - Panel does not respond: fall back to open AP. The probe
+    //     (the BUSY-transition check in EPaperDisplay::probe) is
+    //     what catches the no-panel case — panel.begin() alone
+    //     cannot, because GxEPD2::display.init() silently succeeds
+    //     when no panel is wired up. A false result on the probe
+    //     is the safer failure mode: the user can configure WiFi
+    //     from a phone over the open AP, where a false positive
+    //     would lock the user out with no way to recover on a
+    //     device with no serial cable, no case label, and no
+    //     panel. After the user submits credentials they can
+    //     enable the display via the web UI for the normal status
+    //     display; the AP password derivation is independent of
+    //     that choice.
+    //
+    // See change `fix-display-probe-busy-transitions` for the
+    // rationale.
+    bool useWpa2 = false;
+    char password[AP_PASSWORD_BUF_SIZE] = "";
 
-    // Start open AP (no password)
-    WiFi.softAP(ap_ssid.c_str());
+    if (display != nullptr) {
+        Config::DisplayConfig apConfig{};
+        if (display->tryBeginForApInfo(apConfig)) {
+            Support::computeApPassword(deviceId.c_str(), password, sizeof(password));
+            useWpa2 = true;
+            ESP_LOGI(TAG, "Display responded at AP-mode entry — using WPA2-PSK");
+        } else {
+            ESP_LOGW(TAG, "No display responded at AP-mode entry — AP will be open");
+        }
+    } else {
+        ESP_LOGW(TAG, "No DisplayManager wired — AP will be open");
+    }
+
+    if (useWpa2) {
+        ESP_LOGI(TAG, "Starting Access Point: SSID='%s' (WPA2-PSK)", ap_ssid.c_str());
+        ESP_LOGI(TAG, "AP password: %s", password);
+
+        // Bring the AP up first so we have a real IP to show. The AP IP
+        // is 192.168.4.1 on ESP32 SoftAP, but we read it from the
+        // runtime to stay honest if that ever changes.
+        WiFi.softAP(ap_ssid.c_str(), password);
+
+        // Render the AP info on the panel. The show must come AFTER
+        // WiFi.softAP() so the IP we hand the panel is the one the
+        // user actually connects to.
+        char ipStr[16];
+        snprintf(ipStr, sizeof(ipStr), "%u.%u.%u.%u",
+                 WiFi.softAPIP()[0], WiFi.softAPIP()[1],
+                 WiFi.softAPIP()[2], WiFi.softAPIP()[3]);
+        display->showApInfo(ap_ssid.c_str(), password, ipStr);
+        display->endApInfo();
+    } else {
+        ESP_LOGI(TAG, "Starting Access Point: SSID='%s' (open — no display detected)",
+                 ap_ssid.c_str());
+        WiFi.softAP(ap_ssid.c_str());
+    }
 
     IPAddress ip_address = WiFi.softAPIP();
     ESP_LOGI(TAG, "AP IP address: %s", ip_address.toString().c_str());
@@ -365,6 +422,17 @@ void Network::configureUsingAPMode() {
     // Reset failure counter since user has provided new credentials
     config.resetConnectionFailures();
 
+    // Clear the e-paper display so the AP info (SSID + password + IP)
+    // does not persist on the panel across the restart into STA mode.
+    // This is important for users with the normal status display
+    // disabled in config (so nothing else would overwrite the AP info).
+    // Use clear() rather than disableAndClear() so the user's
+    // DisplayConfig preference is preserved for the next boot.
+    if (display != nullptr && display->isEnabled()) {
+        ESP_LOGI(TAG, "Clearing e-paper display before restart");
+        display->clear();
+    }
+
     vTaskDelay(5000 / portTICK_PERIOD_MS);
 
     ESP_LOGI(TAG, "Stopping captive portal");
@@ -451,6 +519,17 @@ void Network::configureUsingAPMode() {
         if (config.isConfigured()) {
             ESP_LOGI(TAG, "New configuration received - resetting failure count and restarting...");
             config.resetConnectionFailures();
+
+            // Clear the AP info off the panel before restart (mirrors
+            // configureUsingAPMode above). The cold-boot `setupDisplay()`
+            // path will not overwrite it unless DisplayConfig.enabled
+            // is true, so without this the AP info would persist on
+            // a panel where the user has the status display disabled.
+            if (display != nullptr) {
+                ESP_LOGI(TAG, "Clearing e-paper display before restart");
+                display->clear();
+            }
+
             vTaskDelay(1000 / portTICK_PERIOD_MS);
             ESP.restart();
         }

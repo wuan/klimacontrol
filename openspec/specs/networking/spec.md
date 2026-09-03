@@ -120,3 +120,222 @@ The NTP update is the canonical example: `Network::safeNtpUpdate()` SHALL call `
 - **WHEN** the underlying `WiFiUDP::parsePacket()` blocks for longer than the per-iteration watchdog budget due to lwIP retransmits
 - **THEN** the watchdog is fed before the call (resetting the 30 s budget) and again after the call returns, so the panic handler does not fire on a transiently hung link
 
+### Requirement: Configuration AP runs WPA2-PSK, not open
+
+The configuration AP SHALL run with `WiFi.softAP(ssid, password)` (WPA2-PSK)
+when an e-paper panel responds to the probe at AP-mode entry, and SHALL
+fall back to `WiFi.softAP(ssid)` (open AP) when no panel responds.
+
+**The probe is the security decision.** It runs inside `Network::startAP()`,
+not at boot, so STA-mode boots do not pay the detection cost. The probe
+path is `DisplayManager::tryBeginForApInfo()`, which calls
+`panel.probe(timeoutMs)` (the BUSY-transition check described under
+`display` → *E-paper panel can be probed by BUSY pin transition*) and,
+only on a successful probe, calls `panel.begin(config.rotation)` (which
+runs `GxEPD2::display.init()` — the proven init sequence on the
+Waveshare 1.54" V2). A healthy panel returns true within ~1 s; a stuck
+or disconnected panel returns false at the probe step (BUSY never
+transitions), the SPI bus is never touched, and the firmware falls back
+to open AP.
+
+The probe-then-begin sequence is what catches the no-panel case the
+deferred probe was designed for. `panel.begin()` alone is not enough:
+`GxEPD2::display.init()` silently succeeds when no panel is connected
+because the SPI writes succeed without an actual panel to drive BUSY
+LOW, and `panel.begin()` returns `!faulted` where `faulted` only flips
+after three consecutive refresh timeouts, never on init. The probe's
+manual RST pulse + BUSY-transition check is what makes the absent-panel
+case observable.
+
+**`Network::startAP()` requires `display != nullptr`.** The
+`DisplayManager` pointer is installed into Network by
+`setupDisplay()` unconditionally — both when the normal status
+display is enabled (after `displayManager.begin()` succeeds) and
+when it is disabled (so the deferred probe can still bring the
+panel up at AP-mode entry). A device with `DisplayConfig.enabled
+== false` and a panel physically connected still uses WPA2-PSK,
+because the panel is brought up on demand at AP-mode entry.
+
+The MAC is already broadcast in the SSID (`Klima <device-id>`), so
+anyone who can read the SSID can compute the password from the
+device id (see `Support::computeApPassword`). The password therefore
+defends against opportunistic association by a passerby who has not
+seen the SSID, not against a targeted attacker.
+
+#### Scenario: Panel responds at AP-mode entry
+
+- **WHEN** `Network::startAP()` is called, `Network::display` is
+  non-null, and the e-paper panel responds to the manual RST pulse in
+  the probe (BUSY transitions through LOW to HIGH, both within
+  `timeoutMs`)
+- **THEN** `tryBeginForApInfo()` SHALL pass the probe, call
+  `panel.begin(0)`, and return true. `WiFi.softAP(ap_ssid.c_str(),
+  ap_password)` SHALL be called, where `ap_password` is the
+  8-character hex passphrase produced by
+  `Support::computeApPassword()`. The password SHALL be rendered on
+  the e-paper panel during AP mode via
+  `DisplayManager::showApInfo()`
+
+#### Scenario: DisplayConfig disabled but panel responds
+
+- **WHEN** `DisplayConfig.enabled == false` in NVS, a panel is
+  physically connected, and `Network::startAP()` is called
+- **THEN** the deferred probe in `tryBeginForApInfo()` SHALL run
+  `panel.probe(timeoutMs)` (because `enabled == false` in
+  DisplayManager, so the probe path runs rather than the
+  short-circuit). The probe SHALL observe both BUSY transitions,
+  `panel.begin(0)` SHALL bring the panel up, and the AP comes up
+  WPA2-PSK with the password on the panel
+
+#### Scenario: No panel responds at AP-mode entry
+
+- **WHEN** `Network::startAP()` is called and no e-paper panel
+  responds to the manual RST pulse in the probe (BUSY stays HIGH
+  because the connector is empty, or BUSY is stuck LOW because of a
+  damaged panel, or BUSY is stuck HIGH because of interference), or
+  no DisplayManager is wired
+- **THEN** `panel.probe(timeoutMs)` SHALL return false,
+  `tryBeginForApInfo()` SHALL return false without calling
+  `panel.begin()`, and `WiFi.softAP(ap_ssid.c_str())` SHALL be
+  called with no password. The configuration AP is open and any
+  client in radio range can associate without a challenge
+
+#### Scenario: Probe does not run at boot
+
+- **WHEN** `setup()` brings up the network task in STA mode
+- **THEN** no e-paper probe runs. `Network::apPassword` is never
+  read or written. Boot cost in STA mode is unaffected by the
+  panel probe
+
+#### Scenario: Probe is re-run on every AP-mode entry
+
+- **WHEN** `Network::startAP()` is called multiple times in a boot
+  (cold-boot first-WiFi path AND every-third-failed-reconnection
+  fallback path)
+- **THEN** the probe runs on each entry. A panel that was responsive
+  on the first entry may not be responsive on the second (e.g.,
+  interrupted by a WiFi connect attempt in between); the firmware
+  falls back to open AP on the second entry
+
+### Requirement: AP password derivation is pure C++ and testable
+
+The device SHALL derive its configuration-AP passphrase deterministically
+from the device id. The derivation SHALL be implemented in pure C++ (no
+Arduino-only headers), SHALL NOT allocate, SHALL be safe to call from
+native tests, and SHALL produce the same byte sequence on native and on
+the ESP32 target for the same input. The output SHALL be 8 printable ASCII
+characters (lowercase hex, `[0-9a-f]{8}`), fitting inside the WPA2-PSK
+8-to-63 character limit, and SHALL be written to the output buffer with
+a trailing NUL terminator.
+
+The derivation is not cryptographically strong. The MAC is already
+broadcast in the SSID (`Klima <device-id>`), so anyone who can read the
+SSID can compute the password. The password protects against opportunistic
+association by a passerby who has not seen the SSID, not against a
+targeted attacker who has.
+
+#### Scenario: Computation is deterministic
+
+- **WHEN** `Support::computeApPassword("AABBCC", buf, sizeof(buf))` is
+  called once and then again with the same arguments
+- **THEN** both calls SHALL write the identical 8-byte sequence to `buf`
+  (no clock, no random, no global state involved)
+
+#### Scenario: Output is 8 hex chars
+
+- **WHEN** the function is called with any 6-hex-char device id
+- **THEN** the output SHALL match `^[0-9a-f]{8}$` exactly, with a trailing
+  NUL in the ninth byte
+
+#### Scenario: Output buffer too small is rejected
+
+- **WHEN** `Support::computeApPassword(id, buf, 8)` is called with
+  `sizeof(buf) == 8`
+- **THEN** the function SHALL leave `buf` unmodified and SHALL NOT write a
+  partial password
+
+#### Scenario: Distinct ids produce distinct passwords
+
+- **WHEN** two distinct 6-hex device ids are passed to the function
+- **THEN** the two outputs SHALL be different (the FNV-1a mixing does not
+  collide on the small sample of ids the firmware actually generates)
+
+### Requirement: AP password is discoverable without the case label
+
+The user joining the configuration AP SHALL be able to discover the WPA2
+password without needing the device's case label or a separate
+reference. The firmware SHALL satisfy both of:
+
+1. Log the SSID and the derived password at `ESP_LOGI` (or the local
+   equivalent) when `Network::startAP()` runs, so a developer with a
+   serial monitor can read the password from the boot log.
+2. Render the SSID and password on the captive portal page itself (the
+   settings page served in AP mode), so a phone user does not need a
+   separate document. The password SHALL be computed in the handler that
+   renders the page and SHALL NOT travel via a query parameter or be
+   stored in NVS.
+
+The captive portal block is server-rendered HTML, not a separate HTTP
+request, so an attacker who is not yet on the AP cannot read it.
+
+#### Scenario: Password is in the boot log
+
+- **WHEN** the firmware boots into AP mode and the serial monitor is
+  attached
+- **THEN** the boot log SHALL contain an `ESP_LOGI` line whose body
+  identifies the AP SSID and the derived password
+
+#### Scenario: Password is on the captive portal page
+
+- **WHEN** a client joined to the configuration AP loads the settings page
+  served by the captive portal
+- **THEN** the rendered HTML SHALL display the AP SSID and the derived
+  password without requiring a second request, a query parameter, or any
+  client-side JavaScript
+
+#### Scenario: Password is not exposed via a GET endpoint in STA mode
+
+- **WHEN** the device is in STA mode and a LAN client requests any URL
+- **THEN** no response body SHALL contain the derived AP password (the
+  password is only rendered on the captive portal page in AP mode)
+
+### Requirement: Configuration AP probes the panel on every factory-fresh boot
+
+The configuration AP SHALL probe for an e-paper panel inside
+`Network::startAP()` on every entry — including the very first boot
+where no NVS WiFi configuration exists — and SHALL run WPA2-PSK with the
+password shown on the panel when one responds.
+
+The probe path is `DisplayManager::tryBeginForApInfo(config)`. It returns
+`true` when the manager is already in normal operation (`enabled == true`)
+or when a fresh `panel.begin(config.rotation)` succeeds, and `false`
+otherwise. A factory-fresh device with `DisplayConfig.enabled == false` in
+NVS therefore still benefits from the probe — the manager is not enabled,
+so `tryBeginForApInfo` falls through to `panel.begin()`, and a connected
+panel brings the AP up WPA2-PSK with the password on the panel.
+
+#### Scenario: Factory-fresh boot with a connected panel
+
+- **WHEN** the firmware boots for the first time (no NVS WiFi config, no
+  NVS display config — `DisplayConfig.enabled == false` is the spec
+  default), a panel is physically wired up to the SPI connector, and
+  `Network::startAP()` runs
+- **THEN** `DisplayManager::tryBeginForApInfo()` SHALL call
+  `panel.begin(0)` (the default rotation), the panel SHALL respond, and
+  the AP SHALL come up WPA2-PSK with the password rendered on the panel
+  via `showApInfo()`. The user has to enable the display via the web UI
+  before the next STA-mode boot to see the normal status display, but
+  AP-mode WiFi credentials are discoverable on the panel from the very
+  first second
+
+#### Scenario: Factory-fresh boot with no panel
+
+- **WHEN** the firmware boots for the first time and no panel is
+  physically wired up
+- **THEN** `DisplayManager::tryBeginForApInfo()` SHALL return `false`
+  (the GxEPD2 init writes silently succeed but the panel fault guard
+  trips, or `isInitialised()` stays false on a truly absent connector),
+  and the AP SHALL come up open. The user can configure WiFi from a
+  phone over the open AP — the only configuration path that works on a
+  device with no serial cable, no case label, and no panel
+

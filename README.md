@@ -82,8 +82,8 @@ pio device monitor
 ### Initial Setup
 
 1. Power on the device
-2. The device enters AP mode and broadcasts WiFi network `Klima-XXXXXX` (where XXXXXX is derived from MAC address)
-3. Connect to this network (default IP: 192.168.4.1)
+2. The device enters AP mode and broadcasts a WPA2-PSK-protected WiFi network `Klima XXXXXX` (where XXXXXX is the device id, derived from the last 3 bytes of the MAC address). Read the WPA2 passphrase from the captive portal page itself or from the device's boot log over USB serial
+3. Connect to this network using the passphrase (default IP: 192.168.4.1)
 4. A captive portal opens automatically - enter your WiFi credentials
 5. The device restarts and connects to your network
 6. Access the web interface at `klima-XXXXXX.local` or check your router for the IP

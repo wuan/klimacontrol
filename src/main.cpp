@@ -145,17 +145,38 @@ Display::DisplayManager displayManager(sensorController);
 #ifdef ARDUINO
 // Bring up the e-paper display according to the persisted configuration.
 //
-// Only two cases: enabled -> init, splash, wire into the Network task; disabled
-// -> do nothing at all, and the SPI and control pins are never claimed.
+// Three cases:
+//   enabled && begin succeeds -> init, splash, wire into Network for normal
+//     status updates; the panel is also available for AP info rendering
+//     via the same Network pointer
+//   enabled && begin fails    -> log error; still wire into Network so that
+//     Network::startAP() can re-probe at AP-mode entry (the cold-boot panel
+//     fault may have cleared by then)
+//   disabled                  -> wire into Network anyway, so that
+//     Network::startAP() can probe the panel for AP info rendering even
+//     though the user has the normal status display turned off. The user
+//     may have intentionally disabled the status display but left the
+//     panel physically connected for one-time WiFi setup.
 //
-// There is deliberately no "blank the panel on boot" path. e-paper retains its
-// image with no power, so a disabled display does have to be actively cleared —
-// but that happens synchronously in the POST /api/display handler, before the
-// restart, rather than being deferred to the next boot via a persisted flag.
+// Wiring the DisplayManager pointer unconditionally is what makes the
+// deferred-probe architecture work: Network::startAP()'s decision is
+// "is a panel actually connected?" — and it can only ask that question
+// if it has a manager pointer to ask with.
+//
+// There is deliberately no "blank the panel on boot" path. e-paper
+// retains its image with no power, so a disabled display does have to
+// be actively cleared — but that happens synchronously in the POST
+// /api/display handler, before the restart, rather than being
+// deferred to the next boot via a persisted flag.
 static void setupDisplay(const Config::DeviceConfig &deviceConfig) {
     Config::DisplayConfig displayConfig = config.loadDisplayConfig();
 
+    // Always wire up the pointer so Network::startAP() can probe.
+    network.setDisplay(&displayManager);
+
     if (!displayConfig.enabled) {
+        ESP_LOGI(TAG, "Display disabled in config; "
+                      "Network::startAP() will still probe at AP-mode entry");
         return;
     }
 
@@ -169,7 +190,6 @@ static void setupDisplay(const Config::DeviceConfig &deviceConfig) {
 
     if (displayManager.begin(displayConfig, name)) {
         displayManager.setNetwork(&network);
-        network.setDisplay(&displayManager);
     } else {
         ESP_LOGE(TAG, "Display enabled in config but failed to initialize");
     }

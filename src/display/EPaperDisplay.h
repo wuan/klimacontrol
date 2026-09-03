@@ -27,15 +27,75 @@ namespace Display {
 
         /**
          * Bring up the SPI bus and the panel.
+         *
          * @param rotation 0..3, passed to GxEPD2's setRotation()
          * @return false if the panel faulted during initialisation
          */
         bool begin(uint8_t rotation);
 
         /**
+         * True once `begin()` has successfully initialised the panel and
+         * the BUSY line has settled. Distinct from `hasFaulted()` — a
+         * panel can be initialised but later faulted, and a probe can
+         * observe the panel without ever calling begin().
+         */
+        bool isInitialised() const { return initialised && !faulted; }
+
+        /**
+         * Detect whether an e-paper panel is physically present on the
+         * connector. The probe drives a manual reset pulse on RST and
+         * watches BUSY for the LOW-then-HIGH transition that a healthy
+         * panel produces while it processes and then releases the
+         * reset. A missing or damaged panel does not transition and
+         * the probe returns false.
+         *
+         * The probe does NOT touch the SPI bus, does NOT call GxEPD2's
+         * `display.init()`, and does NOT modify `initialised` or
+         * `faulted`. It is purely a presence check, suitable for
+         * deciding whether to bring the panel up at boot or at
+         * AP-mode entry.
+         *
+         * Conservative: it returns true only when both BUSY
+         * transitions (LOW then HIGH) are observed within
+         * `timeoutMs`. A missing panel (BUSY never goes LOW), a
+         * stuck-LOW BUSY (damaged panel), and a stuck-HIGH BUSY
+         * (interference / damaged line) all read as "no panel" —
+         * which is the safer failure mode (a false positive would
+         * lock the user out of the configuration AP). See change
+         * `fix-display-probe-busy-transitions` for the rationale.
+         *
+         * `#ifdef ARDUINO` — the native test build provides a stub that
+         * returns false. Display detection is hardware-only.
+         *
+         * @param timeoutMs Total budget for the probe, including both
+         *                  transitions and the reset pulse. 250 ms is
+         *                  generous for a healthy panel.
+         * @return true if the BUSY line shows the panel responding.
+         */
+        static bool probe(uint32_t timeoutMs);
+
+        /**
          * Full-refresh a boot splash showing the device name.
          */
         void showSplash(const char *deviceName);
+
+        /**
+         * Full-refresh a dedicated AP-info screen. Assumes `begin()`
+         * has already been called. No-op if the panel is not
+         * initialised or has faulted.
+         *
+         * Layout: brand mark in the header band (same as the normal
+         * display), then three labelled lines — "SSID: ...", "Password:
+         * ...", "IP: ...". The watchdog is fed before and after the
+         * paged draw loop, matching the blocking-call-safety rule in
+         * `system-architecture`. See change
+         * 2026-09-04-ap-password-via-display.
+         *
+         * @param ssid     AP SSID, e.g. "Klima AABBCC"
+         * @param password AP password, e.g. "abcdef01"
+         * @param ip       AP IP address, typically "192.168.4.1"
+         */
+        void showApInfo(const char *ssid, const char *password, const char *ip);
 
         /**
          * Paint the current values.
@@ -118,6 +178,19 @@ namespace Display {
         void noteDuration(uint32_t elapsedMs, const char *what);
     };
 
+} // namespace Display
+
+#else // !ARDUINO
+
+// Native stub: the probe is hardware-only and cannot run on the host. The
+// native test build gets a deterministic "no panel" answer so any code path
+// that branches on the probe result can be tested in isolation. See change
+// 2026-09-04-ap-password-via-display for the rationale.
+namespace Display {
+    class EPaperDisplay {
+    public:
+        static bool probe(uint32_t /*timeoutMs*/) { return false; }
+    };
 } // namespace Display
 
 #endif // ARDUINO

@@ -22,7 +22,7 @@ and SHALL NOT be runtime-configurable:
 | `CS`   | 18 | `A0` |
 | `DC`   | 8  | `A3` |
 | `RST`  | 9  | `A2` |
-| `BUSY` | 17 | `A1`, input, active HIGH |
+| `BUSY` | 17 | `A1`, input, active LOW (LOW = busy, HIGH = idle) |
 | `VCC`  | —  | `3V` |
 | `GND`  | —  | `GND` |
 
@@ -636,4 +636,193 @@ The refresh policy SHALL treat a change of bucket as a change worth showing, sub
 
 - **WHEN** the controller output has settled such that the bucket no longer moves
 - **THEN** the panel SHALL return to its baseline refresh rate, driven only by the clock and by sensor readings
+
+### Requirement: E-paper panel can be probed by BUSY pin transition
+
+`Display::EPaperDisplay` SHALL expose a static `probe(uint32_t timeoutMs)`
+function that detects whether an e-paper panel is physically present on
+the display connector. The probe SHALL:
+
+1. Configure CS, DC, RST as outputs and BUSY as input, with CS held HIGH
+   (deselected), DC held LOW (command mode), and RST starting HIGH.
+2. Drive the panel reset sequence: RST HIGH → LOW → HIGH, with at least
+   10 ms in each state, then a settle of at least 20 ms so the panel has
+   time to start its busy cycle before the BUSY read begins.
+3. Watch the BUSY line. The panel pulls BUSY **LOW** (busy) while it is
+   processing the reset and releases it **HIGH** (idle) when done. Return
+   true only if both transitions are observed within `timeoutMs`.
+4. Return false if either transition is missed, or if the total elapsed
+   time exceeds `timeoutMs`.
+
+The polarity is fixed by the SSD1681 controller and documented in
+`DisplayPins.h`. The same convention is used by GxEPD2's
+`GxEPD2_EPD::_waitWhileBusy`, which exits when `digitalRead(_busy) !=
+_busy_level` and is constructed with `_busy_level = HIGH` for this panel.
+The polarity rule is therefore not the project's invention — it matches
+the panel's own contract.
+
+The probe SHALL NOT modify the GxEPD2 driver state, the SPI bus, or the
+internal `initialised` / `faulted` flags of `EPaperDisplay`. It is a
+pure presence check.
+
+The probe SHALL be `#ifdef ARDUINO`. The native test build provides a
+stub that returns false (display detection is hardware-only).
+
+#### Scenario: Healthy panel returns true
+
+- **WHEN** the BUSY pin goes LOW within ~100 ms of the reset pulse and
+  then HIGH within ~100 ms of that
+- **THEN** `probe(timeoutMs)` returns true
+
+#### Scenario: Missing panel returns false
+
+- **WHEN** the BUSY pin does not transition within `timeoutMs` (the
+  connector is empty, the panel is unpowered, or the BUSY line is
+  damaged)
+- **THEN** `probe(timeoutMs)` returns false. The caller treats a false
+  return as "no display present" and falls back to whatever the
+  absence-of-display policy is for the use case (e.g. open AP for the
+  configuration network)
+
+#### Scenario: BUSY stuck LOW returns false
+
+- **WHEN** the BUSY pin is held LOW externally (interference, damaged
+  panel)
+- **THEN** the probe sees the LOW transition but never sees the HIGH
+  transition within the timeout, and returns false. A false return on
+  a stuck-LOW pin is the safer failure mode (the panel is treated as
+  absent rather than as present), since the alternative would lock the
+  user out
+
+#### Scenario: BUSY stuck HIGH returns false
+
+- **WHEN** the BUSY pin is held HIGH externally (interference, damaged
+  panel) or floats HIGH when no panel is connected
+- **THEN** the probe never sees the LOW transition, and returns false
+  on the timeout. A false return is again the safer failure mode
+
+### Requirement: AP info screen renders SSID, password, IP
+
+`Display::EPaperDisplay::showApInfo(ssid, password, ip)` SHALL render a
+dedicated AP-mode screen on the panel: the SSID of the configuration
+AP, the WPA2-PSK passphrase, and the AP's IP address (typically
+`192.168.4.1` for the ESP32 SoftAP). The screen SHALL be a full-window
+refresh and SHALL use the same fonts and header band as `showSplash` —
+the brand mark at the top, then a three-line body with one labelled
+field per line (SSID, Password, IP). The watchdog SHALL be fed before
+and after the blocking draw loop, matching the rule in
+`system-architecture` → "Network task blocking-call safety".
+
+The method SHALL be a no-op if `initialised == false` or `faulted == true`.
+
+`DisplayManager` SHALL expose `showApInfo(ssid, password, ip)` and
+`endApInfo()` wrappers around the panel methods. `showApInfo` SHALL set
+an `apModeActive` flag so the normal `update()` tick does not paint
+temperature on top of the password screen; `endApInfo` SHALL clear the
+flag and SHALL hibernate the panel only if the manager inited the panel
+itself (i.e. `enabled == false`). A panel in normal operation is left
+alone; STA mode's normal updates will resume after the user submits WiFi
+credentials and the device restarts.
+
+#### Scenario: showApInfo paints the three fields
+
+- **WHEN** `DisplayManager::showApInfo("Klima AABBCC", "abcdef01", "192.168.4.1")`
+  is called with the panel initialised
+- **THEN** the panel SHALL show, in order, the SSID `Klima AABBCC`, the
+  passphrase `abcdef01`, and the IP `192.168.4.1`, with the brand mark
+  at the top of the panel
+
+#### Scenario: apModeActive suppresses normal updates
+
+- **WHEN** `DisplayManager::apModeActive == true`
+- **THEN** `DisplayManager::update()` SHALL return without painting,
+  regardless of whether `enabled == true` and a refresh policy says so.
+  The AP info screen stays on the panel until `endApInfo()` is called
+  or the device restarts into STA mode
+
+#### Scenario: endApInfo hibernates only the manager-init panel
+
+- **WHEN** `endApInfo()` is called on a manager that init'd the panel
+  itself (i.e. `enabled == false`)
+- **THEN** the panel SHALL be put into deep sleep via
+  `EPaperDisplay::hibernate()`, retaining the AP info image
+
+- **WHEN** `endApInfo()` is called on a manager that was already
+  enabled (`enabled == true`)
+- **THEN** the panel SHALL NOT be hibernated. The next STA-mode
+  `update()` tick will resume painting the normal status display,
+  overwriting the AP info with the current measurements
+
+### Requirement: tryBeginForApInfo delegates to the proven init path
+
+`DisplayManager::tryBeginForApInfo(config)` MUST return true when the
+e-paper panel is available for AP info rendering, and MUST return false
+otherwise. The function MUST be implemented in
+`src/display/DisplayManager.{h,cpp}`.
+
+If the manager is already in normal operation (`enabled == true`), the
+function SHALL return true without touching anything — the panel is
+obviously present and usable.
+
+Otherwise the function SHALL call `panel.probe(timeoutMs)` first and
+return false immediately if the probe reports the panel is absent. The
+probe path is the BUSY-transition check described under *E-paper panel
+can be probed by BUSY pin transition* below; it is a pure presence
+check and does NOT touch the SPI bus, the GxEPD2 driver state, or the
+`initialised` / `faulted` flags of `EPaperDisplay`.
+
+Only on a successful probe SHALL the function call
+`panel.begin(config.rotation)` to bring the panel up via the proven
+`GxEPD2::display.init()` path. `panel.begin()` returning false after a
+successful probe (a panel that responds to the reset pulse but later
+faults on init) SHALL be treated as "no display" and the function
+SHALL return false.
+
+A factory-fresh device with `DisplayConfig.enabled == false` and no
+panel physically connected therefore still goes through the probe, the
+probe correctly observes no BUSY transition, the function returns
+false, and the firmware falls back to open AP. A factory-fresh device
+with a panel physically connected goes through the probe, observes
+both BUSY transitions, calls `panel.begin(0)`, brings the panel up,
+and the AP comes up WPA2-PSK with the password on the panel.
+
+The function SHALL be `#ifdef ARDUINO`. The native test build does not
+need a stub: `DisplayManager` is itself `#ifdef ARDUINO`, so the
+boundary being tested at the native level is `Network::isApOpen()`
+returning `true` after a synthetic `startAP()` with no manager wired
+in (the native build can model "panel absent" only).
+
+#### Scenario: Healthy panel returns true
+
+- **WHEN** `tryBeginForApInfo()` is called with a connected and
+  responsive panel
+- **THEN** `panel.probe(timeoutMs)` SHALL observe both BUSY transitions
+  and return true; then `panel.begin(0)` SHALL run `GxEPD2::display.init()`
+  and return true; the function returns true
+
+#### Scenario: Manager already enabled returns true without re-init
+
+- **WHEN** `tryBeginForApInfo()` is called and `enabled == true`
+- **THEN** it returns true without calling `panel.probe()` or
+  `panel.begin()`. The panel is already up from `setupDisplay()`, and
+  the AP info screen is rendered on top of it via `showApInfo()`
+
+#### Scenario: Stuck or missing panel returns false via the BUSY transition check
+
+- **WHEN** `tryBeginForApInfo()` is called with a panel that fails the
+  BUSY-transition check (the BUSY line never goes LOW during the
+  manual reset pulse because no panel is wired up, OR BUSY is held LOW
+  externally and never releases, OR BUSY is held HIGH externally and
+  never transitions) or with no display wired up
+- **THEN** `panel.probe(timeoutMs)` SHALL return false; the function
+  returns false WITHOUT calling `panel.begin()`. The caller treats a
+  false return as "no display detected" and falls back to open AP
+
+#### Scenario: Probe passes but init faults returns false
+
+- **WHEN** `tryBeginForApInfo()` is called and `panel.probe(timeoutMs)`
+  returns true but the subsequent `panel.begin(config.rotation)` runs
+  `GxEPD2::display.init()` and the fault guard trips
+- **THEN** the function returns false. The caller falls back to open
+  AP — same outcome as a stuck-or-missing panel
 

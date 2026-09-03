@@ -1,5 +1,6 @@
 #include "Config.h"
 #include "support/LocalTime.h"
+#include "support/HostValidation.h"
 #include "PrefsKeys.h"
 #include <cmath>
 
@@ -119,6 +120,18 @@ namespace Config {
 
         if (config.actuator_channel < 0 ||
             config.actuator_channel > static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
+            config.actuator_channel = ACTUATOR_CHANNEL_UNASSIGNED;
+        }
+
+        // A non-empty host that does not pass the SSRF predicate means the
+        // stored value was written by a pre-fix firmware, or by a future
+        // caller that bypassed the route handler. Treat it as if no
+        // assignment had been made: clear the host and the channel
+        // together, the same way the host/channel pair is validated at
+        // write time. Empty host is permitted (explicit "no assignment").
+        if (config.actuator_host[0] != '\0' &&
+            !Support::isValidActuatorHost(config.actuator_host)) {
+            config.actuator_host[0] = '\0';
             config.actuator_channel = ACTUATOR_CHANNEL_UNASSIGNED;
         }
 
@@ -301,7 +314,16 @@ namespace Config {
                                                  [[maybe_unused]] int8_t actuatorChannel) {
         char hostBuf[sizeof(deviceConfig.actuator_host)] = "";
         int8_t ch = ACTUATOR_CHANNEL_UNASSIGNED;
-        if (actuatorHost != nullptr && actuatorHost[0] != '\0' && actuatorChannel >= 0 &&
+        // Defense-in-depth re-validation of the host. The HTTP route already
+        // rejects bad hosts with a 400, but a future caller (CLI, MQTT
+        // control, unit test) might bypass it. The existing
+        // "host with no channel clears the assignment" shape is preserved:
+        // bad host, missing host, or invalid host all clear the assignment
+        // rather than storing a half-bad value. See change
+        // 2026-09-03-harden-config-ap-and-actuator-host.
+        if (actuatorHost != nullptr && actuatorHost[0] != '\0' &&
+            Support::isValidActuatorHost(actuatorHost) &&
+            actuatorChannel >= 0 &&
             actuatorChannel <= static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
             strlcpy(hostBuf, actuatorHost, sizeof(hostBuf));
             ch = actuatorChannel;

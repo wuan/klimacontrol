@@ -158,16 +158,53 @@ for PID gains via `pendingGains` / `gainsChangeRequested` at
   `pio run -e adafruit_qtpy_esp32s2` (success, same flash / RAM shape as
   baseline).
 
-### 6. `/api/actuator` accepts arbitrary host string — SSRF on the LAN
+### 6. ~~`/api/actuator` accepts arbitrary host string — SSRF on the LAN~~ (resolved)
 
-`routes/ControlRoutes.cpp:298-329` accepts any string in `host`, copies it
-into a 64-byte slot, and the URL is then constructed at
+`routes/ControlRoutes.cpp:298-329` accepted any string in `host`, copied it
+into a 64-byte slot, and the URL was then constructed at
 `HeatingActuator.cpp:38` and probed every 30 s. No hostname/IPv4/URL-injection
-validation. Anyone on the LAN can force the device to issue HTTP GETs to
+validation. Anyone on the LAN could force the device to issue HTTP GETs to
 internal services and read back the response via `GET /api/actuator`.
 
-**Fix.** Validate `^[A-Za-z0-9._-]{1,253}$` or a clean IPv4 literal; reject
-`/`, `?`, `#`, `@`, whitespace.
+**Resolution.**
+
+- `src/support/HostValidation.h` — new header-only `Support::isValidActuatorHost(const char*)`
+  that returns `true` for an empty string (means "clear assignment"), an
+  IPv4 literal, or `^[A-Za-z0-9._-]{1,253}$`, and rejects every other input
+  (URL metacharacters `/`, `?`, `#`, `@`, `:`, whitespace, non-printable
+  bytes, IPv6). Pure C++, no Arduino-only headers, linkable from native
+  tests.
+- `src/routes/ControlRoutes.cpp:326-330` — the `POST /api/actuator` handler
+  now returns HTTP 400 with a JSON body that names the failing field when
+  `host` is non-empty and does not pass the validator. The empty host case
+  stays valid (the existing convention for clearing a half-configured
+  assignment).
+- `src/Config.cpp:updateActuatorAssignment()` — defense-in-depth at the
+  storage boundary. A bad host from any future caller (CLI, MQTT control,
+  unit test bypassing the route) clears the assignment the same way a
+  missing channel already does: bad host + valid channel → empty host,
+  channel = `ACTUATOR_CHANNEL_UNASSIGNED`. No partial write.
+- `src/Config.cpp:validateDeviceConfig()` — a non-empty host already in
+  NVS that does not pass the validator (written by a pre-fix firmware) is
+  cleared at load time, so a device upgrading from the buggy firmware does
+  not keep driving an actuator with a malformed URL.
+- `data/config.html` / `data/common.css` — untouched, the captive portal
+  page already handles an empty/missing host cleanly.
+- `test/test_actuator_host_validation/` — new native suite (50 cases)
+  covering the SSRF attack matrix (userinfo, path, query, port, trailing
+  whitespace, newline injection), IPv6 rejection, length boundary
+  (253/254 chars), and round-trip via `ConfigManager::updateActuatorAssignment()`
+  + `validateDeviceConfig()`.
+- `test/test_config.cpp` — extended with 12 new cases for the storage
+  path (bad host clears the assignment, valid host/hostname stored,
+  pre-fix NVS values cleared at load).
+- Spec requirements added under `http-api` ("Actuator host string is
+  validated before storage") and `heating-actuator` ("Actuator host is
+  re-validated at the storage boundary"). See change
+  `2026-09-03-harden-config-ap-and-actuator-host`.
+- Verified with `pio test -e native` (547 tests passed, including the new
+  50-case suite and 12 new config tests) and `pio run -e adafruit_qtpy_esp32s2`
+  (success, same flash / RAM shape as baseline).
 
 ### 7. ~~XSS via `innerHTML` of OTA error / version fields in the web UI~~ (resolved)
 
@@ -407,15 +444,164 @@ trusts to commit heat. There is no integrity check on responses.
 **Fix.** Document the trust assumption; consider pinning the Shelly by MAC or
 requiring local signing.
 
-### 19. Configuration AP is open (no WPA2)
+### 19. ~~Configuration AP is open (no WPA2)~~ (resolved)
 
-`Network.cpp:140` calls `WiFi.softAP(ap_ssid.c_str())` with no password.
-Anyone in radio range can associate and `POST /api/wifi` with
-attacker-controlled credentials, then have the device join an
+`Network.cpp:140` was calling `WiFi.softAP(ap_ssid.c_str())` with no
+password. Anyone in radio range could associate and `POST /api/wifi` with
+attacker-controlled credentials, after which the device joined an
 attacker-controlled SSID.
 
-**Fix.** Enable WPA2-PSK on the config AP (password derived from device id
-and printed on the case), or require a physical button press.
+**Resolution.**
+
+- `src/support/ApPassword.h` — new header-only `Support::computeApPassword(deviceId, out, outSize)`
+  that maps a six-hex-char device id deterministically to an 8-character
+  lowercase hex passphrase (always within WPA2-PSK's 8-63 character limit).
+  Pure C++, no Arduino-only headers, no allocations, no globals — safe to
+  call from native tests. FNV-1a 32-bit over the device id, XOR-folded with
+  a fixed salt `"klima-ap-v1"`, formatted as `%08x`.
+- `src/Network.cpp:138-159` — `Network::startAP()` now calls
+  `Support::computeApPassword()` to derive the passphrase and passes it
+  to `WiFi.softAP(ap_ssid.c_str(), ap_password)`, enabling WPA2-PSK. The
+  password is logged at `ESP_LOGI` so a developer with a serial monitor can
+  read it without a case label.
+- `src/WebServerManager.cpp:81-99` — a new `GET /api/ap-info` endpoint,
+  registered only in the CONFIG route set, returns the SSID and password.
+  The endpoint does not exist in OPERATIONAL mode (a request in STA mode
+  hits the framework's 404), so the password is not exposed to LAN clients
+  once the device has joined a WiFi network.
+- `data/config.html` / `data/common.css` — the captive portal page now
+  fetches `/api/ap-info` on load and renders the SSID and password in a
+  small block at the top of the form. The block uses `textContent` (not
+  `innerHTML`) for the values so a malformed response cannot inject markup.
+- `test/test_ap_password/` — new native suite (16 cases) pinning the exact
+  output of `computeApPassword` for several device ids
+  (`000000 → "eceec3eb"`, `AABBCC → "edc5507b"`, empty → `"215f7803"`), so a
+  future change to the FNV salt or mixing breaks the test rather than
+  silently rotating every deployed device's password.
+- Spec requirements added under `networking` ("Configuration AP runs
+  WPA2-PSK, not open", "AP password derivation is pure C++ and testable",
+  "AP password is discoverable without the case label"). See change
+  `2026-09-03-harden-config-ap-and-actuator-host`.
+- Verified with `pio test -e native` (547 tests passed, including the new
+  16-case suite) and `pio run -e adafruit_qtpy_esp32s2` (success, same
+  flash / RAM shape as baseline).
+- **Threat-model caveat (in the spec):** the MAC is already broadcast in
+  the SSID (`Klima <device-id>`), so anyone who can read the SSID can
+  compute the password. The WPA2-PSK raise the bar against opportunistic
+  association by a passerby who has not seen the SSID, not against a
+  targeted attacker who has. A user who forgets the password reads it
+  from the boot log or the captive portal page; the firmware does not
+  store it.
+
+**Follow-up — making the password actually discoverable.** The first
+revision of this fix shipped the password on serial and on the captive
+portal page, which has the chicken-and-egg property that the page is
+only reachable after joining the AP. A discoverable password on a
+device without serial access or a case label was therefore missing.
+See change `2026-09-04-ap-password-via-display`:
+
+- `src/display/EPaperDisplay::probe(timeoutMs)` — conservative
+  BUSY-pin probe that returns true only when the panel responds with
+  the HIGH-then-LOW transition that a healthy panel produces. A
+  stuck-LOW or stuck-HIGH BUSY line reads as "no panel", which is the
+  safer failure mode. `pio run -e adafruit_qtpy_esp32s2` builds with
+  the new code; the probe itself is hardware-only and only verifiable
+  on device.
+- `src/display/EPaperDisplay::showApInfo(ssid, password, ip)` —
+  full-window refresh of a dedicated AP-info screen (header band,
+  three labelled lines).
+- `src/display/DisplayManager::tryBeginForApInfo`, `showApInfo`,
+  `endApInfo` — one-shot bring-up of the panel for AP info
+  rendering, independent of `DisplayConfig.enabled`. A user with the
+  normal status display disabled but the panel physically connected
+  still sees the AP info.
+- `src/Network::setApPassword` / `getApPassword` — boot-time decision
+  stored on the Network instance. Empty password means open AP. The
+  probe runs once at boot; the decision is held for the rest of the
+  boot.
+- `src/Network::startAP()` — uses the stored password, or runs the AP
+  open if none is set. Renders the AP info on the panel when one is
+  wired in.
+- `src/main.cpp::setup()` — runs the probe, computes the password, and
+  calls `network.setApPassword(...)` before `network.startTask()`.
+- The captive portal page (`data/config.html`) renders either the
+  password (when the AP is WPA2-PSK) or an "(open network)" note (when
+  the AP is open), so the page is still informative on both paths.
+- Spec requirements added under `networking` (the conditional "WPA2-PSK
+  when display detected" replaces the previous unconditional rule,
+  plus a new "decision communicated before the network task starts"
+  requirement) and `display` ("E-paper panel can be probed by BUSY
+  pin transition", "AP info screen renders SSID, password, IP").
+- Verified with `pio test -e native` (559 tests passed, including 12 new
+  `Support::setApPasswordSlot` / `getApPasswordSlot` cases) and
+  `pio run -e adafruit_qtpy_esp32s2` (success, 73.5% flash, 25.0% RAM,
+  unchanged shape).
+- **Trade-off, also in the spec:** a device without the display, no
+  serial cable, and no case label cannot communicate the password, so
+  the AP is opened instead — the only configuration path that works
+  in that case. A device with the display (or any other discovery
+  channel) still gets WPA2-PSK with the password shown on the panel.
+
+**Follow-up — the deferred probe is now actually wired up.** The change
+above designed the deferred-probe path (`tryBeginForApInfo` called from
+`startAP()`), but the code was never written: `tryBeginForApInfo` did
+not exist, `startAP()` checked the `DisplayConfig.enabled` flag
+instead, and a factory-fresh device with `DisplayConfig.enabled ==
+false` (the spec default) brought the AP up open even when a panel was
+on the SPI connector. The fix shipped in change
+`probe-display-at-ap-entry`:
+
+- `src/display/DisplayManager::tryBeginForApInfo(config)` — defined
+  in `DisplayManager.{h,cpp}`. Short-circuits to `true` when the
+  manager is already enabled, otherwise calls `panel.begin()` (the
+  proven GxEPD2 init path) and returns its result.
+- `src/Network::startAP()` — replaced the `isEnabled()` check with a
+  `tryBeginForApInfo()` call. The decision is now "did the panel
+  respond to bring-up?" rather than "did the user enable the display
+  via the web UI?". A factory-fresh device with a panel connected
+  reaches the WPA2-PSK branch; a device with no panel still falls
+  back to open AP via the same probe.
+- New native test suite `test_display_manager_ap_info_probe` (5 cases)
+  pins the boundary that IS visible in native — the
+  default-constructed `Config::DisplayConfig` and the password buffer
+  size — and the ESP32 build still ships at 73.4% flash, 25.0% RAM,
+  unchanged shape.
+
+**Follow-up — the deferred probe was actually wired up but always
+detected a panel.** The `probe-display-at-ap-entry` change shipped
+`tryBeginForApInfo()` as a one-step "delegate to `panel.begin()`"
+call. The bug: `GxEPD2::display.init()` silently succeeds when no
+panel is connected (the SPI writes go to nothing), `panel.begin()`
+then returns `!faulted`, and `faulted` only flips after three
+consecutive *refresh* timeouts — never on init — so the function
+always returned `true`. A factory-fresh device with nothing on the
+SPI connector therefore still went into the WPA2-PSK branch and
+locked the user out, because the password was rendered on a panel
+that was not there. The follow-up fix shipped in change
+`fix-display-probe-busy-transitions`:
+
+- `src/display/EPaperDisplay::probe(timeoutMs)` — rewritten to
+  implement the spec's four-step BUSY-transition check directly
+  (configure CS/DC/RST outputs + BUSY input, drive RST HIGH →
+  LOW → HIGH with ≥10 ms in each state plus ≥20 ms settle, then
+  require BUSY to transition LOW then HIGH within `timeoutMs`).
+  No SPI bus, no `GxEPD2` state, no `initialised` / `faulted`
+  mutation. The previous "we tried the BUSY probe and it timed out
+  on real panels" rationale was about a sequence that *also* sent
+  a SPI SWRESET and then waited for BUSY=HIGH — the SWRESET was
+  the failure mode, not the BUSY-transition check itself.
+- `src/display/DisplayManager::tryBeginForApInfo(config)` — now
+  calls `panel.probe(250)` first and only calls `panel.begin(...)`
+  when the probe returns `true`. A failed probe short-circuits to
+  `false` without touching the SPI bus, which is what makes the
+  absent-panel case observable on a factory-fresh boot.
+- New native test suite `test_display_probe_busy_transitions`
+  (4 cases) pins the native stub contract (`probe()` returns
+  `false` regardless of timeout) and a static check that
+  `probe`'s signature has not drifted.
+- ESP32 build still ships at 73.4% flash, 25.0% RAM. The probe
+  adds a handful of `digitalWrite` / `delay` / `digitalRead` calls
+  — under 200 bytes of code, no heap, no stack change.
 
 ### 20. E-paper device name is cached at `begin()` and never refreshes
 
@@ -816,7 +1002,8 @@ Silent flash failure — should log a warning and increment a counter.
    controlled test discovery; the 30 suites were always being run).
 8. ~~**#10**, **#11**, **#12**, **#13** — documentation/spec drift
    corrections, cheap.~~ Resolved (see change `fix-doc-spec-drift`).
-9. **#6**, **#19** — SSRF + open AP together make LAN-side reconfiguration
-   a single POST away.
+9. ~~**#6**, **#19** — SSRF + open AP together make LAN-side reconfiguration
+   a single POST away.~~ Resolved (see change
+   `2026-09-03-harden-config-ap-and-actuator-host`).
 10. **#16**, **#17** — TOCTOU and unbounded body sizes in the API.
 11. **#22**, **#36** — actuator fault detection hardening.

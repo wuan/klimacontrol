@@ -8,6 +8,7 @@
 #include "DeviceId.h"
 #include "Constants.h"
 #include "support/RequestDiag.h"
+#include "support/ApPassword.h"
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>

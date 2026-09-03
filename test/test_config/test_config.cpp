@@ -456,6 +456,131 @@ void test_update_tuning_leaves_other_fields_alone() {
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, 3.0f, stored.kp);
 }
 
+// --- ConfigManager::updateActuatorAssignment: host validation ---
+
+// Empty host from any caller clears the assignment (existing behaviour).
+void test_update_actuator_assignment_empty_clears() {
+    Config::ConfigManager manager;
+    manager.updateActuatorAssignment("192.168.1.1", 2);
+    manager.updateActuatorAssignment("", 2);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
+    TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
+}
+
+// Null host clears the assignment (same as empty).
+void test_update_actuator_assignment_null_clears() {
+    Config::ConfigManager manager;
+    manager.updateActuatorAssignment("192.168.1.1", 2);
+    manager.updateActuatorAssignment(nullptr, 2);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
+    TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
+}
+
+// A valid IPv4 literal with a valid channel is stored as-is.
+void test_update_actuator_assignment_valid_ipv4_stored() {
+    Config::ConfigManager manager;
+    manager.updateActuatorAssignment("192.168.1.1", 2);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_EQUAL_STRING("192.168.1.1", stored.actuator_host);
+    TEST_ASSERT_EQUAL(2, stored.actuator_channel);
+}
+
+// A valid hostname (mDNS-style, with dashes and dots) is stored as-is.
+void test_update_actuator_assignment_valid_hostname_stored() {
+    Config::ConfigManager manager;
+    manager.updateActuatorAssignment("shellypro4pm-aabbccddeeff.local", 0);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_EQUAL_STRING("shellypro4pm-aabbccddeeff.local", stored.actuator_host);
+    TEST_ASSERT_EQUAL(0, stored.actuator_channel);
+}
+
+// SSRF payloads are rejected at the storage boundary, the same way a
+// valid channel check is. The host is treated as if empty: cleared,
+// channel reset. This is the defense-in-depth half of the route-handler
+// validation — a future caller bypassing the route cannot sneak a
+// malicious host into NVS.
+void test_update_actuator_assignment_slash_rejected() {
+    Config::ConfigManager manager;
+    manager.updateActuatorAssignment("192.168.1.42/admin", 0);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
+    TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
+}
+
+void test_update_actuator_assignment_userinfo_rejected() {
+    Config::ConfigManager manager;
+    manager.updateActuatorAssignment("192.168.1.42@evil.example.com", 0);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
+    TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
+}
+
+void test_update_actuator_assignment_ipv6_rejected() {
+    Config::ConfigManager manager;
+    manager.updateActuatorAssignment("fe80::1", 0);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
+    TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
+}
+
+// Bad host clears the assignment entirely, the same way an empty host
+// or an out-of-range channel does. This matches the existing
+// "host with no channel clears the assignment" pattern. The spec calls
+// this out explicitly: bad host = empty host, and the channel is reset.
+void test_update_actuator_assignment_bad_clears_previous_good() {
+    Config::ConfigManager manager;
+    manager.updateActuatorAssignment("192.168.1.1", 2);
+    manager.updateActuatorAssignment("evil/../path", 3);
+    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
+    TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
+}
+
+// --- validateDeviceConfig: bad host stored by a pre-fix firmware ---
+
+// A host containing URL metacharacters (stored by a pre-fix firmware)
+// is cleared at load time and the channel is reset. The device must
+// never reach actuator tick() with a malformed host.
+void test_validate_device_config_bad_host_cleared() {
+    Config::DeviceConfig config;
+    strlcpy(config.actuator_host, "192.168.1.42/admin", sizeof(config.actuator_host));
+    config.actuator_channel = 2;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_EQUAL_STRING("", config.actuator_host);
+    TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, config.actuator_channel);
+}
+
+void test_validate_device_config_ipv6_host_cleared() {
+    Config::DeviceConfig config;
+    strlcpy(config.actuator_host, "fe80::1", sizeof(config.actuator_host));
+    config.actuator_channel = 1;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_EQUAL_STRING("", config.actuator_host);
+    TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, config.actuator_channel);
+}
+
+// A valid host is preserved by validateDeviceConfig.
+void test_validate_device_config_valid_host_preserved() {
+    Config::DeviceConfig config;
+    strlcpy(config.actuator_host, "shelly.local", sizeof(config.actuator_host));
+    config.actuator_channel = 3;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_EQUAL_STRING("shelly.local", config.actuator_host);
+    TEST_ASSERT_EQUAL(3, config.actuator_channel);
+}
+
+// An empty host (unassigned) is preserved by validateDeviceConfig.
+void test_validate_device_config_empty_host_preserved() {
+    Config::DeviceConfig config;
+    config.actuator_host[0] = '\0';
+    config.actuator_channel = Config::ACTUATOR_CHANNEL_UNASSIGNED;
+    Config::validateDeviceConfig(config);
+    TEST_ASSERT_EQUAL_STRING("", config.actuator_host);
+    TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, config.actuator_channel);
+}
+
 // --- validateMqttConfig ---
 
 void test_validate_mqtt_config_valid_values_unchanged() {
@@ -657,6 +782,20 @@ int runUnityTests() {
     RUN_TEST(test_update_tuning_round_trip);
     RUN_TEST(test_update_tuning_validates_before_storing);
     RUN_TEST(test_update_tuning_leaves_other_fields_alone);
+    // ConfigManager::updateActuatorAssignment: host validation
+    RUN_TEST(test_update_actuator_assignment_empty_clears);
+    RUN_TEST(test_update_actuator_assignment_null_clears);
+    RUN_TEST(test_update_actuator_assignment_valid_ipv4_stored);
+    RUN_TEST(test_update_actuator_assignment_valid_hostname_stored);
+    RUN_TEST(test_update_actuator_assignment_slash_rejected);
+    RUN_TEST(test_update_actuator_assignment_userinfo_rejected);
+    RUN_TEST(test_update_actuator_assignment_ipv6_rejected);
+    RUN_TEST(test_update_actuator_assignment_bad_clears_previous_good);
+    // validateDeviceConfig: bad host stored by a pre-fix firmware
+    RUN_TEST(test_validate_device_config_bad_host_cleared);
+    RUN_TEST(test_validate_device_config_ipv6_host_cleared);
+    RUN_TEST(test_validate_device_config_valid_host_preserved);
+    RUN_TEST(test_validate_device_config_empty_host_preserved);
     // MqttConfig validation
     RUN_TEST(test_validate_mqtt_config_valid_values_unchanged);
     RUN_TEST(test_validate_mqtt_config_zero_port_reset);

@@ -55,6 +55,68 @@ namespace Display {
         void disableAndClear();
 
         /**
+         * Blank the panel without changing the `enabled` flag. Used by
+         * the Network task when the user submits new WiFi credentials
+         * from AP mode and the device is about to restart into STA
+         * mode: clearing the panel wipes the AP info (SSID + password
+         * + IP) so it does not persist through the restart, while
+         * leaving `enabled` alone means the user's DisplayConfig
+         * preference is preserved for the next boot.
+         *
+         * No-op if the panel is not initialised. Blocks for up to one
+         * full refresh (~2.6 s).
+         */
+        void clear();
+
+        /**
+         * Bring the panel up on demand for AP info rendering. Returns
+         * `true` when the e-paper panel is available, `false` otherwise.
+         *
+         * If the manager is already in normal operation (`enabled ==
+         * true`), the function returns `true` without touching anything
+         * — the panel is obviously present and usable.
+         *
+         * Otherwise the function calls `panel.probe(timeoutMs)` first
+         * (the BUSY-transition check described under
+         * `display` → *E-paper panel can be probed by BUSY pin
+         * transition*) and returns `false` immediately on a failed
+         * probe — the probe catches the no-panel case that
+         * `panel.begin()` alone misses, because
+         * `GxEPD2::display.init()` silently succeeds when no panel
+         * is connected. Only on a successful probe does the
+         * function call `panel.begin(config.rotation)`, which runs
+         * `GxEPD2::display.init()` (the proven init path) and
+         * returns its result; `panel.begin()` returning false after
+         * a successful probe is treated as "no display" and the
+         * function returns false. See change
+         * `fix-display-probe-busy-transitions` for the rationale.
+         *
+         * No-op on the panel state when the manager was already enabled
+         * — the panel's `initialised` flag is left as-is.
+         */
+        bool tryBeginForApInfo(const Config::DisplayConfig &config);
+
+        /**
+         * Paint the AP info screen and set `apModeActive` so the normal
+         * `update()` tick does not paint temperature on top of the
+         * password. No-op if the panel is not initialised.
+         */
+        void showApInfo(const char *ssid, const char *password, const char *ip);
+
+        /**
+         * Clear `apModeActive`. A panel in normal operation is left
+         * alone; the STA-mode `update()` tick takes over after the user
+         * submits WiFi credentials and the device restarts.
+         */
+        void endApInfo();
+
+        /**
+         * True while the AP info screen is showing. `update()` checks
+         * this and skips painting on top of the password.
+         */
+        bool isApModeActive() const { return apModeActive; }
+
+        /**
          * Evaluate the current measurements and repaint if the policy says so.
          * Safe to call every second; returns immediately in the common case.
          */
@@ -83,6 +145,7 @@ namespace Display {
         uint8_t demandBucket = 0;
 
         bool enabled = false;
+        bool apModeActive = false;
         char deviceName[32] = "";
 
         // Serialises panel access between the Network task (periodic update())
