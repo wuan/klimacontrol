@@ -58,7 +58,7 @@ def build_lcov_capture_cmd(output_file, lcov_version):
         "--output-file", output_file,
     ]
     if lcov_version >= 2:
-        cmd += ["--ignore-errors", "mismatch,inconsistent"]
+        cmd += ["--ignore-errors", "mismatch,inconsistent,negative"]
     return cmd
 
 
