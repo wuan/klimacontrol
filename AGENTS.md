@@ -264,18 +264,29 @@ float controlOutput = sensorController.updateControl();
 
 ### Status LED Control
 
-The status LED provides visual feedback using the `StatusLed` class:
+The status LED provides visual feedback using the `StatusLed` class.
+The shipped `LedState` enum at `src/StatusLed.h:17-23` is
+`OFF, ON, STARTUP, TRANSMIT_DATA, ERROR`; the convenience methods
+that exist on the class are `on()`, `off()`, `toggle()`,
+`setProgress(float)`, `getProgress()`, `getState()`, and
+`setState(LedState)`. There is no `LedState::MEASURING`,
+`LedState::BLINK_SLOW`, or `LedState::PULSE` in the codebase, and
+there are no `setMeasuring()` / `setNormal()` shortcuts.
 
 ```cpp
 // Set LED states
-statusLed.setState(LedState::ON);           // Green - normal operation
-statusLed.setState(LedState::MEASURING);   // Yellow - active measurement
-statusLed.setState(LedState::BLINK_SLOW); // Blue - AP mode
-statusLed.setState(LedState::PULSE);       // Red - error/warning
+statusLed.setState(LedState::OFF);            // Dark
+statusLed.setState(LedState::ON);             // MQTT progress gradient (green→red)
+statusLed.setState(LedState::STARTUP);        // Slow blue blink during boot / WiFi association
+statusLed.setState(LedState::TRANSMIT_DATA);  // Brief white flash during MQTT publish
+statusLed.setState(LedState::ERROR);          // Solid red — fatal init error
 
 // Convenience methods
-statusLed.setMeasuring();  // Shortcut for yellow during measurement
-statusLed.setNormal();     // Shortcut for green normal operation
+statusLed.on();                // Same as setState(LedState::ON)
+statusLed.off();               // Same as setState(LedState::OFF)
+statusLed.toggle();            // Flips between ON and OFF
+statusLed.setProgress(float);  // 0.0 = green, 1.0 = red in ON state
+statusLed.update();            // Drives the animation; call from the network task each iteration
 ```
 
 ### Serial Logging
@@ -489,10 +500,10 @@ Complete documentation in `docs/` directory:
 
 ## Known Constraints
 
-- **No PSRAM**: Adafruit QT Py ESP32-S2 board has no PSRAM - keep memory usage minimal
-- **RAM budget**: ~320KB available, current usage ~56KB (17.2%)
+- **PSRAM**: ~2 MB on board (verified on-device at `src/Network.cpp:555` as `psram_size 2094735`). Task stacks, FreeRTOS / lwIP / WiFi / mbedTLS / DMA allocations remain internal-SRAM-only per the *Memory requirements* paragraph above; PSRAM is available for non-real-time allocations but the firmware does not currently use it for any.
+- **RAM budget**: ~320KB internal SRAM available (of which ~56KB used, 17.2%); ~2MB PSRAM additional
 - **Flash budget**: 4MB available, current usage ~1MB (25%)
-- **Stack size**: Sensor Monitor task has 8KB stack, Network task has 10KB stack
+- **Stack size**: Sensor Monitor task has 6KB stack, Network task has 8KB stack (both HWM-driven; periodic "stack HWM" lines log the live measurement)
 - **Single-core**: ESP32-S2 has only one core (unlike dual-core ESP32)
 - **JSON document**: `JsonDocument` on the handler's stack frame; variable-length data via the ArduinoJson default allocator (`heap_caps_malloc` / `free` on ESP32), freed at handler return. The document object itself MUST NOT be heap-allocated (`make_unique<JsonDocument>` / `new JsonDocument` are forbidden in route handlers).
 - **Sensor data**: Temperature range -40°C to +125°C, humidity 0-100% RH
@@ -501,8 +512,11 @@ Complete documentation in `docs/` directory:
 
 The project is named "Klima-Control" for temperature control. Device IDs follow format `klima-AABBCC` where AABBCC is the last 3 bytes of MAC address. The mDNS hostname removes the dash: `klima-aabbcc.local`.
 
-The status LED provides visual feedback:
-- **Green**: Normal operation
-- **Yellow**: Active sensor measurement
-- **Blue**: AP mode (configuration)
-- **Red**: Error or warning condition
+The status LED provides visual feedback driven by the `LedState` values at `src/StatusLed.h:17-23`:
+- **`OFF`**: LED dark
+- **`ON`**: MQTT publish progress gradient (green when freshly published, red just before publish) — *not* a steady "green = normal" indicator
+- **`STARTUP`**: slow dark-blue blink during boot and WiFi association
+- **`TRANSMIT_DATA`**: brief near-white flash during an MQTT publish
+- **`ERROR`**: solid red for fatal init errors (e.g. mutex allocation failure)
+
+There is no AP-mode LED state and no yellow "active measurement" state in the shipped enum.

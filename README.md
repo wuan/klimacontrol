@@ -1,4 +1,4 @@
-[![PlatformIO CI](https://github.com/wuan-bot/klimacontrol/actions/workflows/test.yml/badge.svg)](https://github.com/wuan-bot/klimacontrol/actions/workflows/test.yml)
+[![PlatformIO CI](https://github.com/wuan/klimacontrol/actions/workflows/test.yml/badge.svg)](https://github.com/wuan/klimacontrol/actions/workflows/test.yml)
 [![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=wuan_klimacontrol&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=wuan_klimacontrol)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=wuan_klimacontrol&metric=coverage)](https://sonarcloud.io/summary/new_code?id=wuan_klimacontrol)
 [![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=wuan_klimacontrol&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=wuan_klimacontrol)
@@ -25,14 +25,15 @@ ESP32-based temperature and humidity controller with web interface for monitorin
 
 ## Hardware
 
-**Primary board**: Adafruit QT Py ESP32-S2 (no PSRAM)
+**Primary board**: Adafruit QT Py ESP32-S2 (~320 KB internal SRAM + ~2 MB PSRAM)
 
 **Matching Housing**: [3D-printable housing on MakerWorld](https://makerworld.com/de/models/2521186)
 
 | Specification | Value |
 |---------------|-------|
 | MCU | ESP32-S2 (single-core @ 240MHz) |
-| RAM | 320KB |
+| Internal RAM | ~320 KB (task stacks, FreeRTOS, WiFi, mbedTLS, DMA — all internal-only) |
+| PSRAM | ~2 MB on board (verified on-device as `psram_size 2094735`; available for non-real-time allocations) |
 | Flash | 4MB |
 | Sensors | Multiple I2C sensors (auto-detected) |
 | I2C pins | SDA: GPIO 8, SCL: GPIO 9 |
@@ -366,14 +367,14 @@ Coverage report is automatically generated after running tests.
 
 - **No raw pointers**: All dynamic memory managed via `std::unique_ptr`
 - **RAII pattern**: Resources automatically released when out of scope
-- **RAM budget**: ~320KB available, currently using ~56KB (17.2%)
+- **RAM budget**: ~320KB internal SRAM + ~2MB PSRAM, currently using ~56KB internal (17.2%)
 - **Flash budget**: 4MB available, currently using ~1MB (25%)
 
 ## Constraints
 
-- **No PSRAM**: ESP32-S2 has no PSRAM - memory usage is strictly limited
+- **PSRAM**: the board exposes ~2 MB of PSRAM, but task stacks, FreeRTOS / lwIP / WiFi / mbedTLS / DMA allocations remain internal-SRAM-only — the OTA gate and the network-task low-heap restart guard both use `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)`.
 - **Single-core**: All tasks run on one core, optimize for responsiveness
-- **Stack size**: Sensor Monitor task has 8KB stack, Network task has 10KB stack
+- **Stack size**: Sensor Monitor task has 6KB stack, Network task has 8KB stack (both HWM-driven; periodic "stack HWM" lines log the live measurement)
 - **JSON buffer**: 512 bytes for API responses
 
 ## License

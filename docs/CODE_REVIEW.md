@@ -238,45 +238,115 @@ ones, yet it is the one still using the fragile path.
 **Fix.** Migrate `Network::startTask()` to `xTaskCreateStatic`, matching the
 OTA pattern.
 
-### 10. Spec/code mismatch on task stack sizes — OpenSpec claims sizes the code no longer satisfies
+### 10. ~~Spec/code mismatch on task stack sizes — OpenSpec claims sizes the code no longer satisfies~~ (resolved)
 
-`openspec/specs/system-architecture/spec.md:46,50` require Network task ≥ 14 KB
-and SensorMonitor ≥ 8 KB. Actual: 8192 B (`Network.cpp:988`) and 6144 B
-(`SensorMonitor.cpp:33`) — both justified with measured high-water marks and
-headroom. The code is right; the spec is stale. Spec validation cannot catch
-this because the spec is self-consistent.
+`openspec/specs/system-architecture/spec.md:46,50` required Network task ≥
+14 KB and SensorMonitor ≥ 8 KB. Actual: 8192 B (`Network.cpp:988`) and
+6144 B (`SensorMonitor.cpp:33`) — both justified with measured high-water
+marks and headroom. The code was right; the spec was stale. Spec validation
+could not catch this because the spec was self-consistent.
 
-**Fix.** Run `/opsx:propose` to lower the spec values and archive, with the
-measured-justification comments preserved in the design doc.
+**Resolution.**
 
-### 11. AGENTS.md self-contradiction + README/spec wrong on PSRAM
+- `openspec/specs/system-architecture/spec.md` "FreeRTOS task structure"
+  scenarios lowered to *Network task stack is at least 6 KB* and *Sensor
+  Monitor task stack is at least 4 KB*. The in-tree values (8192 B at
+  `src/Network.cpp:993`, 6144 B at `src/task/SensorMonitor.cpp:33`) and
+  the measured-peak comments (`src/Network.cpp:976-989`,
+  `src/task/SensorMonitor.cpp:22-29`) are recorded in-line with the
+  `THEN` clauses, so a future reviewer can verify the spec against the
+  code without consulting Git history.
+- `AGENTS.md:495` and `README.md:376` "Stack size" lines corrected from
+  8 KB / 10 KB to the actual 6 KB / 8 KB values.
+- **Lower-bound, not exact-match:** the spec remains a *floor* (well
+  below the in-tree allocations), so a future reviewer who wants to
+  raise the in-tree value past the documented bound has to update the
+  spec, and the periodic "stack HWM" diagnostic lines catch that
+  change immediately.
+- See change `fix-doc-spec-drift` for the design rationale.
+
+### 11. ~~AGENTS.md self-contradiction + README/spec wrong on PSRAM~~ (resolved)
 
 `Network.cpp:555` records on-device: `psram_size 2094735` (~2 MB).
-`AGENTS.md:460` correctly says "320 KB internal + 2 MB PSRAM", but
-`AGENTS.md:492` says "**No PSRAM**: Adafruit QT Py ESP32-S2 board has no
+`AGENTS.md:460` correctly said "320 KB internal + 2 MB PSRAM", but
+`AGENTS.md:492` said "**No PSRAM**: Adafruit QT Py ESP32-S2 board has no
 PSRAM"; `README.md:28,374` and `openspec/specs/system-architecture/spec.md:8,13`
-all say "no PSRAM" or "PSRAM SHALL NOT be assumed available".
+all said "no PSRAM" or "PSRAM SHALL NOT be assumed available".
 
-**Fix.** Pick one truth. If the device has PSRAM, update `AGENTS.md:492`,
-`README.md`, and the spec to match; document why task stacks remain
-internal-only.
+**Resolution.**
 
-### 12. StatusLed enum contradicts AGENTS.md (documentation references non-existent API)
+- `AGENTS.md:490-498` ("Known Constraints") — the "**No PSRAM**" bullet
+  replaced with the corrected shape: "~2 MB PSRAM on board, verified at
+  `src/Network.cpp:555`; OTA / WiFi / mbedTLS / task-stack allocations
+  remain internal-SRAM-only per the *Memory requirements* paragraph at
+  `AGENTS.md:460`".
+- `README.md:28-37` — the primary-board line and the hardware table both
+  document ~320 KB internal SRAM + ~2 MB PSRAM. The "Internal RAM" row
+  names the internal-only constraint explicitly.
+- `README.md:374` — the "**No PSRAM**" Constraints bullet rewritten to
+  acknowledge the ~2 MB PSRAM and clarify the internal-only rule.
+- `openspec/specs/system-architecture/spec.md:6-13` ("Target hardware
+  platform") — "PSRAM SHALL NOT be assumed available" replaced with an
+  acknowledgment that the board exposes ~2 MB PSRAM and a pointer to the
+  *Memory budget* requirement for the internal-only constraint.
+- `openspec/specs/system-architecture/spec.md:17-32` ("Memory budget") —
+  new sentence recording that the OTA / low-heap guard uses
+  `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` (not
+  `ESP.getFreeHeap()`) because `ESP.getFreeHeap()` includes PSRAM
+  (`CONFIG_SPIRAM_USE_MALLOC=y`) and the protected allocations are
+  internal-only.
+- See change `fix-doc-spec-drift` for the design rationale.
+
+### 12. ~~StatusLed enum contradicts AGENTS.md (documentation references non-existent API)~~ (resolved)
 
 `LedState` (`src/StatusLed.h:17-23`) is `OFF, ON, STARTUP, TRANSMIT_DATA,
-ERROR`. `AGENTS.md:272-278` references `LedState::MEASURING`,
+ERROR`. `AGENTS.md:272-278` referenced `LedState::MEASURING`,
 `LedState::BLINK_SLOW`, `LedState::PULSE`, and convenience methods
 `setMeasuring()` / `setNormal()` — none of which exist.
 
-**Fix.** Either implement the documented states (yellow measuring / blue AP /
-red pulse) or update `AGENTS.md` to match the shipped enum.
+**Resolution.**
 
-### 13. OpenSpec specs contradict each other on `WebServerManager` ownership
+- `AGENTS.md:265-279` ("Status LED Control") — replaced with a section
+  that documents the *shipped* `LedState` enum and the methods that
+  actually exist (`on()`, `off()`, `toggle()`, `setProgress(float)`,
+  `getProgress()`, `getState()`, `setState(LedState)`, `update()`). Each
+  example now resolves to a real symbol.
+- `AGENTS.md:504-508` (LED color summary at the bottom of *Device
+  Naming*) — the Green / Yellow / Blue / Red paragraph rewritten to
+  match what `src/StatusLed.cpp:36-63` actually does: `ON` is a
+  green→red gradient driven by MQTT publish progress (not steady
+  green), `STARTUP` is a slow dark-blue blink during boot / WiFi
+  association, `TRANSMIT_DATA` is a brief near-white flash, `ERROR` is
+  solid red. There is no AP-mode LED state and no yellow "active
+  measurement" state in the shipped enum, and the prose now says so.
+- The `status-led` capability spec (`openspec/specs/status-led/spec.md`)
+  was already aligned with the shipped enum and required no changes.
+- See change `fix-doc-spec-drift` for the design rationale.
 
-`openspec/specs/system-architecture/spec.md:91` says Network *owns*
-`WebServerManager`; `openspec/specs/memory-management/spec.md:11-43` and the
-code (`main.cpp:137`) construct it once at file scope and reuse. The
-`system-architecture` spec is wrong; needs an archive change.
+### 13. ~~OpenSpec specs contradict each other on `WebServerManager` ownership~~ (resolved)
+
+`openspec/specs/system-architecture/spec.md:91` said Network *owns*
+`WebServerManager`; `openspec/specs/memory-management/spec.md:11-43` and
+the code (`main.cpp:137`) construct it once at file scope and reuse. The
+`system-architecture` spec was wrong; the code and the
+`memory-management` spec were right.
+
+**Resolution.**
+
+- `openspec/specs/system-architecture/spec.md:89-101` ("Ownership
+  hierarchy") — the spec now states that the `Network` instance owns
+  the `AsyncWebServer` and `StatusLed` instances, and holds a
+  *non-owning* `WebServerManager*` to the file-scope instance
+  constructed once in `main.cpp` (`src/main.cpp:137`, wired via
+  `Network::setWebServer(...)` at `src/main.cpp:201`).
+- `openspec/specs/system-architecture/spec.md:100-102` ("Webserver
+  lifetime" scenario) — rewritten to describe a `setMode(...)` call on
+  the reused instance (citing `src/Network.cpp:347-352, 427-432,
+  504-512`) instead of a destroy-and-reconstruct pattern.
+- `openspec/specs/memory-management/spec.md:11-43` ("Long-lived
+  singletons are constructed once") required no change — it was already
+  aligned with the code.
+- See change `fix-doc-spec-drift` for the design rationale.
 
 ---
 
@@ -744,8 +814,8 @@ Silent flash failure — should log a warning and increment a counter.
 7. ~~**#8** test filter excludes ~half the suite — `pio test -e native`
    silently green.~~ Resolved (misdiagnosis — `build_src_filter` never
    controlled test discovery; the 30 suites were always being run).
-8. **#10**, **#11**, **#12**, **#13** — documentation/spec drift
-   corrections, cheap.
+8. ~~**#10**, **#11**, **#12**, **#13** — documentation/spec drift
+   corrections, cheap.~~ Resolved (see change `fix-doc-spec-drift`).
 9. **#6**, **#19** — SSRF + open AP together make LAN-side reconfiguration
    a single POST away.
 10. **#16**, **#17** — TOCTOU and unbounded body sizes in the API.
