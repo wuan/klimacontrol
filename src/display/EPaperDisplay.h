@@ -103,6 +103,11 @@ namespace Display {
         // callers must set the font they need next.
         void drawHeader();
 
+        void drawMeasurements(const char *tempStr, const char *humStr);
+
+        void drafFooter(const char *footerName, const char *footerDateTime, Display::ControlState controlState,
+                        const char *setpointStr, uint8_t demandSegments);
+
         void runPagedDraw(const char *tempStr, const char *humStr,
                           const char *footerName, const char *footerDateTime,
                           ControlState controlState, const char *setpointStr,

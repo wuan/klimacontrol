@@ -369,6 +369,78 @@ namespace Display {
         display.print(HEADER_TITLE);
     }
 
+    void EPaperDisplay::drawMeasurements(const char *tempStr, const char *humStr) {
+        display.setFont(&FreeSansBold24pt7b);
+        drawTemperatureWithDegree(tempStr, TEMP_BASELINE_Y);
+
+        display.setFont(&FreeSans12pt7b);
+        char humLine[24];
+        snprintf(humLine, sizeof(humLine), "%s %%rH", humStr);
+        drawCentered(humLine, HUMIDITY_BASELINE_Y);
+    }
+
+    void EPaperDisplay::drafFooter(const char *footerName, const char *footerDateTime, Display::ControlState controlState, const char *setpointStr, uint8_t demandSegments) {
+        // Drawn on every refresh, partial included: the footer carries a
+        // live clock, so it must never be older than the values above it.
+        display.drawFastHLine(FOOTER_MARGIN_X, FOOTER_RULE_Y,
+                              PANEL_W - 2 * FOOTER_MARGIN_X, GxEPD_BLACK);
+
+        display.setFont(&FreeSans9pt7b);
+
+        // --- right column, drawn first: it fixes how much room the left
+        // column has, and it is the field that must never be truncated ---
+
+        // Line 1: setpoint, then the degree ring flush with the right margin.
+        const int16_t ringCx = static_cast<int16_t>(FOOTER_RIGHT_X - SETPOINT_DEGREE_RADIUS);
+        display.drawCircle(ringCx, SETPOINT_DEGREE_CY, SETPOINT_DEGREE_RADIUS, GxEPD_BLACK);
+
+        const int16_t setpointRightX =
+                static_cast<int16_t>(ringCx - SETPOINT_DEGREE_RADIUS - SETPOINT_DEGREE_GAP);
+        drawRightAligned(setpointStr, setpointRightX, FOOTER_LINE1_Y);
+        const int16_t setpointLeftX =
+                static_cast<int16_t>(setpointRightX - textWidth(setpointStr));
+
+        // Line 2: control symbol, also flush with the right margin.
+        const int16_t symbolCx = static_cast<int16_t>(FOOTER_RIGHT_X - CONTROL_SYMBOL_RADIUS);
+        drawControlSymbol(symbolCx, CONTROL_SYMBOL_CY, controlState);
+        const int16_t symbolLeftX = static_cast<int16_t>(symbolCx - CONTROL_SYMBOL_RADIUS);
+
+        // Demand bar, left of the symbol. Only drawn while control is
+        // enabled: when it is off the minus symbol already says everything,
+        // and an empty bar would just be clutter. When enabled the bar is
+        // drawn even at zero demand, because "enabled but asking for
+        // nothing" is worth distinguishing from "switched off".
+        int16_t rightColumnLeftX = symbolLeftX;
+        if (controlState != Display::ControlState::INACTIVE &&
+            controlState != Display::ControlState::UNCERTAIN) {
+            const int16_t barRightX = static_cast<int16_t>(symbolLeftX - DEMAND_BAR_GAP);
+            const int16_t barLeftX = static_cast<int16_t>(barRightX - DEMAND_BAR_W);
+            drawDemandBar(barLeftX, demandSegments);
+            rightColumnLeftX = barLeftX;
+        }
+
+        // --- left column, each line truncated to what its own row leaves ---
+        char footerField[40];
+        if (footerName != nullptr && footerName[0] != '\0') {
+            const int16_t maxWidth = static_cast<int16_t>(setpointLeftX - FOOTER_COLUMN_GAP -
+                                                          FOOTER_MARGIN_X);
+            fitToWidth(footerName, maxWidth, footerField, sizeof(footerField));
+            if (footerField[0] != '\0') {
+                display.setCursor(FOOTER_MARGIN_X, FOOTER_LINE1_Y);
+                display.print(footerField);
+            }
+        }
+        if (footerDateTime != nullptr && footerDateTime[0] != '\0') {
+            const int16_t maxWidth = static_cast<int16_t>(rightColumnLeftX -
+                                                          FOOTER_COLUMN_GAP - FOOTER_MARGIN_X);
+            fitToWidth(footerDateTime, maxWidth, footerField, sizeof(footerField));
+            if (footerField[0] != '\0') {
+                display.setCursor(FOOTER_MARGIN_X, FOOTER_LINE2_Y);
+                display.print(footerField);
+            }
+        }
+    }
+
     void EPaperDisplay::runPagedDraw(const char *tempStr, const char *humStr,
                                      const char *footerName, const char *footerDateTime,
                                      Display::ControlState controlState, const char *setpointStr,
@@ -377,77 +449,11 @@ namespace Display {
         do {
             display.fillScreen(GxEPD_WHITE);
 
-            // Above the partial window, so this is a no-op on a partial
-            // refresh and only the full refreshes repaint it.
             drawHeader();
 
-            display.setFont(&FreeSansBold24pt7b);
-            drawTemperatureWithDegree(tempStr, TEMP_BASELINE_Y);
+            drawMeasurements(tempStr, humStr);
 
-            display.setFont(&FreeSans12pt7b);
-            char humLine[24];
-            snprintf(humLine, sizeof(humLine), "%s %%rH", humStr);
-            drawCentered(humLine, HUMIDITY_BASELINE_Y);
-
-            // Drawn on every refresh, partial included: the footer carries a
-            // live clock, so it must never be older than the values above it.
-            display.drawFastHLine(FOOTER_MARGIN_X, FOOTER_RULE_Y,
-                                  PANEL_W - 2 * FOOTER_MARGIN_X, GxEPD_BLACK);
-
-            display.setFont(&FreeSans9pt7b);
-
-            // --- right column, drawn first: it fixes how much room the left
-            // column has, and it is the field that must never be truncated ---
-
-            // Line 1: setpoint, then the degree ring flush with the right margin.
-            const int16_t ringCx = static_cast<int16_t>(FOOTER_RIGHT_X - SETPOINT_DEGREE_RADIUS);
-            display.drawCircle(ringCx, SETPOINT_DEGREE_CY, SETPOINT_DEGREE_RADIUS, GxEPD_BLACK);
-
-            const int16_t setpointRightX =
-                static_cast<int16_t>(ringCx - SETPOINT_DEGREE_RADIUS - SETPOINT_DEGREE_GAP);
-            drawRightAligned(setpointStr, setpointRightX, FOOTER_LINE1_Y);
-            const int16_t setpointLeftX =
-                static_cast<int16_t>(setpointRightX - textWidth(setpointStr));
-
-            // Line 2: control symbol, also flush with the right margin.
-            const int16_t symbolCx = static_cast<int16_t>(FOOTER_RIGHT_X - CONTROL_SYMBOL_RADIUS);
-            drawControlSymbol(symbolCx, CONTROL_SYMBOL_CY, controlState);
-            const int16_t symbolLeftX = static_cast<int16_t>(symbolCx - CONTROL_SYMBOL_RADIUS);
-
-            // Demand bar, left of the symbol. Only drawn while control is
-            // enabled: when it is off the minus symbol already says everything,
-            // and an empty bar would just be clutter. When enabled the bar is
-            // drawn even at zero demand, because "enabled but asking for
-            // nothing" is worth distinguishing from "switched off".
-            int16_t rightColumnLeftX = symbolLeftX;
-            if (controlState != Display::ControlState::INACTIVE &&
-                controlState != Display::ControlState::UNCERTAIN) {
-                const int16_t barRightX = static_cast<int16_t>(symbolLeftX - DEMAND_BAR_GAP);
-                const int16_t barLeftX = static_cast<int16_t>(barRightX - DEMAND_BAR_W);
-                drawDemandBar(barLeftX, demandSegments);
-                rightColumnLeftX = barLeftX;
-            }
-
-            // --- left column, each line truncated to what its own row leaves ---
-            char footerField[40];
-            if (footerName != nullptr && footerName[0] != '\0') {
-                const int16_t maxWidth = static_cast<int16_t>(setpointLeftX - FOOTER_COLUMN_GAP -
-                                                              FOOTER_MARGIN_X);
-                fitToWidth(footerName, maxWidth, footerField, sizeof(footerField));
-                if (footerField[0] != '\0') {
-                    display.setCursor(FOOTER_MARGIN_X, FOOTER_LINE1_Y);
-                    display.print(footerField);
-                }
-            }
-            if (footerDateTime != nullptr && footerDateTime[0] != '\0') {
-                const int16_t maxWidth = static_cast<int16_t>(rightColumnLeftX -
-                                                              FOOTER_COLUMN_GAP - FOOTER_MARGIN_X);
-                fitToWidth(footerDateTime, maxWidth, footerField, sizeof(footerField));
-                if (footerField[0] != '\0') {
-                    display.setCursor(FOOTER_MARGIN_X, FOOTER_LINE2_Y);
-                    display.print(footerField);
-                }
-            }
+            drafFooter(footerName, footerDateTime, controlState, setpointStr, demandSegments);
         } while (display.nextPage());
     }
 
