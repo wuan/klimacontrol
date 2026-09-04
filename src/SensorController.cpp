@@ -568,15 +568,18 @@ float SensorController::updateControl() {
     {
         const float t = getTemperature();
         if (std::isnan(t) || !isDataValid()) {
+            if (!safetyShutoff) {
+                ESP_LOGW(TAG, "control: invalid data shutoff");
+            }
             safetyShutoff = true;
         } else if (t > cfg.safety_max_c) {
             if (!safetyShutoff) {
-                ESP_LOGW(TAG, "Over-temperature shutoff: %.1f C above limit %.1f C",
+                ESP_LOGW(TAG, "control: over-temperature shutoff: %.1f C above limit %.1f C",
                          static_cast<double>(t), static_cast<double>(cfg.safety_max_c));
             }
             safetyShutoff = true;
         } else if (safetyShutoff && t < cfg.safety_max_c - cfg.safety_hyst_c) {
-            ESP_LOGI(TAG, "Over-temperature shutoff released at %.1f C", static_cast<double>(t));
+            ESP_LOGI(TAG, "control: over-temperature shutoff released at %.1f C", static_cast<double>(t));
             safetyShutoff = false;
         }
     }
@@ -585,7 +588,6 @@ float SensorController::updateControl() {
         suspendPid(now);
         autotuner.cancel();
         lastControlOutput = 0.0f;
-        ESP_LOGI(TAG, "control: safety shutoff");
         return 0.0f;
     }
 
