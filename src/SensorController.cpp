@@ -675,6 +675,13 @@ float SensorController::updateControl() {
     float targetTemperature = cfg.target_temperature;
     float error = targetTemperature - currentTemp;
     float output = pid.update(error, now);
+    ESP_LOGI(TAG, "Control update (p: %.2f, i: %.4f, d: %.2f): %.1f K -> %0.2f",
+             static_cast<double>(cfg.kp),
+             static_cast<double>(cfg.ki),
+             static_cast<double>(cfg.kd),
+             static_cast<double>(error),
+             static_cast<double>(output)
+             );
 
     lastControlOutput = output;
 
