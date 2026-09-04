@@ -585,6 +585,7 @@ float SensorController::updateControl() {
         suspendPid(now);
         autotuner.cancel();
         lastControlOutput = 0.0f;
+        ESP_LOGI(TAG, "control: safety shutoff");
         return 0.0f;
     }
 
@@ -643,6 +644,15 @@ float SensorController::updateControl() {
         // isControlActive() keeps reporting the last positive output after the
         // sensor drops out or control is switched off.
         lastControlOutput = 0.0f;
+
+        if (cfg.temperature_control_enabled) {
+            if (!isDataValid()) {
+                ESP_LOGI(TAG, "control: no valid data");
+            }
+            if (std::isnan(currentTemp)) {
+                ESP_LOGI(TAG, "control: currentTemp is NaN");
+            }
+        }
         return 0.0f;
     }
 
@@ -675,7 +685,7 @@ float SensorController::updateControl() {
     float targetTemperature = cfg.target_temperature;
     float error = targetTemperature - currentTemp;
     float output = pid.update(error, now);
-    ESP_LOGI(TAG, "Control update (p: %.2f, i: %.4f, d: %.2f): %.1f K -> %0.2f",
+    ESP_LOGI(TAG, "control update (p: %.2f, i: %.4f, d: %.2f): %.1f K -> %0.2f",
              static_cast<double>(cfg.kp),
              static_cast<double>(cfg.ki),
              static_cast<double>(cfg.kd),
