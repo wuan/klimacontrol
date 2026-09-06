@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "Network.h"
 #include "SensorController.h"
+#include "control/TemperatureController.h"
 #include "support/RequestDiag.h"
 #include "support/HostValidation.h"
 
@@ -63,10 +64,10 @@ void WebServerManager::setupControlRoutes() {
     server.on(AsyncURIMatcher::exact("/api/control"), HTTP_GET, [this](AsyncWebServerRequest *request) {
         JsonDocument doc;
 
-        doc["enabled"] = sensorController.isControlEnabled();
-        doc["running"] = sensorController.isControlRunning();
+        doc["enabled"] = temperatureController.isControlEnabled();
+        doc["running"] = temperatureController.isControlRunning();
 
-        const float setpoint = sensorController.getTargetTemperature();
+        const float setpoint = temperatureController.getTargetTemperature();
         doc["setpoint"] = setpoint;
 
         // Omitted rather than reported as NaN when there is no reading, the
@@ -79,17 +80,17 @@ void WebServerManager::setupControlRoutes() {
             doc["error"] = setpoint - temperature;
         }
 
-        doc["state"] = Actuator::reportedStateName(sensorController.getReportedState());
-        doc["output"] = sensorController.getControlOutput();
-        doc["integral"] = sensorController.getControlIntegral();
-        doc["output_min"] = SensorController::getControlOutputMin();
-        doc["output_max"] = SensorController::getControlOutputMax();
+        doc["state"] = Actuator::reportedStateName(temperatureController.getReportedState());
+        doc["output"] = temperatureController.getControlOutput();
+        doc["integral"] = temperatureController.getControlIntegral();
+        doc["output_min"] = Control::TemperatureController::getControlOutputMin();
+        doc["output_max"] = Control::TemperatureController::getControlOutputMax();
 
         // From the running controller, not from DeviceConfig. A gain change is
         // applied by the control task on a later tick, so reporting the stored
         // values would show a pending change as already in force — and reading
         // this back is exactly how a caller confirms that it landed.
-        const Control::PidGains gains = sensorController.getControlGains();
+        const Control::PidGains gains = temperatureController.getControlGains();
         doc["kp"] = gains.kp;
         doc["ki"] = gains.ki;
         doc["kd"] = gains.kd;
@@ -186,7 +187,7 @@ void WebServerManager::setupControlRoutes() {
                   // Persists, then asks the control task to adopt it. Success
                   // therefore means accepted, not yet in force; GET
                   // /api/control reports the gains actually running.
-                  sensorController.requestGains(Control::PidGains{kp, ki, kd},
+                  temperatureController.requestGains(Control::PidGains{kp, ki, kd},
                                                 static_cast<uint16_t>(intervalS));
                   request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
               });
@@ -235,7 +236,7 @@ void WebServerManager::setupControlRoutes() {
                           return;
                       }
 
-                      sensorController.setTargetTemperature(targetTemp);
+                      temperatureController.setTargetTemperature(targetTemp);
 
                       request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
                   }
@@ -272,8 +273,8 @@ void WebServerManager::setupControlRoutes() {
         doc["conformance_checks"] = act.conformanceChecks();
         doc["conformance_age_ms"] = act.conformanceAgeMs(now);
         doc["ever_checked"] = act.everConformanceChecked();
-        doc["permitted"] = sensorController.isHeatingPermitted();
-        doc["safety_shutoff"] = sensorController.isSafetyShutoffEngaged();
+        doc["permitted"] = temperatureController.isHeatingPermitted();
+        doc["safety_shutoff"] = temperatureController.isSafetyShutoffEngaged();
         doc["commanded_open"] = act.commandedOpen();
         doc["duty"] = act.latchedDuty();
         doc["failed_requests"] = act.failedRequests();
@@ -447,16 +448,16 @@ void WebServerManager::setupControlRoutes() {
     // of this one.
     server.on("/api/autotune/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
         JsonDocument doc;
-        const Control::AutotuneState state = sensorController.getAutotuneState();
+        const Control::AutotuneState state = temperatureController.getAutotuneState();
 
         doc["state"] = autotuneStateName(state);
-        doc["active"] = sensorController.isAutotuneActive();
-        doc["abort_reason"] = autotuneAbortName(sensorController.getAutotuneAbort());
-        doc["elapsed_ms"] = sensorController.getAutotuneElapsedMs(millis());
-        doc["cycles"] = sensorController.getAutotuneCycles();
+        doc["active"] = temperatureController.isAutotuneActive();
+        doc["abort_reason"] = autotuneAbortName(temperatureController.getAutotuneAbort());
+        doc["elapsed_ms"] = temperatureController.getAutotuneElapsedMs(millis());
+        doc["cycles"] = temperatureController.getAutotuneCycles();
 
         if (state == Control::AutotuneState::Done) {
-            const Control::AutotuneResult &r = sensorController.getAutotuneResult();
+            const Control::AutotuneResult &r = temperatureController.getAutotuneResult();
             doc["ku"] = r.ku;
             doc["tu"] = r.tu;
             doc["derived_kp"] = r.gains.kp;
@@ -466,7 +467,7 @@ void WebServerManager::setupControlRoutes() {
 
         // The gains actually in force, so a client can show derived against
         // current without a second request.
-        const Control::PidGains active = sensorController.getControlGains();
+        const Control::PidGains active = temperatureController.getControlGains();
         doc["kp"] = active.kp;
         doc["ki"] = active.ki;
         doc["kd"] = active.kd;
@@ -503,7 +504,7 @@ void WebServerManager::setupControlRoutes() {
             return;
         }
         // A request, not a call: the control-loop task owns the state machine.
-        if (!sensorController.requestAutotuneStart()) {
+        if (!temperatureController.requestAutotuneStart()) {
             request->send(409, CONTENT_TYPE_JSON,
                           R"({"success":false,"error":"Control disabled or a run is already active"})");
             return;
@@ -516,7 +517,7 @@ void WebServerManager::setupControlRoutes() {
         if (!verifyCsrfHeader(request)) {
             return;
         }
-        sensorController.requestAutotuneCancel();
+        temperatureController.requestAutotuneCancel();
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
     });
 
@@ -530,7 +531,7 @@ void WebServerManager::setupControlRoutes() {
         // that the running controller has already adopted it. A caller confirms
         // that by reading the gains in force from GET /api/control, which is
         // also what makes the change observable in the UI.
-        if (!sensorController.acceptAutotuneResult()) {
+        if (!temperatureController.acceptAutotuneResult()) {
             request->send(409, CONTENT_TYPE_JSON,
                           R"({"success":false,"error":"No converged result to accept"})");
             return;
@@ -544,7 +545,7 @@ void WebServerManager::setupControlRoutes() {
         if (!verifyCsrfHeader(request)) {
             return;
         }
-        sensorController.setControlEnabled(true);
+        temperatureController.setControlEnabled(true);
 
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
     });
@@ -554,7 +555,7 @@ void WebServerManager::setupControlRoutes() {
         if (!verifyCsrfHeader(request)) {
             return;
         }
-        sensorController.setControlEnabled(false);
+        temperatureController.setControlEnabled(false);
 
         request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
     });

@@ -59,8 +59,11 @@ namespace {
 }
 #endif
 
-Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, DarkModeStatusLed &statusLed, WebServerManager *webServer)
-    : config(config), sensorController(sensorController), sensorMonitor(sensorMonitor), mode(NetworkMode::NONE)
+Network::Network(Config::ConfigManager &config, SensorController &sensorController,
+                 Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
+                 DarkModeStatusLed &statusLed, WebServerManager *webServer)
+    : config(config), sensorController(sensorController), temperatureController(temperatureController),
+      sensorMonitor(sensorMonitor), mode(NetworkMode::NONE)
 #ifdef ARDUINO
       , ntpClient(wifiUdp)
 #endif
@@ -674,13 +677,13 @@ void Network::configureUsingAPMode() {
             // channel (or vice versa) — a corrupted assignment.
             const Config::DeviceConfig cfg = config.getDeviceConfigSnapshot();
             heatingActuator.configure(cfg);
-            heatingActuator.tick(sensorController.getControlOutput(),
-                                 sensorController.isHeatingPermitted(), now);
+            heatingActuator.tick(temperatureController.getControlOutput(),
+                                 temperatureController.isHeatingPermitted(), now);
             // Publish what the relay is actually doing, so isControlActive()
             // and everything downstream report confirmed state rather than
             // this controller's intent.
-            sensorController.publishActuatorState(heatingActuator.isAssigned(),
-                                                  heatingActuator.agreement(now));
+            temperatureController.publishActuatorState(heatingActuator.isAssigned(),
+                                                       heatingActuator.agreement(now));
         }
 
         // Repaint the e-paper display if the refresh policy calls for it. The

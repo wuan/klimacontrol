@@ -1,42 +1,34 @@
-# temperature-control Specification
+## ADDED Requirements
 
-## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
-## Requirements
-### Requirement: Enable/disable state
+### Requirement: Control loop is decoupled from sensor acquisition
 
-The firmware SHALL persist a boolean `temperature_control_enabled` in `DeviceConfig`. The default on a freshly provisioned device SHALL be disabled.
+The heating control loop SHALL be implemented by `Control::TemperatureController` (`src/control/`), a class that holds no reference to `SensorController` and performs no sensor access of its own. Its process value SHALL be supplied by the caller as parameters of `update(float temperature, bool valid, uint32_t nowMs)`, where `temperature` is the current temperature or `NAN`, `valid` is the sensor cache's validity flag, and `nowMs` is the caller's clock. The Sensor Monitor task SHALL obtain both input values from one `SensorController::getProcessValue()` call so that temperature and validity describe the same instant.
 
-#### Scenario: Default-off
+`isHeatingPermitted()` SHALL be answered from the inputs of the most recent `update()` call rather than from a live sensor read. It SHALL return `false` before the first `update()` after boot. Its staleness is therefore bounded by the Sensor Monitor cadence (one second by default); the over-temperature shutoff engages on the same tick that observes invalid input, so the actuator's behaviour is unchanged by this bound.
 
-- **WHEN** a freshly provisioned device boots for the first time
-- **THEN** `DeviceConfig.temperature_control_enabled` SHALL be `false` and the controller SHALL produce no output
+The class SHALL be constructible and fully exercisable in the native build with only a `Config::ConfigManager`, so that control-loop behaviour is tested against the shipped code rather than a re-implementation.
 
-#### Scenario: Toggling via API
+#### Scenario: Loop runs without any sensor object
 
-- **WHEN** `POST /api/control/enable` is sent
-- **THEN** `temperature_control_enabled` SHALL transition to `true` and SHALL be persisted to NVS
+- **WHEN** a native test constructs `Control::TemperatureController` with a `ConfigManager` and calls `update(18.0f, true, 1000)` with control enabled and a setpoint of 22 °C
+- **THEN** the call SHALL compute an output greater than zero without any `SensorController` or `Sensor::Sensor` having been constructed
 
-### Requirement: Control active state
+#### Scenario: Process value is one consistent pair
 
-`isControlActive()` SHALL report whether the actuator is confirmed to be heating, rather than whether the last computed output was greater than zero. Under time-proportional output a non-zero demand spends part of each cycle closed, and with a remote actuator the firmware's command is a belief until the relay confirms it.
+- **WHEN** the Sensor Monitor task hands the loop its input on a tick
+- **THEN** temperature and validity SHALL come from a single lock acquisition of the sensor cache, not from separate `getTemperature()` and `isDataValid()` calls
 
-Confirmation SHALL require both the relay's reported contact state and its measured power draw to agree with the command. When observations are stale or failing, the state SHALL be reported as unknown rather than as the last believed value.
+#### Scenario: Heating is not permitted before the first tick
 
-#### Scenario: Active only when confirmed
+- **WHEN** the device has booted with control enabled and the Sensor Monitor task has not yet called `update()`
+- **THEN** `isHeatingPermitted()` SHALL return `false`
 
-- **WHEN** the valve is commanded open and the relay confirms a closed contact with a power draw consistent with an actuator
-- **THEN** `isControlActive()` SHALL return `true`
+#### Scenario: Heating permission follows the last tick's inputs
 
-#### Scenario: Inactive during the closed interval
+- **WHEN** the previous `update()` was called with `valid = false` and the Network task calls `isHeatingPermitted()` before the next tick
+- **THEN** it SHALL return `false`, even if the sensor cache has become valid in the meantime
 
-- **WHEN** the duty is non-zero and the cycle is in its closed interval
-- **THEN** `isControlActive()` SHALL return `false`
-
-#### Scenario: Unknown rather than assumed
-
-- **WHEN** the actuator has not been observed within the observation timeout
-- **THEN** the state SHALL be reported as unknown, and displays SHALL NOT show it as heating
+## MODIFIED Requirements
 
 ### Requirement: Setpoint range
 
@@ -187,41 +179,6 @@ Gains SHALL be applied to the running controller only by the task that owns it. 
 - **WHEN** a `Kp` of zero is submitted
 - **THEN** it SHALL be rejected and the stored gains SHALL be unchanged
 
-### Requirement: Anti-windup
-
-The integral term SHALL be clamped to the output range to prevent windup when the controller is saturated.
-
-#### Scenario: Saturated controller
-
-- **WHEN** the output is saturated at `1.0` for an extended period due to a persistent large error
-- **THEN** the integral term SHALL be clamped so that, upon returning to the setpoint, the integral does not cause excessive overshoot
-
-### Requirement: Safety limits
-
-The controller SHALL implement an over-temperature shutoff. The limit SHALL be stored in `DeviceConfig`, persisted, and default to a value above any plausible setpoint. When the measured temperature exceeds it, the controller SHALL produce zero demand and the actuator SHALL be commanded closed, regardless of the error term, until the temperature falls below the limit less a hysteresis band.
-
-The shutoff SHALL be evaluated before the PID computation, so that a saturated integral cannot override it, and SHALL also engage when no valid temperature reading is available, because an unknown temperature is not a safe basis for delivering heat.
-
-#### Scenario: Over-temperature shutoff
-
-- **WHEN** the measured temperature exceeds the configured upper safety limit
-- **THEN** demand SHALL be zero and the actuator SHALL be commanded closed
-
-#### Scenario: Shutoff releases with hysteresis
-
-- **WHEN** the temperature falls back below the limit by less than the hysteresis band
-- **THEN** the shutoff SHALL remain engaged, so the valve does not chatter at the threshold
-
-#### Scenario: Shutoff precedes the PID computation
-
-- **WHEN** the safety limit is exceeded while the integral term is saturated
-- **THEN** demand SHALL still be zero
-
-#### Scenario: Unknown temperature is not safe
-
-- **WHEN** no valid temperature reading is available
-- **THEN** demand SHALL be zero and the actuator SHALL be commanded closed
-
 ### Requirement: Bumpless controller restart
 
 The PID state SHALL be instance state of the controller rather than
@@ -294,31 +251,3 @@ if the web-server task reset it concurrently with a control tick.
 - **THEN** the handler SHALL write only configuration state
 - **AND** the PID accumulators SHALL be reset by the control loop on its next
   tick, not by the handler
-
-### Requirement: Control loop is decoupled from sensor acquisition
-
-The heating control loop SHALL be implemented by `Control::TemperatureController` (`src/control/`), a class that holds no reference to `SensorController` and performs no sensor access of its own. Its process value SHALL be supplied by the caller as parameters of `update(float temperature, bool valid, uint32_t nowMs)`, where `temperature` is the current temperature or `NAN`, `valid` is the sensor cache's validity flag, and `nowMs` is the caller's clock. The Sensor Monitor task SHALL obtain both input values from one `SensorController::getProcessValue()` call so that temperature and validity describe the same instant.
-
-`isHeatingPermitted()` SHALL be answered from the inputs of the most recent `update()` call rather than from a live sensor read. It SHALL return `false` before the first `update()` after boot. Its staleness is therefore bounded by the Sensor Monitor cadence (one second by default); the over-temperature shutoff engages on the same tick that observes invalid input, so the actuator's behaviour is unchanged by this bound.
-
-The class SHALL be constructible and fully exercisable in the native build with only a `Config::ConfigManager`, so that control-loop behaviour is tested against the shipped code rather than a re-implementation.
-
-#### Scenario: Loop runs without any sensor object
-
-- **WHEN** a native test constructs `Control::TemperatureController` with a `ConfigManager` and calls `update(18.0f, true, 1000)` with control enabled and a setpoint of 22 °C
-- **THEN** the call SHALL compute an output greater than zero without any `SensorController` or `Sensor::Sensor` having been constructed
-
-#### Scenario: Process value is one consistent pair
-
-- **WHEN** the Sensor Monitor task hands the loop its input on a tick
-- **THEN** temperature and validity SHALL come from a single lock acquisition of the sensor cache, not from separate `getTemperature()` and `isDataValid()` calls
-
-#### Scenario: Heating is not permitted before the first tick
-
-- **WHEN** the device has booted with control enabled and the Sensor Monitor task has not yet called `update()`
-- **THEN** `isHeatingPermitted()` SHALL return `false`
-
-#### Scenario: Heating permission follows the last tick's inputs
-
-- **WHEN** the previous `update()` was called with `valid = false` and the Network task calls `isHeatingPermitted()` before the next tick
-- **THEN** it SHALL return `false`, even if the sensor cache has become valid in the meantime

@@ -100,7 +100,7 @@ void test_delay_zero_elapsed() {
 
 // --- PID derivative guard against dt == 0 ---
 
-// Mirrors the fixed derivative calculation from SensorController::updateControl()
+// Mirrors the fixed derivative calculation in Control::PidController::update()
 static float computeDerivative(float Kd, float error, float previousError, float dt) {
     if (dt > 0.0f) {
         return Kd * (error - previousError) / dt;

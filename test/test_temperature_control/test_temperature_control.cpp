@@ -1,19 +1,22 @@
 #include "unity.h"
 #include <cmath>
 
+#include "Config.h"
 #include "control/PidController.h"
+#include "control/TemperatureController.h"
 
 using Control::PidController;
 using Control::PidGains;
+using Control::TemperatureController;
 
 void setUp() {}
 void tearDown() {}
 
-// These tests drive the real Control::PidController. They used to drive a
-// hand-copied reimplementation of SensorController::updateControl() that lived
-// in this file, which meant the suite could stay green while the shipped PID
-// was wrong. The controller takes its clock as a parameter precisely so it can
-// be exercised here.
+// These tests drive the real Control::PidController and, further down, the real
+// Control::TemperatureController. They used to drive hand-copied stand-ins that
+// lived in this file, which meant the suite could stay green while the shipped
+// code was wrong. Both classes take their clock as a parameter precisely so
+// they can be exercised here.
 //
 // One convention runs through the whole file: the FIRST update() after
 // construction or suspend() is a bumpless restart. It reseats the timestamp, so
@@ -25,7 +28,8 @@ namespace {
     constexpr float WIDE_MIN = -10.0f;
     constexpr float WIDE_MAX = 10.0f;
 
-    // The gains and clamps the firmware actually ships (SensorController.cpp).
+    // A representative gain set and the output clamps the firmware ships, for
+    // the pure-PidController cases below.
     constexpr PidGains SHIPPED_GAINS = {2.0f, 0.1f, 0.5f};
     constexpr float OUTPUT_MIN = 0.0f;
     constexpr float OUTPUT_MAX = 1.0f;
@@ -159,7 +163,7 @@ void test_setpoint_decrease() {
 
 // --- Bumpless restart ---
 //
-// The defect these cover: updateControl() returns early whenever control is
+// The defect these cover: the control loop returns early whenever control is
 // disabled, sensor data is invalid, or the device has just booted, and those
 // early returns used to leave the last-computation timestamp untouched. The
 // next tick that did run saw a dt spanning the whole gap and slammed the
@@ -307,167 +311,137 @@ void test_millis_rollover_does_not_produce_huge_dt() {
 
 // --- Control loop gating ---
 //
-// A thin stand-in for SensorController::updateControl()'s enable/validity
-// gating and its stored-output bookkeeping, which cannot be constructed here
-// without a full ConfigManager and sensor fixture. Unlike the PID mirror this
-// replaced, it copies no arithmetic — it drives the real controller — so there
-// is no duplicated formula to drift out of sync.
-struct ControlLoop {
-    PidController pid{SHIPPED_GAINS, OUTPUT_MIN, OUTPUT_MAX};
-    float lastControlOutput = 0.0f;
+// From here on the thing under test is the real Control::TemperatureController,
+// configured the same way the firmware configures it: through a
+// Config::ConfigManager. No sensor object exists anywhere in this file — the
+// process value is pushed in through update(temperature, valid, nowMs), which is
+// exactly how the Sensor Monitor task feeds it.
+namespace {
+    // Gains the loop fixture runs. `ki` is within Config::MAX_PID_KI (0.05), so
+    // updateTuning() stores it as given rather than falling back; with an error
+    // of 0.1 K it accumulates 0.06 per 60 s interval, which keeps successive
+    // computations distinguishable without saturating the output.
+    constexpr PidGains LOOP_GAINS = {2.0f, 0.01f, 0.5f};
+    constexpr float SETPOINT = 22.0f;
+    constexpr float SAFETY_MAX_C = 35.0f;
+    constexpr float SAFETY_HYST_C = 1.0f;
 
-    // Decimation state, mirroring SensorController::lastPidComputeMs. The
-    // default interval is 1 s, i.e. the pre-decimation cadence, so the gating
-    // tests above are unaffected by its presence.
-    uint32_t controlIntervalS = 1;
-    uint32_t lastPidComputeMs = 0;
+    struct Fixture {
+        Config::ConfigManager config;
+        TemperatureController ctrl{config};
 
-    // Safety and autotune inputs. Both exist here only to assert that the
-    // decimation does not reach them: the whole change hinges on the guard
-    // sitting around the PID computation and nothing else.
-    float safetyMaxC = 35.0f;
-    float safetyHystC = 1.0f;
-    bool safetyShutoff = false;
-    bool autotuneActive = false;
-    unsigned autotuneTicks = 0;
-    unsigned pidComputations = 0;
-
-    bool isControlActive() const { return lastControlOutput > 0.0f; }
-
-    void suspendPid(uint32_t nowMs) {
-        pid.suspend();
-        lastPidComputeMs = nowMs;
-    }
-
-    float updateControl(bool controlEnabled, bool dataValid, float currentTemp, float targetTemp,
-                        uint32_t nowMs) {
-        // 1. Over-temperature shutoff — every tick, latching with hysteresis.
-        if (std::isnan(currentTemp) || !dataValid) {
-            safetyShutoff = true;
-        } else if (currentTemp > safetyMaxC) {
-            safetyShutoff = true;
-        } else if (safetyShutoff && currentTemp < safetyMaxC - safetyHystC) {
-            safetyShutoff = false;
-        }
-        if (safetyShutoff) {
-            suspendPid(nowMs);
-            autotuneActive = false;
-            lastControlOutput = 0.0f;
-            return 0.0f;
+        explicit Fixture(uint16_t intervalS = 1, PidGains gains = LOOP_GAINS) {
+            config.updateTemperatureControlEnabled(true);
+            config.updateTargetTemperature(SETPOINT);
+            config.updateTuning(gains.kp, gains.ki, gains.kd, intervalS);
+            config.updateActuatorTiming(Config::DEFAULT_TPO_CYCLE_S, Config::DEFAULT_TPO_TRAVEL_S,
+                                        SAFETY_MAX_C, SAFETY_HYST_C);
+            // As setup() does: adopt the stored tuning before the first tick.
+            ctrl.begin();
         }
 
-        // 2. The autotuner — every tick while a run is active.
-        if (autotuneActive) {
-            if (!controlEnabled) {
-                autotuneActive = false;
-                suspendPid(nowMs);
-                lastControlOutput = 0.0f;
-                return 0.0f;
+        void setEnabled(bool enabled) { config.updateTemperatureControlEnabled(enabled); }
+
+        // The real class exposes no computation counter, so a computation is
+        // observed as "the loop is running and the returned output moved". A
+        // held tick returns the previous output unchanged; a skipped tick
+        // leaves the loop not running. Callers keep the error small enough
+        // that successive computations produce distinct outputs.
+        float lastSeen = 0.0f;
+        unsigned computations = 0;
+
+        float tick(float temperature, bool valid, uint32_t nowMs) {
+            const float out = ctrl.update(temperature, valid, nowMs);
+            if (ctrl.isControlRunning() && out != lastSeen) {
+                ++computations;
             }
-            suspendPid(nowMs);
-            ++autotuneTicks;
-            return lastControlOutput;
+            lastSeen = out;
+            return out;
         }
-
-        if (!controlEnabled || !dataValid || std::isnan(currentTemp)) {
-            suspendPid(nowMs);
-            lastControlOutput = 0.0f;
-            return 0.0f;
-        }
-
-        // 3. The PID — decimated, and the only decimated part. Unsigned
-        //    subtraction, so the comparison survives the millis() rollover.
-        if (nowMs - lastPidComputeMs < controlIntervalS * 1000u) {
-            // Deliberately no suspendPid(): this is a tick between
-            // computations, not a skipped one. The held output is what the
-            // actuator keeps reading across the interval.
-            return lastControlOutput;
-        }
-        lastPidComputeMs = nowMs;
-        ++pidComputations;
-
-        lastControlOutput = pid.update(targetTemp - currentTemp, nowMs);
-        return lastControlOutput;
-    }
-};
+    };
+}
 
 void test_stored_output_is_positive_while_heating() {
-    ControlLoop c;
-    c.updateControl(true, true, 18.0f, 22.0f, 1000);
-    c.updateControl(true, true, 18.0f, 22.0f, 2000);
+    Fixture f;
+    f.tick(18.0f, true, 1000);
+    f.tick(18.0f, true, 2000);
 
-    TEST_ASSERT_TRUE(c.isControlActive());
+    TEST_ASSERT_TRUE(f.ctrl.isControlActive());
 }
 
 void test_stored_output_cleared_when_data_becomes_invalid() {
-    ControlLoop c;
-    c.updateControl(true, true, 18.0f, 22.0f, 1000);
-    c.updateControl(true, true, 18.0f, 22.0f, 2000);
-    TEST_ASSERT_TRUE(c.isControlActive());
+    Fixture f;
+    f.tick(18.0f, true, 1000);
+    f.tick(18.0f, true, 2000);
+    TEST_ASSERT_TRUE(f.ctrl.isControlActive());
 
     // Sensor drops off the bus: the real output is zero, so control must stop
     // reporting itself as active.
-    c.updateControl(true, false, 18.0f, 22.0f, 3000);
+    f.tick(18.0f, false, 3000);
 
-    TEST_ASSERT_FALSE(c.isControlActive());
+    TEST_ASSERT_FALSE(f.ctrl.isControlActive());
 }
 
 void test_stored_output_cleared_when_control_disabled() {
-    ControlLoop c;
-    c.updateControl(true, true, 18.0f, 22.0f, 1000);
-    c.updateControl(true, true, 18.0f, 22.0f, 2000);
-    TEST_ASSERT_TRUE(c.isControlActive());
+    Fixture f;
+    f.tick(18.0f, true, 1000);
+    f.tick(18.0f, true, 2000);
+    TEST_ASSERT_TRUE(f.ctrl.isControlActive());
 
-    c.updateControl(false, true, 18.0f, 22.0f, 3000);
+    f.setEnabled(false);
+    f.tick(18.0f, true, 3000);
 
-    TEST_ASSERT_FALSE(c.isControlActive());
+    TEST_ASSERT_FALSE(f.ctrl.isControlActive());
 }
 
 void test_stored_output_cleared_on_nan_reading() {
-    ControlLoop c;
-    c.updateControl(true, true, 18.0f, 22.0f, 1000);
-    c.updateControl(true, true, 18.0f, 22.0f, 2000);
-    TEST_ASSERT_TRUE(c.isControlActive());
+    Fixture f;
+    f.tick(18.0f, true, 1000);
+    f.tick(18.0f, true, 2000);
+    TEST_ASSERT_TRUE(f.ctrl.isControlActive());
 
-    c.updateControl(true, true, NAN, 22.0f, 3000);
+    f.tick(NAN, true, 3000);
 
-    TEST_ASSERT_FALSE(c.isControlActive());
+    TEST_ASSERT_FALSE(f.ctrl.isControlActive());
 }
 
 void test_control_disabled_returns_zero() {
-    ControlLoop c;
+    Fixture f;
+    f.setEnabled(false);
 
-    float output = c.updateControl(false, true, 20.0f, 22.0f, 1000);
+    float output = f.tick(20.0f, true, 1000);
 
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, output);
 }
 
 void test_nan_sensor_reading_returns_zero() {
-    ControlLoop c;
-    c.updateControl(true, true, 20.0f, 22.0f, 1000);
+    Fixture f;
+    f.tick(20.0f, true, 1000);
 
-    float output = c.updateControl(true, true, NAN, 22.0f, 2000);
+    float output = f.tick(NAN, true, 2000);
 
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.0f, output);
 }
 
 void test_loop_resumes_bumplessly_after_disabled_gap() {
-    ControlLoop c;
+    Fixture f;
 
     // Heating hard for a while.
     for (uint32_t t = 1000; t <= 10000; t += 1000) {
-        c.updateControl(true, true, 18.0f, 22.0f, t);
+        f.tick(18.0f, true, t);
     }
-    TEST_ASSERT_TRUE(c.isControlActive());
+    TEST_ASSERT_TRUE(f.ctrl.isControlActive());
 
     // Switched off for an hour.
+    f.setEnabled(false);
     for (uint32_t t = 11000; t <= 3600000; t += 60000) {
-        c.updateControl(false, true, 21.9f, 22.0f, t);
+        f.tick(21.9f, true, t);
     }
-    TEST_ASSERT_FALSE(c.isControlActive());
+    TEST_ASSERT_FALSE(f.ctrl.isControlActive());
 
     // Back on, 0.1 C below target.
-    float output = c.updateControl(true, true, 21.9f, 22.0f, 3660000);
+    f.setEnabled(true);
+    float output = f.tick(21.9f, true, 3660000);
 
     TEST_ASSERT_TRUE(output < OUTPUT_MAX);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.2f, output);
@@ -476,166 +450,232 @@ void test_loop_resumes_bumplessly_after_disabled_gap() {
 // --- Control loop decimation ---
 
 void test_pid_computes_once_per_control_interval() {
-    ControlLoop c;
-    c.controlIntervalS = 60;
+    Fixture f(60);
 
     // 180 one-second sensor ticks with a 60 s control interval.
     for (uint32_t t = 1000; t <= 180000; t += 1000) {
-        c.updateControl(true, true, 18.0f, 22.0f, t);
+        f.tick(21.9f, true, t);
     }
 
-    // t=1000 is eligible against a zero baseline, then 61000 and 121000.
-    TEST_ASSERT_EQUAL_UINT(3, c.pidComputations);
+    // The baseline starts at zero, so the computations fall at 60 s, 120 s and
+    // 180 s — one interval after boot, not on the first tick.
+    TEST_ASSERT_EQUAL_UINT(3, f.computations);
 }
 
 // The point of holding rather than zeroing: the actuator reads the stored
 // output continuously from the Network task, so a zeroed non-computing tick
 // would make the valve see one pulse per interval.
 void test_output_is_held_between_computations() {
-    ControlLoop c;
-    c.controlIntervalS = 60;
+    Fixture f(60);
 
     // The baseline starts at zero, so the first computation is one interval
     // after boot rather than on the first tick.
     for (uint32_t t = 1000; t <= 60000; t += 1000) {
-        c.updateControl(true, true, 18.0f, 22.0f, t);
+        f.tick(21.9f, true, t);
     }
-    const float computed = c.lastControlOutput;
-    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+    const float computed = f.ctrl.getControlOutput();
+    TEST_ASSERT_EQUAL_UINT(1, f.computations);
     TEST_ASSERT_TRUE(computed > 0.0f);
 
     for (uint32_t t = 61000; t <= 119000; t += 1000) {
-        const float held = c.updateControl(true, true, 18.0f, 22.0f, t);
+        const float held = f.tick(21.9f, true, t);
         TEST_ASSERT_FLOAT_WITHIN(0.0001f, computed, held);
-        TEST_ASSERT_TRUE(c.isControlActive());
+        TEST_ASSERT_TRUE(f.ctrl.isControlActive());
     }
-    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+    TEST_ASSERT_EQUAL_UINT(1, f.computations);
 }
 
 // The integral must accumulate across the interval. If a non-computing tick
 // suspended the controller, every computation would be a bumpless restart and
 // ki would have no effect at all whatever it was set to.
 void test_integral_accumulates_across_the_interval() {
-    ControlLoop c;
-    c.controlIntervalS = 60;
+    Fixture f(60);
 
     for (uint32_t t = 1000; t <= 180000; t += 1000) {
-        c.updateControl(true, true, 18.0f, 22.0f, t);
+        f.tick(18.0f, true, t);
     }
 
-    TEST_ASSERT_TRUE(c.pid.isRunning());
-    TEST_ASSERT_TRUE(c.pid.getIntegral() > 0.0f);
+    TEST_ASSERT_TRUE(f.ctrl.isControlRunning());
+    TEST_ASSERT_TRUE(f.ctrl.getControlIntegral() > 0.0f);
 }
 
 void test_safety_shutoff_not_delayed_by_control_interval() {
-    ControlLoop c;
-    c.controlIntervalS = 60;
+    Fixture f(60);
 
     for (uint32_t t = 1000; t <= 60000; t += 1000) {
-        c.updateControl(true, true, 18.0f, 22.0f, t);
+        f.tick(18.0f, true, t);
     }
-    TEST_ASSERT_TRUE(c.isControlActive());
-    TEST_ASSERT_FALSE(c.safetyShutoff);
+    TEST_ASSERT_TRUE(f.ctrl.isControlActive());
+    TEST_ASSERT_FALSE(f.ctrl.isSafetyShutoffEngaged());
 
     // The very next sensor tick, 59 s before the PID would next compute.
-    const float output = c.updateControl(true, true, 40.0f, 22.0f, 61000);
+    const float output = f.tick(40.0f, true, 61000);
 
-    TEST_ASSERT_TRUE(c.safetyShutoff);
+    TEST_ASSERT_TRUE(f.ctrl.isSafetyShutoffEngaged());
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, output);
-    TEST_ASSERT_FALSE(c.isControlActive());
+    TEST_ASSERT_FALSE(f.ctrl.isControlActive());
+    TEST_ASSERT_FALSE(f.ctrl.isHeatingPermitted());
 }
 
 void test_safety_shutoff_releases_on_a_sensor_tick() {
-    ControlLoop c;
-    c.controlIntervalS = 60;
-    c.updateControl(true, true, 40.0f, 22.0f, 1000);
-    TEST_ASSERT_TRUE(c.safetyShutoff);
+    Fixture f(60);
+    f.tick(40.0f, true, 1000);
+    TEST_ASSERT_TRUE(f.ctrl.isSafetyShutoffEngaged());
 
     // Hysteresis: still latched just below the limit, released a band below it.
-    c.updateControl(true, true, 34.5f, 22.0f, 2000);
-    TEST_ASSERT_TRUE(c.safetyShutoff);
+    f.tick(34.5f, true, 2000);
+    TEST_ASSERT_TRUE(f.ctrl.isSafetyShutoffEngaged());
 
-    c.updateControl(true, true, 33.0f, 22.0f, 3000);
-    TEST_ASSERT_FALSE(c.safetyShutoff);
+    f.tick(33.0f, true, 3000);
+    TEST_ASSERT_FALSE(f.ctrl.isSafetyShutoffEngaged());
 }
 
 void test_autotuner_ticks_every_sensor_cycle() {
-    ControlLoop c;
-    c.controlIntervalS = 60;
-    c.autotuneActive = true;
+    Fixture f(60);
 
-    for (uint32_t t = 1000; t <= 120000; t += 1000) {
-        c.updateControl(true, true, 22.0f, 22.0f, t);
+    // Requested from the web task; honoured by the loop on its next tick.
+    TEST_ASSERT_TRUE(f.ctrl.requestAutotuneStart());
+    TEST_ASSERT_FALSE(f.ctrl.isAutotuneActive());
+
+    f.tick(SETPOINT, true, 1000);
+    TEST_ASSERT_TRUE(f.ctrl.isAutotuneActive());
+    TEST_ASSERT_EQUAL_UINT32(0, f.ctrl.getAutotuneElapsedMs(1000));
+
+    // Every one of the 120 ticks advances the run by one second, not one in
+    // sixty: a coarser sampling would under-estimate the oscillation amplitude
+    // and over-estimate Ku. The PID never computes while the run owns the
+    // output.
+    for (uint32_t t = 2000; t <= 120000; t += 1000) {
+        f.tick(SETPOINT, true, t);
+        TEST_ASSERT_TRUE(f.ctrl.isAutotuneActive());
+        TEST_ASSERT_EQUAL_UINT32(t - 1000, f.ctrl.getAutotuneElapsedMs(t));
+        TEST_ASSERT_FALSE(f.ctrl.isControlRunning());
     }
-
-    // Every one of the 120 ticks, not two. Coarser sampling would
-    // under-estimate the oscillation amplitude and over-estimate Ku.
-    TEST_ASSERT_EQUAL_UINT(120, c.autotuneTicks);
-    TEST_ASSERT_EQUAL_UINT(0, c.pidComputations);
+    TEST_ASSERT_EQUAL_UINT(0, f.computations);
 }
 
 void test_decimation_survives_millis_rollover() {
-    ControlLoop c;
-    c.controlIntervalS = 60;
+    Fixture f(60);
 
     // Last computation 1 s before the wrap.
     const uint32_t beforeWrap = 0xFFFFFC18u;
-    c.updateControl(true, true, 18.0f, 22.0f, beforeWrap);
-    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+    f.tick(21.9f, true, beforeWrap);
+    TEST_ASSERT_EQUAL_UINT(1, f.computations);
 
     // 30 s past the wrap: not yet eligible. Signed arithmetic here would see a
     // vast negative elapsed time; a naive `now >= last + interval` would stall
     // for the length of the counter.
-    c.updateControl(true, true, 18.0f, 22.0f, 29000u);
-    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+    f.tick(21.9f, true, 29000u);
+    TEST_ASSERT_EQUAL_UINT(1, f.computations);
 
     // 60 s past the last computation, across the wrap.
-    c.updateControl(true, true, 18.0f, 22.0f, 59000u);
-    TEST_ASSERT_EQUAL_UINT(2, c.pidComputations);
+    f.tick(21.9f, true, 59000u);
+    TEST_ASSERT_EQUAL_UINT(2, f.computations);
 }
 
 // A skip path reseats the baseline, so the interval stays a genuine floor on
 // the spacing between computations rather than being satisfied by a gap the
 // controller spent suspended.
 void test_resumed_controller_computes_on_first_eligible_tick() {
-    ControlLoop c;
-    c.controlIntervalS = 60;
+    Fixture f(60);
 
     for (uint32_t t = 1000; t <= 60000; t += 1000) {
-        c.updateControl(true, true, 18.0f, 22.0f, t);
+        f.tick(18.0f, true, t);
     }
-    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+    TEST_ASSERT_EQUAL_UINT(1, f.computations);
 
     // Switched off for an hour.
+    f.setEnabled(false);
     for (uint32_t t = 61000; t <= 3600000; t += 1000) {
-        c.updateControl(false, true, 18.0f, 22.0f, t);
+        f.tick(18.0f, true, t);
     }
-    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+    TEST_ASSERT_EQUAL_UINT(1, f.computations);
 
     // Back on. The baseline was reseated by the last skipped tick, so the
     // first tick after resuming is not yet eligible.
-    c.updateControl(true, true, 18.0f, 22.0f, 3601000);
-    TEST_ASSERT_EQUAL_UINT(1, c.pidComputations);
+    f.setEnabled(true);
+    f.tick(18.0f, true, 3601000);
+    TEST_ASSERT_EQUAL_UINT(1, f.computations);
+    TEST_ASSERT_FALSE(f.ctrl.isControlRunning());
 
     // One interval after the resume it computes, and bumplessly: the
     // proportional term alone, with no integral charged from the hour off.
-    const float output = c.updateControl(true, true, 21.9f, 22.0f, 3660001);
-    TEST_ASSERT_EQUAL_UINT(2, c.pidComputations);
+    const float output = f.tick(21.9f, true, 3660001);
+    TEST_ASSERT_EQUAL_UINT(2, f.computations);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.2f, output);
-    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f, c.pid.getIntegral());
+    TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f, f.ctrl.getControlIntegral());
 }
 
 // An interval of 1 s is the documented way to keep the pre-decimation
 // behaviour, so it must not accidentally skip a tick.
 void test_one_second_interval_computes_every_tick() {
-    ControlLoop c;
-    c.controlIntervalS = 1;
+    Fixture f(1);
 
     for (uint32_t t = 1000; t <= 10000; t += 1000) {
-        c.updateControl(true, true, 18.0f, 22.0f, t);
+        f.tick(21.9f, true, t);
     }
 
-    TEST_ASSERT_EQUAL_UINT(10, c.pidComputations);
+    TEST_ASSERT_EQUAL_UINT(10, f.computations);
+}
+
+// --- Decoupled from sensor acquisition ---
+//
+// The scenarios from the "Control loop is decoupled from sensor acquisition"
+// requirement in the temperature-control spec.
+
+void test_loop_computes_without_any_sensor_object() {
+    // Nothing in this translation unit constructs a SensorController or a
+    // Sensor::Sensor; the loop's only dependency is the ConfigManager.
+    Fixture f;
+
+    const float output = f.tick(18.0f, true, 1000);
+
+    TEST_ASSERT_TRUE(output > 0.0f);
+    TEST_ASSERT_TRUE(f.ctrl.isControlRunning());
+}
+
+void test_heating_not_permitted_before_first_tick() {
+    Fixture f;
+
+    // Control is enabled and nothing has engaged the shutoff, yet no tick has
+    // reported a valid reading: false is the safe default.
+    TEST_ASSERT_TRUE(f.ctrl.isControlEnabled());
+    TEST_ASSERT_FALSE(f.ctrl.isSafetyShutoffEngaged());
+    TEST_ASSERT_FALSE(f.ctrl.isHeatingPermitted());
+}
+
+void test_heating_permission_follows_last_ticks_inputs() {
+    Fixture f;
+
+    f.tick(18.0f, true, 1000);
+    TEST_ASSERT_TRUE(f.ctrl.isHeatingPermitted());
+
+    // The last tick had no valid reading. Whatever the sensor cache holds now
+    // is irrelevant: the answer is what the loop was last told.
+    f.tick(18.0f, false, 2000);
+    TEST_ASSERT_FALSE(f.ctrl.isHeatingPermitted());
+
+    f.tick(NAN, true, 3000);
+    TEST_ASSERT_FALSE(f.ctrl.isHeatingPermitted());
+
+    // A valid reading below the release band re-permits on that same tick.
+    f.tick(18.0f, true, 4000);
+    TEST_ASSERT_TRUE(f.ctrl.isHeatingPermitted());
+}
+
+void test_cadence_is_testable_natively() {
+    Fixture f(60);
+
+    // One-second ticks over two full control intervals. The decimation
+    // baseline starts at zero, so the computations fall at 60 s and 120 s.
+    for (uint32_t t = 1000; t <= 121000; t += 1000) {
+        f.tick(21.9f, true, t);
+    }
+
+    TEST_ASSERT_EQUAL_UINT(2, f.computations);
+    TEST_ASSERT_TRUE(f.ctrl.isControlRunning());
+    // Two computations, one interval apart: P plus one interval's integral.
+    TEST_ASSERT_FLOAT_WITHIN(0.005f, 0.26f, f.ctrl.getControlOutput());
 }
 
 int runUnityTests() {
@@ -677,6 +717,11 @@ int runUnityTests() {
     RUN_TEST(test_decimation_survives_millis_rollover);
     RUN_TEST(test_resumed_controller_computes_on_first_eligible_tick);
     RUN_TEST(test_one_second_interval_computes_every_tick);
+
+    RUN_TEST(test_loop_computes_without_any_sensor_object);
+    RUN_TEST(test_heating_not_permitted_before_first_tick);
+    RUN_TEST(test_heating_permission_follows_last_ticks_inputs);
+    RUN_TEST(test_cadence_is_testable_natively);
     return UNITY_END();
 }
 

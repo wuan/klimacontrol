@@ -56,7 +56,7 @@ namespace Control {
      * autotune result called setGains() from the web-server task, where the
      * `running = false` it writes could be overwritten by an in-flight
      * update() and the suspend silently dropped. Gain changes originating off
-     * the control task now go through SensorController's pending-gains request
+     * the control task now go through TemperatureController's pending-gains request
      * and are applied by the control tick, so setGains() has a single caller on
      * a single task again. Keep it that way.
      */

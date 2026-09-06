@@ -9,7 +9,7 @@
 void setUp() {}
 void tearDown() {}
 
-// Cross-task `DeviceConfig` reads used to be torn: a tick of updateControl()
+// Cross-task `DeviceConfig` reads used to be torn: a control-loop tick
 // on the Sensor Monitor task could see the new safety_max_c paired with the
 // old safety_hyst_c, or any other half-updated combination, because every
 // updateXxx() in ConfigManager wrote its field(s) unlocked while the control

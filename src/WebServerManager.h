@@ -18,6 +18,10 @@ namespace Task {
     class SensorMonitor;
 }
 
+namespace Control {
+    class TemperatureController;
+}
+
 class Network;
 class SensorController;
 
@@ -56,6 +60,7 @@ protected:
     Config::ConfigManager &config;
     Network &network;
     SensorController &sensorController;
+    Control::TemperatureController &temperatureController;
     Task::SensorMonitor &sensorMonitor;
     WebServerMode currentMode = WebServerMode::NONE;
 
@@ -112,8 +117,10 @@ public:
      * @param config Configuration manager reference
      * @param network Network manager reference
      * @param sensorController SensorController reference
+     * @param temperatureController Control loop, for the control/autotune routes
      */
-    WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController, Task::SensorMonitor &sensorMonitor);
+    WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController,
+                     Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor);
 
     /**
      * Virtual destructor

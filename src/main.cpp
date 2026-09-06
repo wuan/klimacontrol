@@ -22,6 +22,7 @@
 #include "sensor/DPS310.h"
 #include "sensor/BH1750.h"
 #include "SensorController.h"
+#include "control/TemperatureController.h"
 #include "DarkModeStatusLed.h"
 #include "task/SensorMonitor.h"
 #include "OTAUpdater.h"
@@ -126,20 +127,23 @@ Config::ConfigManager config;
 // StatusLed is a top-level object so SensorController's failure path can drive
 // it even before Network is constructed.
 DarkModeStatusLed statusLed;
+// The heating control loop. Depends only on `config` (declared above), holds
+// no sensor reference, and is fed by the Sensor Monitor task each tick.
+Control::TemperatureController temperatureController(config);
 SensorController sensorController(config, &statusLed);
-Task::SensorMonitor sensorMonitor(sensorController);
+Task::SensorMonitor sensorMonitor(sensorController, temperatureController);
 // Network is constructed first with a null webServer pointer; the
 // WebServerManager is constructed right after (it needs a Network& reference)
 // and wired in via setWebServer. This breaks the circular reference while
 // keeping both objects as long-lived singletons — see spec `memory-management`
 // → "Long-lived singletons are constructed once".
-Network network(config, sensorController, sensorMonitor, statusLed, nullptr);
-WebServerManager webServer(config, network, sensorController, sensorMonitor);
+Network network(config, sensorController, temperatureController, sensorMonitor, statusLed, nullptr);
+WebServerManager webServer(config, network, sensorController, temperatureController, sensorMonitor);
 #ifdef ARDUINO
 // E-paper display. Constructed unconditionally (its 625 B page buffer is in BSS
 // either way), but only initialized when enabled in configuration — see
 // setupDisplay() below.
-Display::DisplayManager displayManager(sensorController);
+Display::DisplayManager displayManager(sensorController, temperatureController);
 #endif
 
 #ifdef ARDUINO
@@ -289,9 +293,13 @@ void setup() {
     // Initialize sensor controller
     sensorController.begin();
 
-    // Apply sensor configuration from the already loaded deviceConfig
-    sensorController.setTargetTemperature(deviceConfig.target_temperature);
-    sensorController.setControlEnabled(deviceConfig.temperature_control_enabled);
+    // Adopt the stored PID tuning. Before the Sensor Monitor task exists, so
+    // writing controller state directly here cannot race a control tick.
+    temperatureController.begin();
+
+    // Apply control configuration from the already loaded deviceConfig
+    temperatureController.setTargetTemperature(deviceConfig.target_temperature);
+    temperatureController.setControlEnabled(deviceConfig.temperature_control_enabled);
 
 #ifdef ARDUINO
     // Power management API conflicts with WIFI_PS_NONE configuration

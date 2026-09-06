@@ -479,7 +479,7 @@ namespace Config {
          * readers MUST go through this accessor rather than getDeviceConfig()
          * when more than one field is needed, because the underlying struct
          * is written by updateXxx() on the AsyncTCP web task while the
-         * Sensor Monitor task reads it from updateControl(), and a
+         * Sensor Monitor task reads it from TemperatureController::update(), and a
          * multi-field read through the const reference can observe a
          * mid-update mix of old and new fields.
          *

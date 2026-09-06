@@ -12,6 +12,7 @@
 #include "Log.h"
 #include "Network.h"
 #include "SensorController.h"
+#include "control/TemperatureController.h"
 #include "support/LocalTime.h"
 
 static const char *TAG = "display";
@@ -34,8 +35,9 @@ namespace Display {
         }
     } // namespace
 
-    DisplayManager::DisplayManager(SensorController &controller)
+    DisplayManager::DisplayManager(SensorController &controller, Control::TemperatureController &control)
         : controller(controller),
+          control(control),
           policy(Config::DEFAULT_DISPLAY_INTERVAL) {
         // Created here rather than lazily: this object is a file-scope
         // singleton, and on this core FreeRTOS is already running by the time
@@ -250,7 +252,7 @@ namespace Display {
             // an unreachable manifold or a dead wax head shows as uncertain
             // instead of as a confident symbol the device cannot vouch for.
             Display::ControlState controlState;
-            switch (controller.getReportedState()) {
+            switch (control.getReportedState()) {
                 case Actuator::ReportedState::Disabled:
                     controlState = Display::ControlState::INACTIVE;
                     break;
@@ -269,7 +271,7 @@ namespace Display {
 
             // Both are footer content the user can change from the web UI, so
             // they are inputs to the refresh decision, not just to the paint.
-            const float target = controller.getTargetTemperature();
+            const float target = control.getTargetTemperature();
 
             // Bucket the controller demand before it reaches the refresh
             // decision. Quantising here rather than in RefreshPolicy keeps the
@@ -277,10 +279,10 @@ namespace Display {
             // plain equality test. Without it a live output would change on
             // every tick and hold the panel at its minimum-interval floor
             // permanently.
-            const float outLo = SensorController::getControlOutputMin();
-            const float outHi = SensorController::getControlOutputMax();
+            const float outLo = Control::TemperatureController::getControlOutputMin();
+            const float outHi = Control::TemperatureController::getControlOutputMax();
             const float span = (outHi - outLo) != 0.0f ? (outHi - outLo) : 1.0f;
-            const float demandFraction = (controller.getControlOutput() - outLo) / span;
+            const float demandFraction = (control.getControlOutput() - outLo) / span;
             demandBucket = Display::nextDemandBucket(demandFraction, demandBucket);
 
             const RefreshKind kind = policy.evaluate(temperature, humidity, snapshot.valid,

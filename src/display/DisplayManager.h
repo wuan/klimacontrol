@@ -13,6 +13,10 @@
 class SensorController;
 class Network;
 
+namespace Control {
+    class TemperatureController;
+}
+
 namespace Display {
 
     /**
@@ -25,7 +29,7 @@ namespace Display {
      */
     class DisplayManager {
     public:
-        explicit DisplayManager(SensorController &controller);
+        DisplayManager(SensorController &controller, Control::TemperatureController &control);
 
         DisplayManager(const DisplayManager &) = delete;
         DisplayManager &operator=(const DisplayManager &) = delete;
@@ -133,6 +137,7 @@ namespace Display {
 
     private:
         SensorController &controller;
+        Control::TemperatureController &control;
         Network *network = nullptr;
 
         EPaperDisplay panel;

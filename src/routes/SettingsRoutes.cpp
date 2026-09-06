@@ -4,7 +4,6 @@
 #include <cstring>
 
 #include "Config.h"
-#include "SensorController.h"
 #include "Network.h"
 #include "support/LocalTime.h"
 

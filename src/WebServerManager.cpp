@@ -114,8 +114,10 @@ void WebServerManager::setupAPIRoutes() {
 #endif
 }
 
-WebServerManager::WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensor_controller, Task::SensorMonitor &sensor_monitor)
-    : config(config), network(network), sensorController(sensor_controller), sensorMonitor(sensor_monitor)
+WebServerManager::WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensor_controller,
+                                   Control::TemperatureController &temperature_controller, Task::SensorMonitor &sensor_monitor)
+    : config(config), network(network), sensorController(sensor_controller),
+      temperatureController(temperature_controller), sensorMonitor(sensor_monitor)
 #ifdef ARDUINO
       , server(80)
 #endif

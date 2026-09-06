@@ -13,6 +13,7 @@
 #include "MqttClient.h"
 #include "sensor/Sensor.h"
 #include "SensorController.h"
+#include "control/TemperatureController.h"
 #include "actuator/HeatingActuator.h"
 #include "task/SensorMonitor.h"
 #include "support/NetworkWatchdog.h"
@@ -41,6 +42,9 @@ class Network {
 private:
     Config::ConfigManager &config;
     SensorController &sensorController;
+    // The control loop: read for the actuator tick (output, permission) and
+    // told what the relay is actually doing afterwards.
+    Control::TemperatureController &temperatureController;
 
     // Drives the heating valve. Lives on this task rather than the control loop
     // because an unreachable manifold takes seconds to time out, and the Sensor
@@ -138,7 +142,8 @@ public:
     /**
      * Network constructor
      * @param config Configuration manager reference
-     * @param sensorController Sensor controller reference
+     * @param sensorController Sensor controller reference (MQTT publishing)
+     * @param temperatureController Control loop (actuator tick)
      * @param statusLed Status LED (non-owning reference; the LED is created at
      *                  namespace scope in main.cpp so it is available when
      *                  SensorController's constructor runs)
@@ -147,7 +152,9 @@ public:
      *                  caller (main.cpp). Switched into CONFIG/OPERATIONAL
      *                  mode via setMode() from the network task.
      */
-    Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, DarkModeStatusLed &statusLed, WebServerManager *webServer);
+    Network(Config::ConfigManager &config, SensorController &sensorController,
+            Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
+            DarkModeStatusLed &statusLed, WebServerManager *webServer);
 
     /** Read-only view of the heating actuator, for the API and displays. */
     const Actuator::HeatingActuator &getHeatingActuator() const { return heatingActuator; }

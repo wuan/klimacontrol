@@ -1,5 +1,6 @@
 #include "SensorMonitor.h"
 #include "SensorController.h"
+#include "control/TemperatureController.h"
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -13,8 +14,8 @@ static const char* TAG = "sensor";
 
 namespace Task {
     
-    SensorMonitor::SensorMonitor(SensorController &controller)
-        : controller(controller) {
+    SensorMonitor::SensorMonitor(SensorController &controller, Control::TemperatureController &control)
+        : controller(controller), control(control) {
     }
     
     void SensorMonitor::startTask() {
@@ -62,15 +63,19 @@ namespace Task {
             esp_task_wdt_reset();
 
             auto startTime = millis();
-            controller.readSensors();
+            controller.readSensors(startTime);
 
-            // Called unconditionally. updateControl() gates on
-            // temperature_control_enabled itself, and it has to run even while
-            // disabled so it can mark the tick as skipped — an outer guard here
-            // would leave the PID thinking it was still running, and the first
-            // tick after re-enabling would charge its integral with the entire
-            // disabled duration.
-            controller.updateControl();
+            // One lock take for both inputs, so temperature and validity
+            // describe the same instant.
+            const auto pv = controller.getProcessValue();
+
+            // Called unconditionally. update() gates on
+            // temperature_control_enabled and on `valid` itself, and it has to
+            // run even while disabled so it can mark the tick as skipped — an
+            // outer guard here would leave the PID thinking it was still
+            // running, and the first tick after re-enabling would charge its
+            // integral with the entire disabled duration.
+            control.update(pv.temperature, pv.valid, startTime);
 
             // Periodic stack high-water mark logging for this task
             if (startTime - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {

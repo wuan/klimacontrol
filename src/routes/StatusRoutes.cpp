@@ -4,6 +4,7 @@
 #include "Config.h"
 #include "Network.h"
 #include "SensorController.h"
+#include "control/TemperatureController.h"
 #include "task/SensorMonitor.h"
 #include "Constants.h"
 
@@ -49,12 +50,12 @@ void WebServerManager::setupStatusRoutes() {
 
 
         // Temperature control info
-        doc["target_temperature"] = sensorController.getTargetTemperature();
-        doc["control_enabled"] = sensorController.isControlEnabled();
-        doc["control_active"] = sensorController.isControlActive();
+        doc["target_temperature"] = temperatureController.getTargetTemperature();
+        doc["control_enabled"] = temperatureController.isControlEnabled();
+        doc["control_active"] = temperatureController.isControlActive();
         // Richer than the boolean above: distinguishes "not heating" from
         // "cannot say", which the boolean cannot express.
-        doc["control_state"] = Actuator::reportedStateName(sensorController.getReportedState());
+        doc["control_state"] = Actuator::reportedStateName(temperatureController.getReportedState());
 
         // Network info
         doc["wifi_connected"] = WiFiClass::status() == WL_CONNECTED;

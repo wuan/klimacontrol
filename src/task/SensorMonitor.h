@@ -8,15 +8,20 @@
 
 class SensorController;
 
+namespace Control {
+    class TemperatureController;
+}
+
 namespace Task {
     
     /**
      * Sensor Monitoring Task
-     * Runs on Core 1, reads sensors and updates temperature control
+     * Reads sensors and drives the temperature control loop with the result
      */
     class SensorMonitor {
     private:
         SensorController &controller;
+        Control::TemperatureController &control;
         TaskHandle_t taskHandle = nullptr;
         Support::Stats stats;
         
@@ -26,8 +31,9 @@ namespace Task {
         /**
          * Constructor
          * @param controller Sensor controller reference
+         * @param control    Control loop, fed from the controller each tick
          */
-        explicit SensorMonitor(SensorController &controller);
+        SensorMonitor(SensorController &controller, Control::TemperatureController &control);
         
         /**
          * Start the sensor monitoring task
