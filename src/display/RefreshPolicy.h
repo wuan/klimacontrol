@@ -47,7 +47,7 @@ namespace Display {
 
     // Partial refreshes accumulate ghosting; every Nth one is promoted to a
     // full refresh to clear it.
-    constexpr uint8_t FULL_REFRESH_EVERY_N_PARTIALS = 12;
+    constexpr uint8_t FULL_REFRESH_EVERY_N_PARTIALS = 20;
 
     // Controller demand is shown as a coarse bar rather than a number. The
     // panel repaints whenever a displayed value changes, so a live percentage
