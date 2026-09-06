@@ -5,7 +5,7 @@
 #include <vector>
 #include "sensor/Sensor.h"
 #include "Config.h"
-#include "StatusLed.h"
+#include "DarkModeStatusLed.h"
 #include "control/PidController.h"
 #include "control/RelayAutotuner.h"
 #include "actuator/HeatingActuator.h"
@@ -38,7 +38,7 @@ private:
     // Used on the mutex-creation failure path to surface the error visibly.
     // ARDUINO-only: the failure path is the only consumer.
 #ifdef ARDUINO
-    StatusLed *statusLed;
+    DarkModeStatusLed *statusLed;
 #endif
 
     void sortSensors();
@@ -137,7 +137,7 @@ public:
      *                  (e.g. in native unit tests). On the firmware, the
      *                  failure path drives this LED to the ERROR state.
      */
-    explicit SensorController(Config::ConfigManager &config, StatusLed *statusLed);
+    explicit SensorController(Config::ConfigManager &config, DarkModeStatusLed *statusLed);
 
     /**
      * Test-only seam: returns true if the underlying mutex allocation failed

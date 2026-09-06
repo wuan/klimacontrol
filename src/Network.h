@@ -9,7 +9,7 @@
 #endif
 
 #include "CaptivePortal.h"
-#include "StatusLed.h"
+#include "DarkModeStatusLed.h"
 #include "MqttClient.h"
 #include "sensor/Sensor.h"
 #include "SensorController.h"
@@ -66,7 +66,7 @@ private:
     // the same way webServer is, so neither object needs the other at
     // construction time.
     Display::DisplayManager *display = nullptr;
-    StatusLed &statusLed;
+    DarkModeStatusLed &statusLed;
     std::unique_ptr<MqttClient> mqttClient;
     uint32_t lastMqttPublish;
     CaptivePortal captivePortal;
@@ -147,7 +147,7 @@ public:
      *                  caller (main.cpp). Switched into CONFIG/OPERATIONAL
      *                  mode via setMode() from the network task.
      */
-    Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, StatusLed &statusLed, WebServerManager *webServer);
+    Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, DarkModeStatusLed &statusLed, WebServerManager *webServer);
 
     /** Read-only view of the heating actuator, for the API and displays. */
     const Actuator::HeatingActuator &getHeatingActuator() const { return heatingActuator; }
@@ -222,6 +222,13 @@ public:
      * @return Current LED state, or OFF if LED is disabled
      */
     LedState getStatusLedState() const;
+
+    /**
+     * Apply a new status-LED dark-mode threshold live (no restart). Safe to
+     * call from the HTTP handler task; the LED stores it atomically.
+     * @param seconds Seconds of normal operation before the LED goes dark; 0 disables
+     */
+    void setLedDarkAfterSeconds(uint16_t seconds);
 
     /**
      * Get MQTT client (for API access)

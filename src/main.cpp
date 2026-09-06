@@ -22,7 +22,7 @@
 #include "sensor/DPS310.h"
 #include "sensor/BH1750.h"
 #include "SensorController.h"
-#include "StatusLed.h"
+#include "DarkModeStatusLed.h"
 #include "task/SensorMonitor.h"
 #include "OTAUpdater.h"
 #include "support/LocalTime.h"
@@ -125,7 +125,7 @@ TaskHandle_t networkTaskHandle = nullptr;
 Config::ConfigManager config;
 // StatusLed is a top-level object so SensorController's failure path can drive
 // it even before Network is constructed.
-StatusLed statusLed;
+DarkModeStatusLed statusLed;
 SensorController sensorController(config, &statusLed);
 Task::SensorMonitor sensorMonitor(sensorController);
 // Network is constructed first with a null webServer pointer; the

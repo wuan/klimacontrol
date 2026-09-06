@@ -1,12 +1,12 @@
 #include "Config.h"
 #include "SensorController.h"
-#include "StatusLed.h"
+#include "DarkModeStatusLed.h"
 #include "unity.h"
 
 void setUp() {}
 void tearDown() {}
 
-// Construction with a null StatusLed* must succeed on native (the failure path
+// Construction with a null DarkModeStatusLed* must succeed on native (the failure path
 // is `#ifdef ARDUINO`-gated and only restarts on the device).
 void test_construct_with_null_led_does_not_crash() {
     Config::ConfigManager config;
@@ -14,10 +14,10 @@ void test_construct_with_null_led_does_not_crash() {
     TEST_ASSERT_FALSE(controller.didFailMutexInit());
 }
 
-// Construction with a non-null StatusLed* must also succeed.
+// Construction with a non-null DarkModeStatusLed* must also succeed.
 void test_construct_with_valid_led_does_not_crash() {
     Config::ConfigManager config;
-    StatusLed led;
+    DarkModeStatusLed led;
     SensorController controller(config, &led);
     TEST_ASSERT_FALSE(controller.didFailMutexInit());
     TEST_ASSERT_EQUAL(LedState::OFF, led.getState());

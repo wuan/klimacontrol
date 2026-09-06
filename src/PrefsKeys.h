@@ -33,6 +33,7 @@ namespace PrefsKeys {
     // Energy configuration
     constexpr const char* ENERGY_WIFI_POWER = "energy_wifi_pw";
     constexpr const char* ENERGY_WIFI_SLEEP_MODE = "wifi_sleep";  // Concise key name for NVS reliability
+    constexpr const char* ENERGY_LED_DARK_AFTER_S = "led_dark_s";
 
     // Sensor configuration
     constexpr const char* SENSOR_ASSIGNMENTS = "sns_assign";

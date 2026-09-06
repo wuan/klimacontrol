@@ -36,7 +36,7 @@ namespace {
     constexpr size_t MAX_MEASUREMENTS_PER_SENSOR = 8;
 }
 
-SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused]] StatusLed *statusLed)
+SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused]] DarkModeStatusLed *statusLed)
     : config(config), lastReadingTimestamp(0), dataValid(false),
 #ifdef ARDUINO
       dataMutex(xSemaphoreCreateMutex()),
@@ -60,8 +60,7 @@ SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused
     if (!dataMutex) {
         ESP_LOGE(TAG, "Failed to create dataMutex (out of memory) — restarting");
         if (statusLed) {
-            statusLed->setState(LedState::ERROR);
-            statusLed->update();
+            statusLed->setState(LedState::ERROR); // applies immediately
         }
         delay(5000);
         ESP.restart();

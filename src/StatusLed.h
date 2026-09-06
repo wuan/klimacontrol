@@ -17,14 +17,18 @@
 enum class LedState {
     OFF,       // LED is off
     ON,        // LED is on
-    STARTUP, // Slow blinking (1 Hz)
+    STARTUP, // Steady dim blue while booting / associating
     TRANSMIT_DATA,  // Brief white flash during MQTT publish
     ERROR      // Solid red — fatal init error (e.g. mutex allocation failure)
 };
 
 /**
  * Status LED controller using built-in NeoPixel
- * Controls the onboard NeoPixel to indicate device status
+ * Controls the onboard NeoPixel to indicate device status.
+ *
+ * This class is a pure state-to-colour mapping with no notion of time.
+ * Time-based policies (e.g. dark mode) live in wrappers such as
+ * DarkModeStatusLed, which decide what state to forward here.
  */
 class StatusLed {
 private:
@@ -33,9 +37,7 @@ private:
 #endif
     LedState state;
     float progress;                // 0.0 = green, 1.0 = red (MQTT interval progress)
-#ifdef ARDUINO
     uint32_t lastShownColor = 0xFFFFFFFF; // init to impossible value to force first write
-#endif
 
     void showColor(uint32_t color);
 
@@ -53,7 +55,7 @@ public:
     void begin();
 
     /**
-     * Set LED state
+     * Set LED state (applied immediately)
      * @param newState New state for the LED
      */
     void setState(LedState newState);
@@ -65,9 +67,15 @@ public:
     LedState getState() const { return state; }
 
     /**
-     * Update LED state (call regularly from main loop)
+     * Re-render the current state (call regularly from the network task)
      */
     void update();
+
+    /**
+     * @return Colour most recently pushed to the pixel (0xRRGGBB). For tests
+     *         and diagnostics; 0xFFFFFFFF before the first write.
+     */
+    [[nodiscard]] uint32_t lastColor() const { return lastShownColor; }
 
     /**
      * Turn LED on
@@ -83,7 +91,7 @@ public:
      * Toggle LED state
      */
     void toggle();
-    
+
     /**
      * Set MQTT progress for green→red gradient in ON state
      * @param progress 0.0 = green (just published), 1.0 = red (about to publish)

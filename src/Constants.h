@@ -24,7 +24,12 @@ namespace Constants {
     constexpr const char* GITHUB_REPO = "klima";
     
     // Default WiFi TX power (wifi_power_t raw value, default 13 dBm)
-    constexpr uint8_t DEFAULT_WIFI_POWER = 68;
+    constexpr uint8_t DEFAULT_WIFI_POWER = 52;
+
+    // Status LED dark mode: seconds of sustained normal operation before the
+    // LED renders dark. 0 disables dark mode.
+    constexpr uint16_t DEFAULT_LED_DARK_AFTER_S = 300;
+    constexpr uint16_t MAX_LED_DARK_AFTER_S = 3600;
 };
 
 #endif //KLIMACONTROL_CONSTANTS_H

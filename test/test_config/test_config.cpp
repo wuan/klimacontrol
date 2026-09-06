@@ -50,7 +50,10 @@ void test_sensor_config_defaults() {
 
 void test_energy_config_defaults() {
     Config::EnergyConfig config;
+    TEST_ASSERT_EQUAL(52, Constants::DEFAULT_WIFI_POWER); // 13 dBm, must match the documented intent
     TEST_ASSERT_EQUAL(Constants::DEFAULT_WIFI_POWER, config.wifi_power);
+    TEST_ASSERT_EQUAL(0, config.wifi_sleep_mode);
+    TEST_ASSERT_EQUAL(300, config.led_dark_after_s);
 }
 
 // --- SyslogConfig defaults ---
@@ -703,7 +706,28 @@ void test_validate_energy_config_invalid_power_reset() {
     Config::EnergyConfig config;
     config.wifi_power = 42; // not a valid power level
     Config::validateEnergyConfig(config);
-    TEST_ASSERT_EQUAL(Constants::DEFAULT_WIFI_POWER, config.wifi_power);
+    TEST_ASSERT_EQUAL(52, config.wifi_power);
+}
+
+void test_validate_energy_config_led_dark_zero_preserved() {
+    Config::EnergyConfig config;
+    config.led_dark_after_s = 0;
+    Config::validateEnergyConfig(config);
+    TEST_ASSERT_EQUAL(0, config.led_dark_after_s);
+}
+
+void test_validate_energy_config_led_dark_in_range_preserved() {
+    Config::EnergyConfig config;
+    config.led_dark_after_s = 60;
+    Config::validateEnergyConfig(config);
+    TEST_ASSERT_EQUAL(60, config.led_dark_after_s);
+}
+
+void test_validate_energy_config_led_dark_clamped() {
+    Config::EnergyConfig config;
+    config.led_dark_after_s = 7200;
+    Config::validateEnergyConfig(config);
+    TEST_ASSERT_EQUAL(3600, config.led_dark_after_s);
 }
 
 void test_validate_energy_config_zero_power_reset() {
@@ -806,6 +830,9 @@ int runUnityTests() {
     // EnergyConfig validation
     RUN_TEST(test_validate_energy_config_valid_power_levels);
     RUN_TEST(test_validate_energy_config_invalid_power_reset);
+    RUN_TEST(test_validate_energy_config_led_dark_zero_preserved);
+    RUN_TEST(test_validate_energy_config_led_dark_in_range_preserved);
+    RUN_TEST(test_validate_energy_config_led_dark_clamped);
     RUN_TEST(test_validate_energy_config_zero_power_reset);
     RUN_TEST(test_validate_energy_config_max_uint8_reset);
     // SensorConfig

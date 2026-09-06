@@ -574,6 +574,10 @@ namespace Config {
         if (config.wifi_sleep_mode > 2) {
             config.wifi_sleep_mode = 0; // Default to WIFI_PS_NONE
         }
+        // 0 means "never dark" and is valid; only cap the upper end.
+        if (config.led_dark_after_s > Constants::MAX_LED_DARK_AFTER_S) {
+            config.led_dark_after_s = Constants::MAX_LED_DARK_AFTER_S;
+        }
     }
 
     EnergyConfig ConfigManager::loadEnergyConfig() {
@@ -584,9 +588,10 @@ namespace Config {
 
         energyConfig.wifi_power = guard.get().getUChar(PrefsKeys::ENERGY_WIFI_POWER, Constants::DEFAULT_WIFI_POWER);
         energyConfig.wifi_sleep_mode = guard.get().getUChar(PrefsKeys::ENERGY_WIFI_SLEEP_MODE, 0);
+        energyConfig.led_dark_after_s = guard.get().getUShort(PrefsKeys::ENERGY_LED_DARK_AFTER_S, Constants::DEFAULT_LED_DARK_AFTER_S);
 
-        ESP_LOGD(TAG, "Loaded energy config from NVS: power=%u, sleep=%u",
-                 energyConfig.wifi_power, energyConfig.wifi_sleep_mode);
+        ESP_LOGD(TAG, "Loaded energy config from NVS: power=%u, sleep=%u, led_dark_after_s=%u",
+                 energyConfig.wifi_power, energyConfig.wifi_sleep_mode, energyConfig.led_dark_after_s);
 #endif
 
         // Validate configuration values
@@ -603,9 +608,11 @@ namespace Config {
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false);
 
-        ESP_LOGD(TAG, "Saving energy config: power=%u, sleep=%u", validated.wifi_power, validated.wifi_sleep_mode);
+        ESP_LOGD(TAG, "Saving energy config: power=%u, sleep=%u, led_dark_after_s=%u",
+                 validated.wifi_power, validated.wifi_sleep_mode, validated.led_dark_after_s);
         guard.get().putUChar(PrefsKeys::ENERGY_WIFI_POWER, validated.wifi_power);
         guard.get().putUChar(PrefsKeys::ENERGY_WIFI_SLEEP_MODE, validated.wifi_sleep_mode);
+        guard.get().putUShort(PrefsKeys::ENERGY_LED_DARK_AFTER_S, validated.led_dark_after_s);
 #endif
     }
     SyslogConfig ConfigManager::loadSyslogConfig() {

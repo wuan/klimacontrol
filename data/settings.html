@@ -368,10 +368,21 @@
                 <small class="form-hint">Sleep mode allows WiFi module to idle between beacons, reducing CPU temperature</small>
             </div>
 
+            <div class="form-group">
+                <label for="ledDarkAfter">LED dark mode</label>
+                <select id="ledDarkAfter">
+                    <option value="0">Off (LED always on)</option>
+                    <option value="60">Dark after 1 minute</option>
+                    <option value="300">Dark after 5 minutes</option>
+                    <option value="1800">Dark after 30 minutes</option>
+                </select>
+                <small class="form-hint">Turns the status LED off after the device has been running normally for this long. Startup and error indications stay visible, and a reconnect lights the LED again. Applied immediately, no restart.</small>
+            </div>
+
             <button class="btn btn-primary" onclick="updateEnergy()">Save Energy Settings</button>
 
             <div class="warning-box" style="margin-top: 10px;">
-                <strong>Note:</strong> The device will restart after saving energy settings.
+                <strong>Note:</strong> The device restarts only when WiFi TX power or sleep mode is changed. The LED setting is applied live.
             </div>
         </div>
 
@@ -1508,6 +1519,8 @@
     }
 
     // Energy Functions
+    let loadedEnergy = null; // WiFi fields as last loaded, to predict whether a save restarts
+
     async function loadEnergyConfig() {
         try {
             const response = await fetch('/api/settings/energy');
@@ -1515,6 +1528,18 @@
 
             document.getElementById('wifiPower').value = data.wifi_power || 52;
             document.getElementById('wifiSleepMode').value = data.wifi_sleep_mode || 0;
+            const ledDark = (typeof data.led_dark_after_s === 'number') ? data.led_dark_after_s : 300;
+            const ledSelect = document.getElementById('ledDarkAfter');
+            ledSelect.value = String(ledDark);
+            if (ledSelect.value !== String(ledDark)) {
+                // Value set via API that isn't one of the presets: show it rather than silently changing it on save.
+                const opt = document.createElement('option');
+                opt.value = String(ledDark);
+                opt.textContent = 'Dark after ' + ledDark + ' s';
+                ledSelect.appendChild(opt);
+                ledSelect.value = String(ledDark);
+            }
+            loadedEnergy = {wifi_power: data.wifi_power || 52, wifi_sleep_mode: data.wifi_sleep_mode || 0};
         } catch (error) {
             console.error('Failed to load energy config:', error);
         }
@@ -1523,8 +1548,12 @@
     async function updateEnergy() {
         const wifiPower = parseInt(document.getElementById('wifiPower').value);
         const wifiSleepMode = parseInt(document.getElementById('wifiSleepMode').value);
+        const ledDarkAfter = parseInt(document.getElementById('ledDarkAfter').value);
 
-        if (!confirm('Save energy settings?\n\nThe device will restart to apply changes.')) {
+        const wifiWillChange = !loadedEnergy
+            || loadedEnergy.wifi_power !== wifiPower
+            || loadedEnergy.wifi_sleep_mode !== wifiSleepMode;
+        if (wifiWillChange && !confirm('Save energy settings?\n\nWiFi settings changed: the device will restart to apply them.')) {
             return;
         }
 
@@ -1532,11 +1561,17 @@
             const response = await fetch('/api/settings/energy', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json', 'X-Requested-With': 'KlimaControl'},
-                body: JSON.stringify({wifi_power: wifiPower, wifi_sleep_mode: wifiSleepMode})
+                body: JSON.stringify({wifi_power: wifiPower, wifi_sleep_mode: wifiSleepMode, led_dark_after_s: ledDarkAfter})
             });
 
             if (response.ok) {
-                alert('Energy settings saved. Device is restarting...');
+                const result = await response.json().catch(() => ({}));
+                if (result.restart) {
+                    alert('Energy settings saved. Device is restarting...');
+                } else {
+                    alert('Energy settings saved.');
+                    loadedEnergy = {wifi_power: wifiPower, wifi_sleep_mode: wifiSleepMode};
+                }
             } else {
                 const data = await response.json();
                 alert('Failed to save energy settings: ' + (data.error || 'Unknown error'));

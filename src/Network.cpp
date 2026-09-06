@@ -59,7 +59,7 @@ namespace {
 }
 #endif
 
-Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, StatusLed &statusLed, WebServerManager *webServer)
+Network::Network(Config::ConfigManager &config, SensorController &sensorController, Task::SensorMonitor &sensorMonitor, DarkModeStatusLed &statusLed, WebServerManager *webServer)
     : config(config), sensorController(sensorController), sensorMonitor(sensorMonitor), mode(NetworkMode::NONE)
 #ifdef ARDUINO
       , ntpClient(wifiUdp)
@@ -126,6 +126,10 @@ void Network::setStatusLedState(LedState state) {
 
 LedState Network::getStatusLedState() const {
     return statusLed.getState();
+}
+
+void Network::setLedDarkAfterSeconds(uint16_t seconds) {
+    statusLed.setDarkAfterSeconds(seconds);
 }
 
 void Network::startAP() {
@@ -465,6 +469,8 @@ void Network::configureUsingAPMode() {
     // Status LED is owned by main.cpp (top-level object); the network task
     // just drives it. begin() must be called once after construction.
     statusLed.begin();
+    // Dark-mode threshold must be in force before the first ON transition.
+    statusLed.setDarkAfterSeconds(config.loadEnergyConfig().led_dark_after_s);
     statusLed.setState(LedState::STARTUP); // Indicate booting
 
     if (!config.isConfigured()) {
@@ -601,7 +607,7 @@ void Network::configureUsingAPMode() {
     Config::SyslogConfig syslogConfig = config.loadSyslogConfig();
     SyslogOutput::begin(syslogConfig);
 
-    // Main loop - NTP updates and touch control
+    // Main loop - 1 s housekeeping: LED, actuator, MQTT, NTP, diagnostics
     const unsigned long bootMs = millis(); // baseline for boot-relative checks (wrap-safe via subtraction)
     unsigned long lastSecond = millis();
     // Tracks when the previous 1 s block finished its work. Used together with
@@ -651,7 +657,7 @@ void Network::configureUsingAPMode() {
         // one consistent view.
         const bool otaActive = OTAUpdater::isUpdateInProgress();
 
-        statusLed.update();
+        statusLed.update(static_cast<uint32_t>(now));
 
         // Heating actuator. Deliberately here and not in the control loop: a
         // manifold that has gone away blocks for the HTTP timeout, and stalling

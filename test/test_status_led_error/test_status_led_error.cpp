@@ -51,6 +51,7 @@ void test_update_in_error_state_does_not_crash_on_native() {
     // verifying the call doesn't crash covers the dispatch path.
     led.update();
     TEST_ASSERT_EQUAL(LedState::ERROR, led.getState());
+    TEST_ASSERT_EQUAL_HEX32(0x0F0000, led.lastColor());
 }
 
 int runUnityTests() {

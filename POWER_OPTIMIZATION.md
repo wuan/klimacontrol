@@ -113,9 +113,12 @@ WiFi.setSleep(WIFI_PS_MIN_MODEM);  // -30-50 mA if it stays stable
 ## High Priority Improvements (Priority: 🟡 MEDIUM)
 
 ### 3. Adaptive WiFi TX Power
-**Location:** `src/Network.cpp:130-132`
+**Location:** `src/Network.cpp` (`connectSTA()`, `WiFi.setTxPower`)
 
-Currently uses fixed 13 dBm. Closer to AP = use less power.
+Default is a fixed 13 dBm (`Constants::DEFAULT_WIFI_POWER = 52`). Note: before
+this was corrected the constant was `68`, which is **17 dBm**, so devices that
+never saved energy settings were transmitting 4 dB hotter than documented.
+Closer to AP = use less power.
 
 **Add RSSI-based TX power adaptation:**
 ```cpp
@@ -203,21 +206,18 @@ static constexpr uint32_t NTP_UPDATE_INTERVAL_S = 86400;  // 24 hours
 
 ## Low Priority Optimizations (Priority: 🟢 LOW)
 
-### 6. LED Update Frequency
-**Location:** `src/Network.cpp:356-358` and `src/StatusLed.cpp`
+### 6. LED Dark Mode (implemented)
+**Location:** `src/StatusLed.cpp`, `EnergyConfig::led_dark_after_s`
 
-LED updates run every 1 second. Could be reduced to 100ms.
+The status NeoPixel goes dark after a configurable period of normal operation
+(default 5 minutes, `0` = never). The MQTT publish flash is suppressed too;
+`STARTUP` and `ERROR` always render, and a WiFi reconnect re-lights the LED
+for another period. Configure it in Settings → Energy ("LED dark mode") or via
+`POST /api/settings/energy {"led_dark_after_s": N}`; it applies live without a
+restart.
 
-```cpp
-// In Network::task() main loop:
-static unsigned long lastLedUpdate = 0;
-if (statusLed && (now - lastLedUpdate >= 100)) {  // Was 1000
-    lastLedUpdate = now;
-    statusLed->update();
-}
-```
-
-**Impact:** <1 mA (NeoPixel itself is efficient)
+**Impact:** 1-3 mA (LED current plus one fewer NeoPixel write per second).
+The main benefit is a dark room, not the power saving.
 
 ---
 
@@ -332,7 +332,7 @@ Running ESPAsyncWebServer on core 1 continuously.
 | PM config | main.cpp:116 | None | SKIP | N/A | ❌ NO (Serial prevents sleep) |
 | TX power adapt | Network.cpp:380+ | -5-20 mA | LOW | Low | ✅ YES |
 | Sensor interval | Config.h:117 | -5-15 mA | MEDIUM | Low | ✅ YES |
-| LED update | Network.cpp:357 | <1 mA | LOW | None | ✅ YES |
+| LED dark mode (done) | StatusLed.cpp | 1-3 mA | LOW | None | ✅ YES |
 | NTP interval | Network.cpp:394 | <1 mA | LOW | None | ✅ YES |
 
 **Total realistic savings: 20-40 mA (20-35% reduction in idle state)**

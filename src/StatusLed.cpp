@@ -1,6 +1,6 @@
 #include "StatusLed.h"
 
-StatusLed::StatusLed() 
+StatusLed::StatusLed()
 #ifdef ARDUINO
     : pixel(1, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800), state(LedState::OFF),
 #else
@@ -18,16 +18,16 @@ void StatusLed::begin() {
 
 void StatusLed::setState(LedState newState) {
     if (state == newState) return;
-    
+
     state = newState;
 
     update(); // Apply immediately
 }
 
-void StatusLed::showColor([[maybe_unused]] uint32_t color) {
-#ifdef ARDUINO
+void StatusLed::showColor(uint32_t color) {
     if (color == lastShownColor) return;
     lastShownColor = color;
+#ifdef ARDUINO
     pixel.setPixelColor(0, color);
     pixel.show();
 #endif

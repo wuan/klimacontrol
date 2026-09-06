@@ -211,6 +211,7 @@ namespace Config {
     struct EnergyConfig {
         uint8_t wifi_power = Constants::DEFAULT_WIFI_POWER; // wifi_power_t raw value, default Constants::DEFAULT_WIFI_POWER (13 dBm)
         uint8_t wifi_sleep_mode = 0; // 0=WIFI_PS_NONE, 1=WIFI_PS_MIN_MODEM, 2=WIFI_PS_MAX_MODEM
+        uint16_t led_dark_after_s = Constants::DEFAULT_LED_DARK_AFTER_S; // seconds of normal operation before the status LED goes dark; 0 = never
         EnergyConfig() = default;
     };
 

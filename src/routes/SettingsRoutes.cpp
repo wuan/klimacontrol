@@ -261,19 +261,22 @@ void WebServerManager::setupSettingsRoutes() {
     server.on("/api/settings/energy", HTTP_GET, [this](AsyncWebServerRequest *request) {
         Config::EnergyConfig energyConfig = config.loadEnergyConfig();
 
-        ESP_LOGD(TAG, "Loaded energy config: wifi_power=%u, wifi_sleep_mode=%u",
-                 energyConfig.wifi_power, energyConfig.wifi_sleep_mode);
+        ESP_LOGD(TAG, "Loaded energy config: wifi_power=%u, wifi_sleep_mode=%u, led_dark_after_s=%u",
+                 energyConfig.wifi_power, energyConfig.wifi_sleep_mode, energyConfig.led_dark_after_s);
 
         JsonDocument doc;
         doc["wifi_power"] = energyConfig.wifi_power;
         doc["wifi_sleep_mode"] = energyConfig.wifi_sleep_mode;
+        doc["led_dark_after_s"] = energyConfig.led_dark_after_s;
 
         String response;
         serializeJson(doc, response);
         request->send(200, CONTENT_TYPE_JSON, response);
     });
 
-    // POST /api/settings/energy - Update energy configuration (triggers restart)
+    // POST /api/settings/energy - Update energy configuration. Restarts only
+    // when a WiFi field changed (those are applied at association); the LED
+    // dark-mode threshold is applied live.
     server.on("/api/settings/energy", HTTP_POST,
               []([[maybe_unused]] AsyncWebServerRequest *request) {
               },
@@ -293,6 +296,8 @@ void WebServerManager::setupSettingsRoutes() {
                       }
 
                       Config::EnergyConfig energyConfig = config.loadEnergyConfig();
+                      const uint8_t prevWifiPower = energyConfig.wifi_power;
+                      const uint8_t prevSleepMode = energyConfig.wifi_sleep_mode;
 
                       if (doc["wifi_power"].is<int>()) {
                           uint8_t wp = doc["wifi_power"];
@@ -318,12 +323,36 @@ void WebServerManager::setupSettingsRoutes() {
                           }
                       }
 
-                      ESP_LOGI(TAG, "Saving energy config: power=%u, sleep_mode=%u",
-                               energyConfig.wifi_power, energyConfig.wifi_sleep_mode);
-                      config.saveEnergyConfig(energyConfig);
-                      config.requestRestart(1000);
+                      if (doc["led_dark_after_s"].is<int>()) {
+                          int ld = doc["led_dark_after_s"];
+                          if (ld >= 0 && ld <= Constants::MAX_LED_DARK_AFTER_S) {
+                              energyConfig.led_dark_after_s = static_cast<uint16_t>(ld);
+                          } else {
+                              ESP_LOGW(TAG, "Invalid led_dark_after_s value: %d", ld);
+                              request->send(400, CONTENT_TYPE_JSON,
+                                            R"({"success":false,"error":"Invalid led_dark_after_s value"})");
+                              return;
+                          }
+                      }
 
-                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+                      const bool wifiChanged = energyConfig.wifi_power != prevWifiPower
+                                            || energyConfig.wifi_sleep_mode != prevSleepMode;
+
+                      ESP_LOGI(TAG, "Saving energy config: power=%u, sleep_mode=%u, led_dark_after_s=%u, restart=%s",
+                               energyConfig.wifi_power, energyConfig.wifi_sleep_mode,
+                               energyConfig.led_dark_after_s, wifiChanged ? "yes" : "no");
+                      config.saveEnergyConfig(energyConfig);
+
+                      if (wifiChanged) {
+                          // Picked up at association; the LED value is loaded at task start.
+                          config.requestRestart(1000);
+                      } else {
+                          network.setLedDarkAfterSeconds(energyConfig.led_dark_after_s);
+                      }
+
+                      request->send(200, CONTENT_TYPE_JSON,
+                                    wifiChanged ? R"({"success":true,"restart":true})"
+                                                : R"({"success":true,"restart":false})");
                   }
               }
     );
