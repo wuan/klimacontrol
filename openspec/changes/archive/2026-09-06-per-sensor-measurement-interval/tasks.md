@@ -38,7 +38,7 @@
 ## 4. Firmware verification
 
 - [x] 4.1 Build `pio run -e adafruit_qtpy_esp32s2` with no new warnings
-- [ ] 4.2 Flash a device with SHT4x + SGP40 (or BME680 + SGP40) and confirm via serial log that default sensors read every 15 s while SGP40 reads every second; VOC index continues to update
-- [ ] 4.3 Confirm `/api/sensors` and the MQTT payload keep all measurement types present on every publish, and that `/api/status` `sensor_valid` stays true between default reads
-- [ ] 4.4 Disconnect an I2C sensor and confirm bus recovery is not triggered by quiet ticks, and is triggered after three attempted-and-failed default cycles
-- [ ] 4.5 Check the "SensorMonitor stack HWM" log line and update the stack-size comment in `src/task/SensorMonitor.cpp` if the measured peak changed
+- [x] 4.2 Flash a device with SHT4x + SGP40 (or BME680 + SGP40) and confirm via serial log that default sensors read every 15 s while SGP40 reads every second; VOC index continues to update
+- [x] 4.3 Confirm `/api/sensors` and the MQTT payload keep all measurement types present on every publish, and that `/api/status` `sensor_valid` stays true between default reads
+- [x] 4.4 Disconnect an I2C sensor and confirm bus recovery is not triggered by quiet ticks, and is triggered after three attempted-and-failed default cycles
+- [x] 4.5 Check the "SensorMonitor stack HWM" log line and update the stack-size comment in `src/task/SensorMonitor.cpp` if the measured peak changed
