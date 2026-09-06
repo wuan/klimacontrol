@@ -22,14 +22,71 @@ namespace Sensor {
 
 /**
  * Sensor Controller - Manages sensors and temperature control
+ *
+ * Read scheduling. The SensorMonitor task calls readSensors() once a second,
+ * but a sensor is only *read* when it is due. Drivers with no requirement of
+ * their own (Sensor::requiredIntervalMs() == 0) are read together on one
+ * shared phase every MEASUREMENT_INTERVAL_MS, so temperature, humidity and
+ * the values derived from them are always from the same instant. Drivers
+ * with a requirement (the SGP40's 1 Hz) keep their own timer.
+ *
+ * Because most sensors sit out most ticks, each sensor has a cache slot
+ * holding its last valid reading. The published snapshot is the union of the
+ * valid slots, rebuilt every tick, so a consumer never sees a measurement
+ * type disappear just because its sensor was not due. See the
+ * `sensor-management` spec, "Per-sensor last-good cache".
  */
 class SensorController {
+public:
+    /**
+     * How often default-interval sensors are read. A constant, not a config
+     * knob: nothing downstream needs data faster (PID computes every
+     * control_interval_s, MQTT publishes every 15 s by default), and reading
+     * faster costs real things — the BME680 fires a 150 ms heater per read.
+     */
+    static constexpr uint32_t MEASUREMENT_INTERVAL_MS = 15000;
+
+    /**
+     * How many missed intervals a cached reading survives before it is
+     * dropped. Bounds staleness independently of the driver's
+     * READ_FAILURE_THRESHOLD, which at 15 s reads would otherwise let a dead
+     * sensor's last value feed the PID for 150 s.
+     */
+    static constexpr uint32_t SLOT_EXPIRY_INTERVALS = 3;
+
 private:
     Config::ConfigManager &config;
     std::vector<std::unique_ptr<Sensor::Sensor>> sensors;
     std::vector<Sensor::Measurement> currentMeasurements;
     uint32_t lastReadingTimestamp;
     bool dataValid;
+
+    // One per sensor, same index as `sensors`. Written only by readSensors()
+    // on the SensorMonitor task; readers see the union via currentMeasurements.
+    struct SensorSlot {
+        std::vector<Sensor::Measurement> measurements; // last valid reading + Time
+        uint32_t lastValidMs = 0;   // when `measurements` was taken
+        uint32_t lastReadMs = 0;    // when read() was last attempted
+        bool everRead = false;      // lastReadMs is meaningful
+        bool valid = false;
+    };
+    std::vector<SensorSlot> slots;
+
+    // The shared phase for default-interval sensors (D2 in the change design).
+    // A single controller-wide baseline rather than per-sensor timers, so a
+    // sensor that comes online late via the retry path still lands on the
+    // same tick as the others.
+    uint32_t lastDefaultCycleMs = 0;
+    bool defaultCycleRun = false;
+
+    // Effective read interval for a sensor: its own requirement, or the system default.
+    static uint32_t effectiveIntervalMs(const Sensor::Sensor &sensor) {
+        const uint32_t required = sensor.requiredIntervalMs();
+        return required > 0 ? required : MEASUREMENT_INTERVAL_MS;
+    }
+
+    // Concatenate every valid slot, in sensor order, into `out`.
+    void collectValidSlots(std::vector<Sensor::Measurement> &out) const;
 
 #ifdef ARDUINO
     mutable SemaphoreHandle_t dataMutex;
@@ -68,10 +125,11 @@ private:
 
     // When the PID last computed, for the decimation in updateControl().
     //
-    // Time-based rather than a tick count, because the sensor reading interval
-    // is itself settable: counting every Nth tick would make the configured
-    // "60 seconds" mean whatever 60 ticks happened to be. Unsigned, so
-    // `now - lastPidComputeMs` stays correct across the millis() rollover.
+    // Time-based rather than a tick count, because the SensorMonitor task tick
+    // is itself settable (SensorMonitor::setReadingInterval): counting every
+    // Nth tick would make the configured "60 seconds" mean whatever 60 ticks
+    // happened to be. Unsigned, so `now - lastPidComputeMs` stays correct
+    // across the millis() rollover.
     uint32_t lastPidComputeMs = 0;
 
     /**
@@ -121,9 +179,11 @@ private:
     bool actuatorAssigned = false;
     Actuator::Agreement actuatorAgreement = Actuator::Agreement::Unknown;
 
-    // Consecutive read cycles in which I2C sensors are present but none returned
-    // valid data. After I2C_RECOVERY_FAILURE_STREAK cycles the bus is assumed
-    // wedged and a recovery is attempted. Reset on any valid I2C reading.
+    // Consecutive read cycles in which at least one I2C sensor was *attempted*
+    // but none returned valid data. After I2C_RECOVERY_FAILURE_STREAK cycles
+    // the bus is assumed wedged and a recovery is attempted. Reset on any valid
+    // I2C reading; untouched on ticks where no I2C sensor was due, so the 14
+    // quiet ticks per default cycle cannot masquerade as a wedged bus.
     // ARDUINO-only: the I2C recovery path is the only consumer.
 #ifdef ARDUINO
     uint8_t consecutiveI2CFailures = 0;
@@ -177,7 +237,16 @@ public:
      */
     void reserveSensorSlots(size_t n);
 
+    /** Equivalent to readSensors(millis()). */
     void readSensors();
+
+    /**
+     * One scheduling tick: read every sensor that is due at `nowMs`, refresh
+     * its cache slot, expire stale slots, and publish the union. Takes the
+     * clock as a parameter so native tests can drive the schedule without
+     * sleeping; the firmware always passes millis().
+     */
+    void readSensors(uint32_t nowMs);
 
     /**
      * Atomically capture {valid, timestamp, measurements} under one lock.

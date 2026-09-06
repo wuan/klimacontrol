@@ -231,6 +231,19 @@ namespace Sensor {
         // RSSI, uptime) never touches the bus and so always reports valid.
         [[nodiscard]] virtual bool usesI2C() const { return false; }
 
+        /**
+         * How often this sensor must be read, in milliseconds.
+         *
+         * 0 (the default) means the driver has no requirement of its own and
+         * is read on the system measurement interval
+         * (SensorController::MEASUREMENT_INTERVAL_MS), together with every
+         * other default-interval sensor so their readings stay time-coherent.
+         * A non-zero value N means the sensor MUST be read every N ms
+         * regardless of the system interval — e.g. the SGP40, whose VOC index
+         * algorithm assumes 1 Hz sampling.
+         */
+        [[nodiscard]] virtual uint32_t requiredIntervalMs() const { return 0; }
+
         [[nodiscard]] virtual TypeSpan providesMeasurements() const { return {nullptr, 0}; }
         [[nodiscard]] virtual TypeSpan requiresMeasurements() const { return {nullptr, 0}; }
         [[nodiscard]] virtual size_t measurementCount() const { return providesMeasurements().count; }

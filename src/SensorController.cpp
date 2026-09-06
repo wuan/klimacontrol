@@ -3,7 +3,6 @@
 #include "Log.h"
 #include <algorithm>
 #include <cmath>
-#include <numeric>
 
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -129,6 +128,17 @@ void SensorController::reserveSensorSlots(size_t n) {
     // readSensors() also does not reallocate.
     sensors.reserve(n);
     currentMeasurements.reserve(n * MAX_MEASUREMENTS_PER_SENSOR);
+    // begin() appends the DeviceSensor after the scan, hence the +1. The slot
+    // vectors themselves are reserved when the slot is first created in
+    // readSensors(), so they never grow at runtime either.
+    slots.reserve(n + 1);
+}
+
+void SensorController::collectValidSlots(std::vector<Sensor::Measurement> &out) const {
+    for (const auto &slot : slots) {
+        if (!slot.valid) continue;
+        out.insert(out.end(), slot.measurements.begin(), slot.measurements.end());
+    }
 }
 
 void SensorController::sortSensors() {
@@ -179,13 +189,32 @@ void SensorController::sortSensors() {
 }
 
 void SensorController::readSensors() {
-    uint32_t timestamp = millis();
+    readSensors(millis());
+}
+
+void SensorController::readSensors(uint32_t nowMs) {
+    const uint32_t timestamp = nowMs;
     std::vector<Sensor::Measurement> allMeasurements;
-    bool anyValid = false;
+    bool anyValid = false;       // at least one sensor read valid *this* tick
 #ifdef ARDUINO
-    bool anyI2CSensor = false;   // at least one I2C sensor is configured
-    bool anyI2CValid = false;    // at least one I2C sensor read valid this cycle
+    bool anyI2CAttempted = false; // at least one I2C sensor was due and read this cycle
+    bool anyI2CValid = false;     // at least one I2C sensor read valid this cycle
 #endif
+
+    // Keep one slot per sensor. Sensors are only ever appended (addSensor,
+    // begin's DeviceSensor) or reordered by sortSensors() before the first
+    // read, when every slot is still empty, so index alignment holds.
+    while (slots.size() < sensors.size()) {
+        slots.emplace_back();
+        slots.back().measurements.reserve(MAX_MEASUREMENTS_PER_SENSOR);
+    }
+
+    // The shared phase for default-interval sensors: first tick ever, then
+    // every MEASUREMENT_INTERVAL_MS. Rebased to `now` rather than advanced by
+    // the interval, so a late tick shifts the phase instead of double-reading.
+    const bool defaultDue = !defaultCycleRun ||
+                            (nowMs - lastDefaultCycleMs >= MEASUREMENT_INTERVAL_MS);
+    bool anyDefaultSensor = false;
 
     // ===== PHASE 1: Sensor I2C reads (I2C bus locked) =====
     {
@@ -219,54 +248,76 @@ void SensorController::readSensors() {
         Sensor::ReadConfig readConfig;
         readConfig.elevation = config.getDeviceConfig().elevation;
 
-        // Pre-reserve: each sensor contributes measurementCount() data measurements
-        // plus 1 Time measurement added per valid sensor by this function
-        size_t totalExpected = std::accumulate(sensors.begin(), sensors.end(), size_t(0),
-            [](size_t sum, const auto &sensor) {
-                return sum + (sensor ? sensor->measurementCount() + 1 : 0);
-            });
-        allMeasurements.reserve(totalExpected);
+        // `prior` for dependent sensors is the union of what we currently know,
+        // refreshed after every successful read so a same-tick provider is
+        // seen fresh and an off-tick provider is seen from its cache slot.
+        std::vector<Sensor::Measurement> prior;
+        prior.reserve(sensors.size() * MAX_MEASUREMENTS_PER_SENSOR);
+        collectValidSlots(prior);
 
-        for (auto &sensor : sensors) {
+        for (size_t i = 0; i < sensors.size(); ++i) {
+            auto &sensor = sensors[i];
             if (!sensor) continue;
+            SensorSlot &slot = slots[i];
 
-#ifdef ARDUINO
-            if (sensor->usesI2C()) anyI2CSensor = true;
-#endif
+            const uint32_t required = sensor->requiredIntervalMs();
+            const bool isDefault = required == 0;
+            if (isDefault) anyDefaultSensor = true;
 
             // Only read sensors that are online
             if (sensor->getStatus() != Sensor::SensorStatus::Online) {
                 continue;
             }
 
+            const bool due = isDefault
+                ? defaultDue
+                : (!slot.everRead || nowMs - slot.lastReadMs >= required);
+            if (!due) continue;
+
+            slot.lastReadMs = nowMs;
+            slot.everRead = true;
+#ifdef ARDUINO
+            if (sensor->usesI2C()) anyI2CAttempted = true;
+#endif
+
             uint32_t readStart = millis();
-            Sensor::SensorReading reading = sensor->read(readConfig, allMeasurements);
+            Sensor::SensorReading reading = sensor->read(readConfig, prior);
             uint32_t readTime = millis() - readStart;
 
             sensor->recordReadResult(reading.valid);
 
             if (reading.valid) {
+                slot.measurements.clear();
                 for (const auto &m : reading.measurements) {
-                    allMeasurements.push_back(m);
+                    slot.measurements.push_back(m);
                 }
-
-                allMeasurements.push_back({Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
+                slot.measurements.push_back({Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
+                slot.lastValidMs = nowMs;
+                slot.valid = true;
                 anyValid = true;
 #ifdef ARDUINO
                 if (sensor->usesI2C()) anyI2CValid = true;
 #endif
+                prior.clear();
+                collectValidSlots(prior);
             } else {
                 ESP_LOGW(TAG, "Sensor %s - invalid data", sensor->getType());
             }
         }
 
+        if (defaultDue && anyDefaultSensor) {
+            lastDefaultCycleMs = nowMs;
+            defaultCycleRun = true;
+        }
+
 #ifdef ARDUINO
-        // I2C bus recovery: if I2C sensors are configured but none produced a
+        // I2C bus recovery: if I2C sensors were attempted but none produced a
         // valid reading this cycle, the bus may be wedged (a slave stuck holding
         // SDA low). After a short streak, attempt recovery while we still hold the
-        // bus lock so no scan can interleave. The DeviceSensor is not I2C, so it
-        // never masks this condition.
-        if (anyI2CSensor && !anyI2CValid) {
+        // bus lock so no scan can interleave. Ticks on which no I2C sensor was
+        // due are neither a success nor a failure. The DeviceSensor is not I2C,
+        // so it never masks this condition.
+        if (anyI2CAttempted && !anyI2CValid) {
             if (++consecutiveI2CFailures >= I2C_RECOVERY_FAILURE_STREAK) {
                 ESP_LOGW(TAG, "%u consecutive I2C read cycles failed - attempting bus recovery",
                          consecutiveI2CFailures);
@@ -283,17 +334,47 @@ void SensorController::readSensors() {
 #endif
     }  // I2C bus lock released here
 
-    // ===== PHASE 2: Data update (I2C bus NOT locked) =====
+    // ===== PHASE 2: Expire stale slots, build the union =====
+    //
+    // A slot is dropped when its sensor is no longer Online, or when the
+    // reading has outlived SLOT_EXPIRY_INTERVALS of that sensor's interval.
+    // The latter bounds staleness regardless of how slowly the driver's
+    // failure counter reaches ReadFailing.
+    bool anySlotValid = false;
+    for (size_t i = 0; i < sensors.size(); ++i) {
+        SensorSlot &slot = slots[i];
+        if (!slot.valid) continue;
+        const auto &sensor = sensors[i];
+        const bool online = sensor && sensor->getStatus() == Sensor::SensorStatus::Online;
+        const bool expired = online &&
+            nowMs - slot.lastValidMs > SLOT_EXPIRY_INTERVALS * effectiveIntervalMs(*sensor);
+        if (!online || expired) {
+            ESP_LOGW(TAG, "Sensor %s - dropping cached reading (%s)",
+                     sensor ? sensor->getType() : "?", expired ? "expired" : "offline");
+            slot.valid = false;
+            slot.measurements.clear();
+            continue;
+        }
+        anySlotValid = true;
+    }
+
+    allMeasurements.reserve(sensors.size() * MAX_MEASUREMENTS_PER_SENSOR);
+    collectValidSlots(allMeasurements);
+
+    // ===== PHASE 3: Publish (I2C bus NOT locked) =====
 #ifdef ARDUINO
     if (dataMutex && xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
 #endif
+        // Swap rather than move-assign: the reserved capacity of
+        // currentMeasurements (see reserveSensorSlots) stays with the buffer
+        // that readers copy from, and the outgoing one is freed here.
+        currentMeasurements.clear();
+        currentMeasurements.insert(currentMeasurements.end(),
+                                   allMeasurements.begin(), allMeasurements.end());
+        dataValid = anySlotValid;
         if (anyValid) {
-            currentMeasurements = std::move(allMeasurements);
             lastReadingTimestamp = timestamp;
-            dataValid = true;
             lastReadingTime = timestamp;
-        } else {
-            dataValid = false;
         }
 #ifdef ARDUINO
         xSemaphoreGive(dataMutex);

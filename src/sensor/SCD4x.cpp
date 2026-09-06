@@ -61,12 +61,12 @@ namespace Sensor {
             return reading;
         }
 
+        // No private last-value cache here: the sensor produces data every 5 s
+        // and is read on the 15 s system interval, so fresh data is normally
+        // waiting. Between reads the controller's per-sensor cache keeps the
+        // last CO2 value published; a "not ready" here is reported as invalid.
         if (dataReady && scd.readMeasurement(co2, temperature, humidity) == 0 && co2 > 0) {
-            this->co2 = co2;
-        }
-
-        if (this->co2 > 0) {
-            reading.measurements.push_back({MeasurementType::CO2, static_cast<int32_t>(this->co2), getType(), false});
+            reading.measurements.push_back({MeasurementType::CO2, static_cast<int32_t>(co2), getType(), false});
             reading.valid = true;
         } else {
             reading.valid = false;

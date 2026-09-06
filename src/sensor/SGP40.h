@@ -24,6 +24,10 @@ namespace Sensor {
         bool begin() override;
         SensorReading read(const ReadConfig& config, const std::vector<Measurement>& prior) override;
         [[nodiscard]] const char* getType() const override { return type(); }
+        // Sensirion's VOC index algorithm (behind Adafruit_SGP40::measureVocIndex)
+        // is tuned for a 1 s sampling interval; feeding it less often skews the
+        // index. So this driver opts out of the 15 s system interval.
+        [[nodiscard]] uint32_t requiredIntervalMs() const override { return 1000; }
         [[nodiscard]] TypeSpan providesMeasurements() const override {
             static constexpr MeasurementType types[] = {MeasurementType::VocIndex};
             return {types, 1};

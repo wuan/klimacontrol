@@ -14,8 +14,6 @@ namespace Sensor {
         SensirionI2cScd4x scd;
 #endif
 
-        uint16_t co2 = 0;
-
     public:
         explicit SCD4x(uint8_t address = 0x62);
 
