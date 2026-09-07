@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #include "Log.h"
 
-static const char* TAG = "mqtt";
+static constexpr const char* const TAG = "mqtt";
 #endif
 
 MqttClient::MqttClient()

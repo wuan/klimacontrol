@@ -15,7 +15,7 @@
 #include <WiFi.h>
 #include <cstring>
 
-static const char* TAG = "ota";
+static constexpr const char* const TAG = "ota";
 
 // The IDF esp_crt_bundle_attach uses the CA bundle embedded in the firmware binary.
 // We declare it directly because the Arduino WiFiClientSecure wrapper shadows the IDF header.

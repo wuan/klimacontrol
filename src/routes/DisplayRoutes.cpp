@@ -10,7 +10,7 @@
 #include "Log.h"
 #endif
 
-static const char* TAG = "route";
+static constexpr const char* const TAG = "route";
 
 void WebServerManager::setupDisplayRoutes() {
 #ifdef ARDUINO

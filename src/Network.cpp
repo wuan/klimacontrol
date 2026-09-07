@@ -32,7 +32,7 @@
 #include <set>
 #endif
 
-static const char* TAG = "net";
+static constexpr const char* const TAG = "net";
 
 #ifdef ARDUINO
 namespace {

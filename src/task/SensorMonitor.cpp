@@ -10,7 +10,7 @@
 #include "Log.h"
 #endif
 
-static const char* TAG = "sensor";
+static constexpr const char* const TAG = "sensor";
 
 namespace Task {
     

@@ -17,7 +17,7 @@
 #include "I2CBus.h"
 #endif
 
-static const char* TAG = "i2c";
+static constexpr const char* const TAG = "i2c";
 
 namespace I2CScanner {
 

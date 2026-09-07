@@ -17,7 +17,7 @@
 #include "OTAConfig.h" // FIRMWARE_VERSION
 #include "display/DisplayPins.h"
 
-static const char *TAG = "display";
+static constexpr const char* const TAG = "display";
 
 namespace Display {
 

@@ -11,7 +11,7 @@
 #include "Log.h"
 #endif
 
-static const char* TAG = "ota";
+static constexpr const char* const TAG = "ota";
 
 void WebServerManager::setupOTARoutes() {
 #ifdef ARDUINO

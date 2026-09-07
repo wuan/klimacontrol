@@ -18,7 +18,7 @@
 #include "generated/favicon_gz.h"
 #endif
 
-static const char* TAG = "http";
+static constexpr const char* const TAG = "http";
 
 // Web source files are in data/ directory
 // Run: python3 scripts/compress_web.py to regenerate compressed headers

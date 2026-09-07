@@ -40,7 +40,7 @@
 #include "HardwareWatchdog.h"
 #endif
 
-static const char* TAG = "main";
+static constexpr const char* const TAG = "main";
 
 #ifdef ARDUINO
 // Map esp_reset_reason() to a short string for boot diagnostics. A

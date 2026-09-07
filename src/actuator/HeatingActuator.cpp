@@ -13,7 +13,7 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
-static const char *TAG = "actuator";
+static constexpr const char* const TAG = "actuator";
 #else
 #define TAG "actuator"
 #endif

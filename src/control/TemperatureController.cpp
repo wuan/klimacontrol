@@ -5,7 +5,7 @@
 #include <cmath>
 
 #ifdef ARDUINO
-static const char* TAG = "control";
+static constexpr const char* const TAG = "control";
 #else
 // On native, the ESP_LOG* macros are no-ops; their tag argument is
 // discarded. Define TAG as a macro so there is no unused-variable to

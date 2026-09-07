@@ -15,7 +15,7 @@
 #include "control/TemperatureController.h"
 #include "support/LocalTime.h"
 
-static const char *TAG = "display";
+static constexpr const char* const TAG = "display";
 
 namespace Display {
 
