@@ -67,7 +67,7 @@ namespace Support {
 
     const RequestRecord &requestAt(size_t i) {
         // Oldest first. When the ring has wrapped, the oldest lives at head.
-        const size_t base = (held == REQUEST_DIAG_CAPACITY) ? head : 0;
+        const size_t base = held == REQUEST_DIAG_CAPACITY ? head : 0;
         return ring[(base + i) % REQUEST_DIAG_CAPACITY];
     }
 

@@ -105,9 +105,8 @@ void Network::configureMDNS() {
         Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
         bool deviceNameNotEmpty = deviceConfig.device_name[0] != '\0';
         bool deviceNameIsNotDeviceId = strcmp(deviceConfig.device_name, deviceConfig.device_id) != 0;
-        bool hasCustomName = (deviceNameNotEmpty && deviceNameIsNotDeviceId);
 
-        if (hasCustomName) {
+        if (deviceNameNotEmpty && deviceNameIsNotDeviceId) {
             mdnsInstanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_name);
         } else {
             mdnsInstanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_id);

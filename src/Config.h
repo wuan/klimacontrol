@@ -363,14 +363,14 @@ namespace Config {
 
         // Acquire the spinlock. Caller must already be prepared to busy-wait.
         void lockRestart() const {
-            while (restartLock.test_and_set(std::memory_order_acquire)) {
+            while (restartLock.test_and_set(std::memory_order::memory_order_seq_cst)) {
                 // spin
             }
         }
 
         // Release the spinlock.
         void unlockRestart() const {
-            restartLock.clear(std::memory_order_release);
+            restartLock.clear(std::memory_order::memory_order_seq_cst);
         }
 
         // Spinlock protecting the in-memory DeviceConfig cache. Same shape and
@@ -393,7 +393,7 @@ namespace Config {
         }
 
         void unlockDeviceConfig() const {
-            deviceConfigLock.clear(std::memory_order_release);
+            deviceConfigLock.clear(std::memory_order::memory_order_seq_cst);
         }
 
     public:
