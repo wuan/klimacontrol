@@ -99,7 +99,7 @@ namespace Task {
             // readSensors() and control.update(); if that overran the tick,
             // yield for one tick rather than underflow. The margin is
             // explained at WAKE_MARGIN_MS.
-            const uint32_t elapsed = static_cast<uint32_t>(millis() - startTime);
+            const auto elapsed = static_cast<uint32_t>(millis() - startTime);
             const uint32_t sleepMs = elapsed < tickMs ? tickMs - elapsed + WAKE_MARGIN_MS : 1u;
 
             stats.add(sleepMs);
