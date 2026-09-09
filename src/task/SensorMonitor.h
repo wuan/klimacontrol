@@ -16,7 +16,10 @@ namespace Task {
     
     /**
      * Sensor Monitoring Task
-     * Reads sensors and drives the temperature control loop with the result
+     * Reads sensors and drives the temperature control loop with the result.
+     * Ticks at the shortest interval any configured sensor needs
+     * (SensorController::minReadIntervalMs), fixed at task start: 1 s with
+     * an SGP40 fitted, 15 s otherwise.
      */
     class SensorMonitor {
     private:
@@ -24,10 +27,28 @@ namespace Task {
         Control::TemperatureController &control;
         TaskHandle_t taskHandle = nullptr;
         Support::Stats stats;
-        
-        unsigned long readingInterval = 1000;
-        
+
     public:
+        /**
+         * Tick bounds. The tick is chosen once, at task start, from
+         * SensorController::minReadIntervalMs(). MAX_TICK_MS keeps the task
+         * ticking (init retries, control-loop skipped-tick bookkeeping, TWDT
+         * feed) with 2x margin under the 30 s task watchdog even when nothing
+         * is fitted; it must equal MEASUREMENT_INTERVAL_MS, asserted in the .cpp.
+         */
+        static constexpr uint32_t MIN_TICK_MS = 100;
+        static constexpr uint32_t MAX_TICK_MS = 15000;
+
+        /**
+         * Added to every sleep. vTaskDelay(n) returns at a tick boundary, so
+         * the real wait is anywhere in (n-1, n] ms and millis() can come up
+         * 1 ms short of the interval. At a 1 s tick that slipped a default
+         * read by one harmless second; at a 15 s tick it would skip a whole
+         * cycle and leave a 30 s gap. Two ticks of margin makes the wake
+         * strictly late, and the default phase rebases to `now` anyway.
+         */
+        static constexpr uint32_t WAKE_MARGIN_MS = 2;
+
         /**
          * Constructor
          * @param controller Sensor controller reference
@@ -39,20 +60,6 @@ namespace Task {
          * Start the sensor monitoring task
          */
         void startTask();
-        
-        /**
-         * Set reading interval
-         * @param intervalMs Interval in milliseconds
-         */
-        void setReadingInterval(unsigned long intervalMs) { 
-            readingInterval = intervalMs; 
-        }
-        
-        /**
-         * Get current reading interval
-         * @return Current interval in milliseconds
-         */
-        unsigned long getReadingInterval() const { return readingInterval; }
         
         /**
          * Get task handle

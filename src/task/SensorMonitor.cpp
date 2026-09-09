@@ -12,6 +12,9 @@
 
 static constexpr const char* const TAG = "sensor";
 
+static_assert(Task::SensorMonitor::MAX_TICK_MS == SensorController::MEASUREMENT_INTERVAL_MS,
+              "SensorMonitor::MAX_TICK_MS must track the default measurement interval");
+
 namespace Task {
     
     SensorMonitor::SensorMonitor(SensorController &controller, Control::TemperatureController &control)
@@ -56,8 +59,16 @@ namespace Task {
             ESP_LOGE(TAG, "esp_task_wdt_add failed (err 0x%x) - task runs unguarded", wdtAdd);
         }
 
+        // The sensor set is fixed once setup() has run (startTask() is called
+        // after SensorController::begin() has registered everything found on
+        // the bus), so the tick is a startup constant, not a per-cycle query.
+        uint32_t tickMs = controller.minReadIntervalMs();
+        if (tickMs > MAX_TICK_MS) tickMs = MAX_TICK_MS;
+        if (tickMs < MIN_TICK_MS) tickMs = MIN_TICK_MS;
+        ESP_LOGI(TAG, "SensorMonitor tick: %u ms", tickMs);
+
         unsigned long lastDiagnostics = millis();
-        static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 300000; // 5 minutes
+        static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 900000; // 15 minutes
 
         while (true) {
             esp_task_wdt_reset();
@@ -84,12 +95,16 @@ namespace Task {
                          uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
             }
 
-            unsigned long elapsed = millis() - startTime;
-            unsigned long duration = elapsed < readingInterval ? readingInterval - elapsed : 1ul;
+            // Sleep for the rest of the tick. `elapsed` is the time spent in
+            // readSensors() and control.update(); if that overran the tick,
+            // yield for one tick rather than underflow. The margin is
+            // explained at WAKE_MARGIN_MS.
+            const uint32_t elapsed = static_cast<uint32_t>(millis() - startTime);
+            const uint32_t sleepMs = elapsed < tickMs ? tickMs - elapsed + WAKE_MARGIN_MS : 1u;
 
-            stats.add(duration);
+            stats.add(sleepMs);
 
-            vTaskDelay(duration / portTICK_PERIOD_MS);
+            vTaskDelay(pdMS_TO_TICKS(sleepMs));
         }
     }
 #endif

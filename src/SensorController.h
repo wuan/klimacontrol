@@ -22,8 +22,10 @@ namespace Sensor {
  * Control::TemperatureController, which is fed by the Sensor Monitor task from
  * getProcessValue() and holds no reference to this class.
  *
- * Read scheduling. The SensorMonitor task calls readSensors() once a second,
- * but a sensor is only *read* when it is due. Drivers with no requirement of
+ * Read scheduling. The SensorMonitor task calls readSensors() on a fixed
+ * tick chosen once at startup from minReadIntervalMs() (every second with
+ * an SGP40 fitted, every MEASUREMENT_INTERVAL_MS otherwise), and a sensor is
+ * only *read* when it is due. Drivers with no requirement of
  * their own (Sensor::requiredIntervalMs() == 0) are read together on one
  * shared phase every MEASUREMENT_INTERVAL_MS, so temperature, humidity and
  * the values derived from them are always from the same instant. Drivers
@@ -186,6 +188,17 @@ public:
      * sleeping; the firmware always passes millis().
      */
     void readSensors(uint32_t nowMs);
+
+    /**
+     * The shortest effective read interval over every *configured* sensor:
+     * its requiredIntervalMs() if non-zero, else MEASUREMENT_INTERVAL_MS.
+     * MEASUREMENT_INTERVAL_MS when no sensor is configured. Status is
+     * deliberately ignored — a sensor that failed init is retried inside
+     * readSensors() and must find the tick already running at its rate when
+     * it comes online. The sensor set is fixed once setup() has run, so the
+     * Sensor Monitor task reads this once and uses it as its tick.
+     */
+    uint32_t minReadIntervalMs() const;
 
     /**
      * Atomically capture {valid, timestamp, measurements} under one lock.

@@ -642,7 +642,7 @@ void Network::configureUsingAPMode() {
     // re-litigated. Verified on the device: psram_size 2094735, ESP.getHeapSize()
     // 166076 (internal total).
     static constexpr uint32_t MIN_FREE_INTERNAL_BYTES = 16384; // 16 KB
-    static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 300000; // 5 minutes
+    static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 900000; // 15 minutes
     static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
     while (true) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);

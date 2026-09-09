@@ -168,6 +168,16 @@ void SensorController::readSensors() {
     readSensors(millis());
 }
 
+uint32_t SensorController::minReadIntervalMs() const {
+    uint32_t shortest = MEASUREMENT_INTERVAL_MS;
+    for (const auto &sensor : sensors) {
+        if (!sensor) continue;
+        const uint32_t interval = effectiveIntervalMs(*sensor);
+        if (interval < shortest) shortest = interval;
+    }
+    return shortest;
+}
+
 void SensorController::readSensors(uint32_t nowMs) {
     const uint32_t timestamp = nowMs;
     std::vector<Sensor::Measurement> allMeasurements;

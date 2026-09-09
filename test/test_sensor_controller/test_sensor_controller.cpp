@@ -59,45 +59,6 @@ void test_safe_get_int_returns_minus1_when_float() {
     TEST_ASSERT_EQUAL(-1, val);
 }
 
-// --- SensorMonitor delay calculation (unsigned underflow fix) ---
-
-// Mirrors the fixed delay calculation from SensorMonitor::task()
-static unsigned long computeDelay(unsigned long readingInterval, unsigned long elapsed) {
-    return elapsed < readingInterval ? readingInterval - elapsed : 1ul;
-}
-
-void test_delay_normal_case() {
-    // Sensor reading took 200ms, interval is 1000ms → should wait 800ms
-    unsigned long delay = computeDelay(1000ul, 200ul);
-    TEST_ASSERT_EQUAL(800ul, delay);
-}
-
-void test_delay_exact_interval() {
-    // Reading took exactly as long as interval → should wait 1ms minimum
-    unsigned long delay = computeDelay(1000ul, 1000ul);
-    TEST_ASSERT_EQUAL(1ul, delay);
-}
-
-void test_delay_overrun_no_underflow() {
-    // Reading took longer than interval (e.g. slow I2C sensor) → must not underflow to huge number
-    // Old code: readingInterval - elapsed would underflow for unsigned arithmetic
-    unsigned long delay = computeDelay(1000ul, 1500ul);
-    TEST_ASSERT_EQUAL(1ul, delay);   // must clamp to 1, not wrap to ~ULONG_MAX
-    TEST_ASSERT_LESS_OR_EQUAL(1000ul, delay);
-}
-
-void test_delay_large_overrun() {
-    // Very slow sensor (5000ms for a 1000ms interval)
-    unsigned long delay = computeDelay(1000ul, 5000ul);
-    TEST_ASSERT_EQUAL(1ul, delay);
-}
-
-void test_delay_zero_elapsed() {
-    // Instantaneous reading → should wait full interval
-    unsigned long delay = computeDelay(1000ul, 0ul);
-    TEST_ASSERT_EQUAL(1000ul, delay);
-}
-
 // --- PID derivative guard against dt == 0 ---
 
 // Mirrors the fixed derivative calculation in Control::PidController::update()
@@ -295,11 +256,6 @@ int runUnityTests() {
     RUN_TEST(test_safe_get_int_returns_value_when_int32);
     RUN_TEST(test_safe_get_int_returns_minus1_when_null);
     RUN_TEST(test_safe_get_int_returns_minus1_when_float);
-    RUN_TEST(test_delay_normal_case);
-    RUN_TEST(test_delay_exact_interval);
-    RUN_TEST(test_delay_overrun_no_underflow);
-    RUN_TEST(test_delay_large_overrun);
-    RUN_TEST(test_delay_zero_elapsed);
     RUN_TEST(test_pid_derivative_normal);
     RUN_TEST(test_pid_derivative_zero_dt_returns_zero);
     RUN_TEST(test_pid_derivative_negative_error_change);

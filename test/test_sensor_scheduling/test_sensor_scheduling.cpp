@@ -403,6 +403,38 @@ void test_union_does_not_reallocate_after_reserve() {
     TEST_ASSERT_EQUAL(capacity, rig.controller.getMeasurementsCapacity());
 }
 
+// --- Requirement: Sensor Monitor tick follows the fastest configured sensor ---
+
+void test_min_read_interval_default_sensors_only() {
+    Rig rig;
+    rig.add("SHT", 0, TEMP_RH);
+    rig.add("BMP", 0, {MT::Pressure});
+    TEST_ASSERT_EQUAL_UINT32(INTERVAL, rig.controller.minReadIntervalMs());
+}
+
+void test_min_read_interval_one_hertz_sensor_wins() {
+    Rig rig;
+    rig.add("SHT", 0, TEMP_RH);
+    rig.add("SGP", 1000, VOC, TEMP_RH);
+    TEST_ASSERT_EQUAL_UINT32(1000, rig.controller.minReadIntervalMs());
+}
+
+void test_min_read_interval_counts_offline_sensors() {
+    // A sensor that failed init is retried inside readSensors() and must find
+    // the tick already running at its rate when it comes online.
+    Rig rig;
+    rig.add("SHT", 0, TEMP_RH);
+    auto *sgp = rig.add("SGP", 1000, VOC);
+    for (int i = 0; i < 10; ++i) sgp->recordReadResult(false);
+    TEST_ASSERT_EQUAL(Sensor::SensorStatus::ReadFailing, sgp->getStatus());
+    TEST_ASSERT_EQUAL_UINT32(1000, rig.controller.minReadIntervalMs());
+}
+
+void test_min_read_interval_no_sensors() {
+    Rig rig;
+    TEST_ASSERT_EQUAL_UINT32(INTERVAL, rig.controller.minReadIntervalMs());
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_base_sensor_has_no_interval_requirement);
@@ -425,6 +457,10 @@ int runUnityTests() {
     RUN_TEST(test_same_tick_provider_is_seen_fresh);
     RUN_TEST(test_prior_has_no_inputs_before_provider_ever_read);
     RUN_TEST(test_union_does_not_reallocate_after_reserve);
+    RUN_TEST(test_min_read_interval_default_sensors_only);
+    RUN_TEST(test_min_read_interval_one_hertz_sensor_wins);
+    RUN_TEST(test_min_read_interval_counts_offline_sensors);
+    RUN_TEST(test_min_read_interval_no_sensors);
     return UNITY_END();
 }
 
