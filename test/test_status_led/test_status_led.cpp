@@ -84,6 +84,43 @@ void test_progress_method() {
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 1.0f, testLed->getProgress());
 }
 
+// --- Power rail ---
+
+void test_power_rail_defaults_on() {
+    TEST_ASSERT_TRUE(testLed->isPowerRailOn());
+}
+
+void test_off_state_leaves_rail_on() {
+    testLed->setState(LedState::ON);
+    testLed->setState(LedState::OFF);
+    testLed->update();
+    TEST_ASSERT_TRUE(testLed->isPowerRailOn());
+}
+
+void test_rail_off_renders_black_first() {
+    testLed->setState(LedState::ON);
+    testLed->setPowerRail(false);
+    TEST_ASSERT_FALSE(testLed->isPowerRailOn());
+    TEST_ASSERT_EQUAL_HEX32(0x000000, testLed->lastColor());
+    TEST_ASSERT_EQUAL(LedState::ON, testLed->getState()); // rail is not a state
+}
+
+void test_rail_on_forces_rerender() {
+    testLed->setState(LedState::ON); // 0x000F00 at progress 0
+    testLed->setPowerRail(false);
+    testLed->setPowerRail(true);
+    TEST_ASSERT_TRUE(testLed->isPowerRailOn());
+    TEST_ASSERT_EQUAL_HEX32(0xFFFFFFFF, testLed->lastColor()); // forgotten
+    testLed->update();
+    TEST_ASSERT_EQUAL_HEX32(0x000F00, testLed->lastColor());
+}
+
+void test_rail_set_same_value_is_noop() {
+    testLed->setState(LedState::ON);
+    testLed->setPowerRail(true);
+    TEST_ASSERT_EQUAL_HEX32(0x000F00, testLed->lastColor()); // not reset
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_initial_state);
@@ -97,6 +134,11 @@ int runUnityTests() {
     RUN_TEST(test_update_method_no_crash);
     RUN_TEST(test_set_state_transmit_data_from_on);
     RUN_TEST(test_progress_method);
+    RUN_TEST(test_power_rail_defaults_on);
+    RUN_TEST(test_off_state_leaves_rail_on);
+    RUN_TEST(test_rail_off_renders_black_first);
+    RUN_TEST(test_rail_on_forces_rerender);
+    RUN_TEST(test_rail_set_same_value_is_noop);
     return UNITY_END();
 }
 

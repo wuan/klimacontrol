@@ -24,6 +24,12 @@
  * and cleared on OFF/STARTUP/ERROR, so a reconnect re-lights the LED for a
  * fresh period while the 15 s publish flash cannot keep resetting it.
  *
+ * While suppressing, the wrapper also cuts the NeoPixel supply rail via
+ * StatusLed::setPowerRail(false); a dark WS2812 still draws quiescent
+ * current. The rail is restored on the release edge, before the effective
+ * state is forwarded, so the re-powered pixel is re-rendered in the same
+ * call. Only dark mode touches the rail: a logical OFF leaves it on.
+ *
  * Time is supplied by the caller (`update(nowMs)`), never read from millis()
  * here, so the class is fully testable on the native build. `setState()`
  * applies immediately using the last clock value seen by `update()`.
@@ -39,6 +45,7 @@ private:
     // Only touched from the network task (plus the one-off init-time error path).
     bool darkAnchorArmed = false;
     uint32_t onSinceMs = 0;
+    bool suppressed = false;       // dark mode currently holds the LED dark (rail is cut)
 
     void applyEffectiveState(uint32_t nowMs);
     [[nodiscard]] static bool isNormalOperation(LedState s) {

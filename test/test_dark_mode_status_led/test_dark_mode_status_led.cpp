@@ -231,6 +231,86 @@ void test_dark_set_state_before_first_update_anchors_at_zero() {
     TEST_ASSERT_EQUAL_HEX32(BLACK, testLed->inner().lastColor());
 }
 
+// --- Power rail follows dark mode ---
+
+static void engageDark() {
+    testLed->setDarkAfterSeconds(DARK_S);
+    testLed->update(1000);
+    testLed->setState(LedState::ON);
+    testLed->update(1000 + DARK_MS);
+    TEST_ASSERT_TRUE(testLed->isDark(1000 + DARK_MS));
+}
+
+void test_rail_on_before_dark() {
+    testLed->setDarkAfterSeconds(DARK_S);
+    testLed->update(1000);
+    testLed->setState(LedState::ON);
+    testLed->update(1000 + DARK_MS - 1);
+    TEST_ASSERT_TRUE(testLed->inner().isPowerRailOn());
+}
+
+void test_rail_cut_while_dark() {
+    engageDark();
+    TEST_ASSERT_FALSE(testLed->inner().isPowerRailOn());
+    TEST_ASSERT_EQUAL_HEX32(BLACK, testLed->inner().lastColor());
+    // Repeated updates and suppressed flashes leave it cut.
+    testLed->setState(LedState::TRANSMIT_DATA);
+    testLed->update(1000 + DARK_MS + 5000);
+    TEST_ASSERT_FALSE(testLed->inner().isPowerRailOn());
+}
+
+void test_rail_restored_on_threshold_change() {
+    engageDark();
+    testLed->setDarkAfterSeconds(0);
+    testLed->update(1000 + DARK_MS + 1000);
+    TEST_ASSERT_TRUE(testLed->inner().isPowerRailOn());
+    TEST_ASSERT_EQUAL_HEX32(GREEN, testLed->inner().lastColor());
+}
+
+void test_rail_restored_on_startup() {
+    engageDark();
+    testLed->setState(LedState::STARTUP);
+    TEST_ASSERT_TRUE(testLed->inner().isPowerRailOn());
+    TEST_ASSERT_EQUAL_HEX32(BLUE_STARTUP, testLed->inner().lastColor());
+}
+
+void test_rail_restored_on_error() {
+    engageDark();
+    testLed->setState(LedState::ERROR);
+    TEST_ASSERT_TRUE(testLed->inner().isPowerRailOn());
+    TEST_ASSERT_EQUAL_HEX32(RED_ERR, testLed->inner().lastColor());
+}
+
+void test_rail_restored_on_logical_off_then_rerendered_black() {
+    engageDark();
+    testLed->setState(LedState::OFF);
+    TEST_ASSERT_TRUE(testLed->inner().isPowerRailOn());
+    testLed->update(1000 + DARK_MS + 1000);
+    TEST_ASSERT_EQUAL_HEX32(BLACK, testLed->inner().lastColor());
+}
+
+void test_logical_off_outside_dark_leaves_rail_on() {
+    testLed->setDarkAfterSeconds(DARK_S);
+    testLed->update(1000);
+    testLed->setState(LedState::ON);
+    testLed->setState(LedState::OFF);
+    testLed->update(1000 + DARK_MS + 1000);
+    TEST_ASSERT_TRUE(testLed->inner().isPowerRailOn());
+}
+
+void test_rail_cycles_on_reconnect() {
+    engageDark();
+    testLed->setState(LedState::STARTUP);
+    TEST_ASSERT_TRUE(testLed->inner().isPowerRailOn());
+    const uint32_t t = 1000 + DARK_MS + 5000;
+    testLed->update(t);
+    testLed->setState(LedState::ON);
+    testLed->update(t + DARK_MS - 1);
+    TEST_ASSERT_TRUE(testLed->inner().isPowerRailOn());
+    testLed->update(t + DARK_MS);
+    TEST_ASSERT_FALSE(testLed->inner().isPowerRailOn());
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_forwards_state_and_progress_when_not_dark);
@@ -251,6 +331,14 @@ int runUnityTests() {
     RUN_TEST(test_dark_threshold_change_applies_live);
     RUN_TEST(test_dark_survives_uint32_wraparound);
     RUN_TEST(test_dark_set_state_before_first_update_anchors_at_zero);
+    RUN_TEST(test_rail_on_before_dark);
+    RUN_TEST(test_rail_cut_while_dark);
+    RUN_TEST(test_rail_restored_on_threshold_change);
+    RUN_TEST(test_rail_restored_on_startup);
+    RUN_TEST(test_rail_restored_on_error);
+    RUN_TEST(test_rail_restored_on_logical_off_then_rerendered_black);
+    RUN_TEST(test_logical_off_outside_dark_leaves_rail_on);
+    RUN_TEST(test_rail_cycles_on_reconnect);
     return UNITY_END();
 }
 

@@ -33,6 +33,20 @@ void StatusLed::showColor(uint32_t color) {
 #endif
 }
 
+void StatusLed::setPowerRail(bool on) {
+    if (on == powerRailOn) return;
+    if (!on) {
+        showColor(0x000000);
+    }
+    powerRailOn = on;
+#ifdef ARDUINO
+    digitalWrite(NEOPIXEL_POWER, on ? NEOPIXEL_POWER_ON : !NEOPIXEL_POWER_ON);
+#endif
+    if (on) {
+        lastShownColor = 0xFFFFFFFF; // pixel lost its latch while unpowered
+    }
+}
+
 void StatusLed::update() {
     switch (state) {
         case LedState::OFF:

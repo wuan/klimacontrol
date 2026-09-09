@@ -38,6 +38,7 @@ private:
     LedState state;
     float progress;                // 0.0 = green, 1.0 = red (MQTT interval progress)
     uint32_t lastShownColor = 0xFFFFFFFF; // init to impossible value to force first write
+    bool powerRailOn = true;       // NEOPIXEL_POWER is driven high by the board variant before setup()
 
     void showColor(uint32_t color);
 
@@ -76,6 +77,21 @@ public:
      *         and diagnostics; 0xFFFFFFFF before the first write.
      */
     [[nodiscard]] uint32_t lastColor() const { return lastShownColor; }
+
+    /**
+     * Drive the NeoPixel supply rail (NEOPIXEL_POWER). Independent of the
+     * state machine: OFF only renders black, it does not cut power. The only
+     * caller is DarkModeStatusLed, which cuts the rail while dark mode holds
+     * the pixel dark. Turning the rail off renders black first so the data
+     * line idles low into the unpowered part; turning it on forgets the last
+     * shown colour, because the pixel's latch is empty after power-up and the
+     * next render must write even if the colour is unchanged.
+     * @param on true = rail powered
+     */
+    void setPowerRail(bool on);
+
+    /** @return true while the supply rail is driven on */
+    [[nodiscard]] bool isPowerRailOn() const { return powerRailOn; }
 
     /**
      * Turn LED on
