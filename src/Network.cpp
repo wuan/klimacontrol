@@ -191,12 +191,12 @@ void Network::handle_network_events(const uint32_t now) {
     wifi.beginSupervision(millis());
 
     static constexpr uint32_t DIAGNOSTICS_INTERVAL_MS = 900000; // 15 minutes
-    static constexpr uint32_t TICK_MS_FINE = 1000;
+    static constexpr uint32_t LOOP_TICKS_MS = 1000;
     static constexpr uint32_t WAKE_MARGIN_MS = 2;
 
     while (true) {
-        if (lastElapsedMs < TICK_MS_FINE) {
-            const uint32_t sleepMs = (TICK_MS_FINE - lastElapsedMs + WAKE_MARGIN_MS);
+        if (lastElapsedMs < LOOP_TICKS_MS) {
+            const uint32_t sleepMs = (LOOP_TICKS_MS - lastElapsedMs + WAKE_MARGIN_MS);
             vTaskDelay(pdMS_TO_TICKS(sleepMs));
         }
 
@@ -248,7 +248,7 @@ void Network::handle_network_events(const uint32_t now) {
         const uint32_t elapsedMs = millis() - startTime;
         if (elapsedMs > 500) {
             ESP_LOGD(TAG, "Tick slow work: work=%lums wait=%lums status=%d",
-                     static_cast<unsigned long>(workMs), static_cast<unsigned long>(waitMs),
+                     static_cast<unsigned long>(elapsedMs), static_cast<unsigned long>(LOOP_TICKS_MS),
                      WiFi.status());
         }
 
