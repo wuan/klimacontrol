@@ -103,6 +103,17 @@ void WebServerManager::setupStatusRoutes() {
         statsJson["min_cycle_delay"] = cycleStats.min;
         statsJson["max_cycle_delay"] = cycleStats.max;
 
+        // Network-loop per-iteration work-duration stats. Same indivisible
+        // snapshot pattern as the Sensor Monitor cycle stats above, so a
+        // concurrent stats.add(workMs) on the Network task cannot land
+        // between the four reads and produce a torn set. The four
+        // net_* keys are emitted into the Network info section below,
+        // not under `stats` (which is reserved for sensor-read
+        // statistics). See spec `networking` → "Network loop accumulates
+        // per-iteration work-duration stats" and the cross-task-snapshot
+        // requirement in system-architecture.
+        const Support::StatsSnapshot netStats = network.getStatsSnapshot();
+
         // Chip info
         doc["chip_model"] = ESP.getChipModel();
         doc["chip_revision"] = ESP.getChipRevision();
@@ -145,6 +156,19 @@ void WebServerManager::setupStatusRoutes() {
             doc["ap_ip"] = WiFi.softAPIP().toString();
             doc["ap_clients"] = WiFi.softAPgetStationNum();
         }
+
+        // Network-loop per-iteration work-duration stats. Emitted as
+        // top-level keys alongside the wifi/ap fields above so a client
+        // grouping everything-network into one object does not have to
+        // re-merge fields from the separate `stats` sub-object.
+        // Unconditional emission — the Network task runs in every WiFi
+        // state, including transitions, so the counters are meaningful
+        // regardless of which branch above fired. See spec `http-api` →
+        // "`/api/about` exposes Network-loop work-duration stats".
+        doc["net_cycle_count"] = netStats.count;
+        doc["net_avg_cycle_work_ms"] = netStats.average;
+        doc["net_min_cycle_work_ms"] = netStats.min;
+        doc["net_max_cycle_work_ms"] = netStats.max;
 
         String response;
         serializeJson(doc, response);

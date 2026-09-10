@@ -17,6 +17,7 @@
 #include "actuator/HeatingActuator.h"
 #include "task/SensorMonitor.h"
 #include "support/NetworkWatchdog.h"
+#include "support/Stats.h"
 
 // Forward declarations
 namespace Config {
@@ -52,6 +53,18 @@ private:
     Actuator::HeatingActuator heatingActuator;
     unsigned long lastActuatorTickMs = 0;
     Task::SensorMonitor &sensorMonitor;
+    // Per-iteration work duration. Fed from the inner loop with `workMs`
+    // (the time from the top of the iteration to the existing DEBUG slow-log
+    // check) and read by the 15-min diagnostics line on the network task and
+    // by the AsyncTCP task at GET /api/about. See spec `networking` →
+    // "Network loop accumulates per-iteration work-duration stats".
+    Support::Stats stats;
+    // Previous iteration's `workMs`, carried across the `vTaskDelay`
+    // boundary so the next sleep can be shortened by however long the
+    // last iteration took (mirrors `Task::SensorMonitor`'s
+    // `tick - elapsed + WAKE_MARGIN_MS` pattern). See spec `networking` →
+    // "Network task sleeps adaptively based on previous iteration's work".
+    uint32_t lastWorkMs = 0;
     NetworkMode mode;
 
 #ifdef ARDUINO
@@ -161,6 +174,15 @@ public:
 
     /** Ask the actuator to re-read its channel configuration promptly. */
     void requestActuatorRecheck() { heatingActuator.requestRecheck(); }
+
+    /**
+     * Take an indivisible copy of the Network-loop cycle counters. Cross-task
+     * readers (e.g. GET /api/about on the AsyncTCP task) SHALL go through
+     * this accessor rather than the per-field getters — see the
+     * "Cross-task reads of `Support::Stats` use a snapshot accessor"
+     * requirement in openspec/specs/system-architecture/spec.md.
+     */
+    Support::StatsSnapshot getStatsSnapshot() const { return stats.snapshot(); }
 
     // disable copy constructor
     Network(const Network &) = delete;

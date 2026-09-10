@@ -339,3 +339,157 @@ panel brings the AP up WPA2-PSK with the password on the panel.
   phone over the open AP — the only configuration path that works on a
   device with no serial cable, no case label, and no panel
 
+### Requirement: Network loop accumulates per-iteration work-duration stats
+
+The Network task SHALL maintain a `Support::Stats` instance that records
+the duration of each tick's work (the time the task spends executing
+its 1 s housekeeping iteration, from the start of the tick to the
+moment the existing `workMs` value is read at the bottom of the loop).
+The instance SHALL be fed once per iteration with the integer number of
+milliseconds the iteration's work consumed. A freshly started task
+SHALL report zero in every counter (count, average, min, max) until the
+first iteration completes.
+
+#### Scenario: First iteration records a non-zero count
+
+- **WHEN** the Network task has completed its first 1 s iteration after boot
+- **THEN** `Network::getStatsSnapshot().count` SHALL be `1` and
+  `Network::getStatsSnapshot().average` SHALL equal the value recorded
+  for that first iteration
+
+#### Scenario: Counter accumulates across iterations
+
+- **WHEN** the Network task has completed N iterations since boot
+- **THEN** `Network::getStatsSnapshot().count` SHALL be `N`, the
+  `min` and `max` SHALL bracket the N recorded values, and the
+  `average` SHALL equal `total / N`
+
+#### Scenario: Newly constructed Network reports zeros
+
+- **WHEN** `Network::getStatsSnapshot()` is called before the task's
+  first iteration completes
+- **THEN** every field (count, average, min, max) SHALL be `0`, matching
+  the zero-sample contract on `Support::Stats::snapshot()`
+
+#### Scenario: Stats feed uses integer milliseconds
+
+- **WHEN** an iteration's recorded work duration is W milliseconds
+- **THEN** the value passed to `stats.add(...)` SHALL be the integer W
+  (no fractional milliseconds, no scaling)
+
+### Requirement: Network loop stats are surfaced in periodic diagnostics
+
+The Network task SHALL include the four counters of its per-iteration
+work-duration `Support::Stats` instance in the existing periodic
+diagnostics log line that runs every 15 minutes. The counters SHALL
+appear in a single `ESP_LOGI` line alongside the existing heap and
+stack-HWM fields, formatted so a developer can read the trend from the
+serial log without scraping `/api/about`.
+
+#### Scenario: 15-minute diagnostics line contains the stats
+
+- **WHEN** the Network task's 15-minute diagnostics timer fires and
+  the task has completed at least one iteration
+- **THEN** the diagnostics `ESP_LOGI` line SHALL contain
+  `net_cycle_count=<N>`, `net_avg_cycle_work_ms=<A>`,
+  `net_min_cycle_work_ms=<min>`, and `net_max_cycle_work_ms=<max>`
+  reflecting the current state of the `Support::Stats` instance
+
+### Requirement: Network task sleeps adaptively based on previous iteration's work
+
+The Network task SHALL sleep between iterations for a duration computed
+from the previous iteration's work. At the top of each iteration the
+task SHALL first compute the current tick from the LED's dark state as
+`tickMs = statusLed.isDark(static_cast<uint32_t>(millis())) ? 15000 : 1000`,
+where `statusLed` is the `DarkModeStatusLed` instance wired into the
+class at construction and `isDark()` returns `true` exactly when dark
+mode is actively suppressing the LED (the ON/TRANSMIT_DATA flash is
+held dark and the NeoPixel rail is cut). The task SHALL then compute
+`sleepMs = (lastWorkMs < tickMs) ? (tickMs - lastWorkMs + WAKE_MARGIN_MS)
+: 1u`, where `lastWorkMs` is the integer millisecond duration of the
+previous iteration's work (the value already computed as `workMs =
+blockExit - now` and recorded via `stats.add(workMs)` per the
+requirement "Network loop accumulates per-iteration work-duration
+stats") and `WAKE_MARGIN_MS = 2` (matching
+`Task::SensorMonitor::WAKE_MARGIN_MS`), and SHALL then call
+`vTaskDelay(pdMS_TO_TICKS(sleepMs))`. On the first iteration
+(`lastWorkMs == 0`) the sleep SHALL be `tickMs + WAKE_MARGIN_MS = 1002`
+ms or `15002` ms depending on the LED state at boot.
+
+The rationale (mirroring the existing Sensor Monitor requirement at
+`openspec/specs/sensor-management/spec.md:336`) is that a fast iteration
+should return to sleep promptly without burning the full budget, while
+a slow iteration should re-enter the work loop as soon as the RTOS
+schedules it so a transient stall (MQTT blocking, NTP hung, mDNS
+re-init) self-corrects on the next tick instead of waiting out a fixed
+interval. The `WAKE_MARGIN_MS` constant ensures the wake is strictly
+later than the nominal interval so an early RTOS wake cannot leave the
+next iteration's work short of its tick budget. The dynamic `tickMs`
+ensures the budget itself matches the device's current state: 1 s
+while the LED is visibly indicating something (user is likely watching),
+15 s once the LED has decided nobody is watching and gone dark.
+
+#### Scenario: First iteration sleeps for tickMs + WAKE_MARGIN_MS while LED is active
+
+- **WHEN** the Network task starts and no previous iteration has run
+  (`lastWorkMs == 0`) AND the LED is not in dark mode
+  (`statusLed.isDark(now)` returns `false`)
+- **THEN** the task SHALL sleep for `1000 + 2 = 1002` ms before its
+  first iteration's work, matching the previous `vTaskDelay(1000)`
+  behaviour within the 2 ms margin
+
+#### Scenario: First iteration sleeps for tickMs + WAKE_MARGIN_MS while LED is dark
+
+- **WHEN** the Network task starts and no previous iteration has run
+  (`lastWorkMs == 0`) AND the LED has already entered dark mode
+  (`statusLed.isDark(now)` returns `true`)
+- **THEN** the task SHALL sleep for `15000 + 2 = 15002` ms before its
+  first iteration's work
+
+#### Scenario: Fast iteration shortens the next sleep
+
+- **WHEN** the previous iteration's work took 50 ms AND the LED is
+  not in dark mode (`tickMs == 1000`)
+- **THEN** the next sleep SHALL be `1000 - 50 + 2 = 952` ms, so the
+  total cycle is `50 + 952 = 1002` ms (the 2 ms margin)
+
+#### Scenario: Fast iteration at dark-mode tick shortens the next sleep
+
+- **WHEN** the previous iteration's work took 50 ms AND the LED is
+  in dark mode (`tickMs == 15000`)
+- **THEN** the next sleep SHALL be `15000 - 50 + 2 = 14952` ms, so
+  the total cycle is `50 + 14952 = 15002` ms (the 2 ms margin)
+
+#### Scenario: Slow iteration yields the floor of one RTOS tick
+
+- **WHEN** the previous iteration's work took longer than the current
+  `tickMs` (e.g. 1200 ms while `tickMs == 1000`, or 16000 ms while
+  `tickMs == 15000`)
+- **THEN** the next sleep SHALL be `1` ms (`pdMS_TO_TICKS(1)`), so
+  the task re-enters the work loop on the next RTOS tick instead of
+  waiting out a full additional tick
+
+#### Scenario: Tick switches when LED transitions to dark
+
+- **WHEN** iteration N ran with `tickMs == 1000` AND during iteration
+  N's work the LED enters dark mode (so iteration N+1's `isDark()`
+  call returns `true`)
+- **THEN** iteration N+1 SHALL compute `tickMs == 15000` and sleep
+  for the dark-mode budget (minus `lastWorkMs` plus `WAKE_MARGIN_MS`)
+
+#### Scenario: Tick switches when LED transitions out of dark
+
+- **WHEN** iteration N ran with `tickMs == 15000` AND during iteration
+  N's work the LED is re-activated (so iteration N+1's `isDark()`
+  call returns `false`)
+- **THEN** iteration N+1 SHALL compute `tickMs == 1000` and sleep
+  for the active-mode budget (minus `lastWorkMs` plus `WAKE_MARGIN_MS`)
+
+#### Scenario: Long-run cadence is preserved on average
+
+- **WHEN** every iteration's work takes `W` ms where `W < tickMs`
+- **THEN** each iteration's total cycle SHALL be `W + (tickMs - W +
+  WAKE_MARGIN_MS) = tickMs + WAKE_MARGIN_MS`, so the long-run average
+  cadence is the current tick plus the 2 ms margin, matching the
+  Sensor Monitor's contract
+

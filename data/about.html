@@ -107,6 +107,11 @@
                 } else {
                     networkHTML = createRow('Status', 'Disconnected');
                 }
+                networkHTML +=
+                    createRow('Network Loop Cycle Count', data.net_cycle_count) +
+                    createRow('Network Loop Avg Work', data.net_avg_cycle_work_ms + ' ms') +
+                    createRow('Network Loop Min Work', data.net_min_cycle_work_ms + ' ms') +
+                    createRow('Network Loop Max Work', data.net_max_cycle_work_ms + ' ms');
                 document.getElementById('networkInfo').innerHTML = networkHTML;
 
                 if (data.stats) {

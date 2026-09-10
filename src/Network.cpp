@@ -32,28 +32,28 @@
 #include <set>
 #endif
 
-static constexpr const char* const TAG = "net";
+static constexpr const char *const TAG = "net";
 
 #ifdef ARDUINO
 namespace {
-    const char* wifiDisconnectReasonStr(uint8_t reason) {
+    const char *wifiDisconnectReasonStr(uint8_t reason) {
         switch (reason) {
-            case WIFI_REASON_UNSPECIFIED:           return "UNSPECIFIED";
-            case WIFI_REASON_AUTH_EXPIRE:           return "AUTH_EXPIRE";
-            case WIFI_REASON_AUTH_LEAVE:            return "AUTH_LEAVE";
-            case WIFI_REASON_ASSOC_EXPIRE:          return "ASSOC_EXPIRE";
-            case WIFI_REASON_ASSOC_TOOMANY:         return "ASSOC_TOOMANY";
-            case WIFI_REASON_NOT_AUTHED:            return "NOT_AUTHED";
-            case WIFI_REASON_NOT_ASSOCED:           return "NOT_ASSOCED";
-            case WIFI_REASON_ASSOC_LEAVE:           return "ASSOC_LEAVE";
-            case WIFI_REASON_ASSOC_NOT_AUTHED:      return "ASSOC_NOT_AUTHED";
-            case WIFI_REASON_BEACON_TIMEOUT:        return "BEACON_TIMEOUT";
-            case WIFI_REASON_NO_AP_FOUND:           return "NO_AP_FOUND";
-            case WIFI_REASON_AUTH_FAIL:             return "AUTH_FAIL";
-            case WIFI_REASON_ASSOC_FAIL:            return "ASSOC_FAIL";
-            case WIFI_REASON_HANDSHAKE_TIMEOUT:     return "HANDSHAKE_TIMEOUT";
-            case WIFI_REASON_CONNECTION_FAIL:       return "CONNECTION_FAIL";
-            default:                                return "OTHER";
+            case WIFI_REASON_UNSPECIFIED: return "UNSPECIFIED";
+            case WIFI_REASON_AUTH_EXPIRE: return "AUTH_EXPIRE";
+            case WIFI_REASON_AUTH_LEAVE: return "AUTH_LEAVE";
+            case WIFI_REASON_ASSOC_EXPIRE: return "ASSOC_EXPIRE";
+            case WIFI_REASON_ASSOC_TOOMANY: return "ASSOC_TOOMANY";
+            case WIFI_REASON_NOT_AUTHED: return "NOT_AUTHED";
+            case WIFI_REASON_NOT_ASSOCED: return "NOT_ASSOCED";
+            case WIFI_REASON_ASSOC_LEAVE: return "ASSOC_LEAVE";
+            case WIFI_REASON_ASSOC_NOT_AUTHED: return "ASSOC_NOT_AUTHED";
+            case WIFI_REASON_BEACON_TIMEOUT: return "BEACON_TIMEOUT";
+            case WIFI_REASON_NO_AP_FOUND: return "NO_AP_FOUND";
+            case WIFI_REASON_AUTH_FAIL: return "AUTH_FAIL";
+            case WIFI_REASON_ASSOC_FAIL: return "ASSOC_FAIL";
+            case WIFI_REASON_HANDSHAKE_TIMEOUT: return "HANDSHAKE_TIMEOUT";
+            case WIFI_REASON_CONNECTION_FAIL: return "CONNECTION_FAIL";
+            default: return "OTHER";
         }
     }
 }
@@ -67,8 +67,7 @@ Network::Network(Config::ConfigManager &config, SensorController &sensorControll
 #ifdef ARDUINO
       , ntpClient(wifiUdp)
 #endif
-      , webServer(webServer), statusLed(statusLed), lastMqttPublish(0)
-{
+      , webServer(webServer), statusLed(statusLed), lastMqttPublish(0) {
 }
 
 void Network::begin() {
@@ -287,7 +286,7 @@ void Network::startSTA(const char *ssid, const char *password) {
 
     // Apply WiFi sleep mode: 0=WIFI_PS_NONE, 1=WIFI_PS_MIN_MODEM, 2=WIFI_PS_MAX_MODEM
     wifi_ps_type_t sleepMode = WIFI_PS_NONE;
-    const char* sleepModeStr = "NONE";
+    const char *sleepModeStr = "NONE";
     if (energyConfig.wifi_sleep_mode == 1) {
         sleepMode = WIFI_PS_MIN_MODEM;
         sleepModeStr = "MIN_MODEM";
@@ -477,7 +476,7 @@ void Network::configureUsingAPMode() {
 
     if (!config.isConfigured()) {
         ESP_LOGI(TAG, "No WiFi configuration found - starting AP mode");
-        
+
         configureUsingAPMode();
     }
     ESP_LOGI(TAG, "Network task configured");
@@ -618,7 +617,7 @@ void Network::configureUsingAPMode() {
     unsigned long lastBlockExitMs = millis();
     unsigned long lastDiagnostics = millis();
     unsigned long lastNtpRetry = 0; // millis() of last NTP retry when unsynced
-    bool wasConnected = true;  // Track WiFi state transitions for mDNS re-advertisement
+    bool wasConnected = true; // Track WiFi state transitions for mDNS re-advertisement
 
     // Flapping-immune restart backstop. The active-reconnect path below resets
     // activeReconnectFailures to 0 on *any* brief reconnect, so a link that
@@ -628,7 +627,7 @@ void Network::configureUsingAPMode() {
     // flicker does not advance it. If no stable connection occurs for
     // FORCE_RESTART_NO_STABLE_MS, force a clean restart. We enter this loop
     // connected, so both baselines start at "now".
-    unsigned long connectedSinceMs = millis();   // start of the current connected streak (0 = down)
+    unsigned long connectedSinceMs = millis(); // start of the current connected streak (0 = down)
     unsigned long lastStableConnectMs = millis(); // last time the link was confirmed stable
     // Measured against *internal* SRAM only, via heap_caps_get_free_size(), and
     // deliberately not via ESP.getFreeHeap(). Not for the reason previously
@@ -644,8 +643,14 @@ void Network::configureUsingAPMode() {
     static constexpr uint32_t MIN_FREE_INTERNAL_BYTES = 16384; // 16 KB
     static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 900000; // 15 minutes
     static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
+
+    static constexpr uint32_t WAKE_MARGIN_MS = 2;
     while (true) {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        const uint32_t tickMs = statusLed.isDark(static_cast<uint32_t>(millis())) ? 15000 : 1000;
+        const uint32_t sleepMs = (lastWorkMs < tickMs)
+                                     ? (tickMs - lastWorkMs + WAKE_MARGIN_MS)
+                                     : 1u;
+        vTaskDelay(pdMS_TO_TICKS(sleepMs));
 
         esp_task_wdt_reset();
 
@@ -761,7 +766,8 @@ void Network::configureUsingAPMode() {
             static constexpr uint8_t MAX_ACTIVE_RECONNECT_FAILURES = 6;
             if (!isConnected) {
                 unsigned long downForMs = (lastWifiDisconnectMs != 0)
-                    ? (now - lastWifiDisconnectMs) : 0;
+                                              ? (now - lastWifiDisconnectMs)
+                                              : 0;
                 bool dueToActiveReconnect = (now - lastActiveReconnectMs) >= ACTIVE_RECONNECT_MIN_INTERVAL_MS;
                 if (downForMs >= ACTIVE_RECONNECT_AFTER_MS && dueToActiveReconnect) {
                     activeReconnectFailures++;
@@ -788,8 +794,8 @@ void Network::configureUsingAPMode() {
             // for STABLE_CONNECT_MS; brief flickers reset the streak and never
             // advance lastStableConnectMs. If WiFi has not been stable for
             // FORCE_RESTART_NO_STABLE_MS, only a clean boot tends to recover it.
-            static constexpr unsigned long STABLE_CONNECT_MS = 60000;            // 1 min up = "stable"
-            static constexpr unsigned long FORCE_RESTART_NO_STABLE_MS = 600000;  // 10 min without stability
+            static constexpr unsigned long STABLE_CONNECT_MS = 60000; // 1 min up = "stable"
+            static constexpr unsigned long FORCE_RESTART_NO_STABLE_MS = 600000; // 10 min without stability
             if (isConnected) {
                 if (connectedSinceMs == 0) connectedSinceMs = now; // streak started
                 if (now - connectedSinceMs >= STABLE_CONNECT_MS) {
@@ -887,7 +893,7 @@ void Network::configureUsingAPMode() {
                 // Check MQTT connect failures and report to internet monitoring
                 uint32_t mqttFailures = mqttClient->getConsecutiveConnectFailures();
                 static uint32_t lastReportedMqttFailures = 0;
-                
+
                 if (mqttFailures > lastReportedMqttFailures) {
                     // New failures to report
                     for (uint32_t i = lastReportedMqttFailures; i < mqttFailures; i++) {
@@ -908,27 +914,27 @@ void Network::configureUsingAPMode() {
                     // Seed lastMqttPublish on first eligible cycle
                     if (lastMqttPublish == 0) lastMqttPublish = now;
 
-                    if (intervalMs > 0 && (now - bootMs >= 60000) && (now - lastMqttPublish >= intervalMs)) {
+                    bool isSettled = now - bootMs >= 60000;
+                    if (intervalMs > 0 && isSettled && (now - lastMqttPublish >= intervalMs)) {
                         // Atomic snapshot: validity and data are read under the same lock,
                         // so we never publish stale measurements after a fresh read failed.
                         auto measurements = sensorController.getValidMeasurements();
-                            if (!measurements.empty()) {
-                                statusLed.setState(LedState::TRANSMIT_DATA);
-                                lastMqttPublish = now;
-                                publishMeasurements(measurements);
-                            }
+                        if (!measurements.empty()) {
+                            statusLed.setState(LedState::TRANSMIT_DATA);
+                            lastMqttPublish = now;
+                            publishMeasurements(measurements);
                         }
-
-                        // Update MQTT progress for green→red gradient on status LED
-                        if (intervalMs > 0) {
-                            float prog = static_cast<float>(now - lastMqttPublish) / intervalMs;
-                            if (prog > 1.0f) prog = 1.0f;
-                            statusLed.setProgress(prog);
-                            statusLed.setState(LedState::ON);
-                        }
-                    } else {
-                        statusLed.setProgress(0.0f);
                     }
+
+                    if (intervalMs > 0 && isSettled) {
+                        float prog = static_cast<float>(now - lastMqttPublish) / intervalMs;
+                        if (prog > 1.0f) prog = 1.0f;
+                        statusLed.setProgress(prog);
+                        statusLed.setState(LedState::ON);
+                    }
+                } else {
+                    statusLed.setProgress(0.0f);
+                }
             }
 
             // Internet connectivity failure monitoring. If we've had repeated
@@ -977,6 +983,14 @@ void Network::configureUsingAPMode() {
                 lastDiagnostics = now;
                 ESP_LOGI(TAG, "Diagnostics: heap=%u bytes (min=%u), uptime=%lu s",
                          ESP.getFreeHeap(), ESP.getMinFreeHeap(), now / 1000);
+                const Support::StatsSnapshot netStats = stats.snapshot();
+                ESP_LOGI(
+                    TAG,
+                    "Diagnostics: net_cycle_count=%llu net_avg_cycle_work_ms=%llu net_min_cycle_work_ms=%llu net_max_cycle_work_ms=%llu",
+                    (unsigned long long)netStats.count,
+                    (unsigned long long)netStats.average,
+                    (unsigned long long)netStats.min,
+                    (unsigned long long)netStats.max);
                 if (taskHandle) {
                     ESP_LOGI(TAG, "Network task stack HWM: %u bytes",
                              uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
@@ -994,35 +1008,44 @@ void Network::configureUsingAPMode() {
                 ESP_LOGD(TAG, "Tick slow work: work=%lums wait=%lums status=%d",
                          workMs, waitMs, WiFi.status());
             }
+
+            stats.add(workMs);
+            // Carry this iteration's work duration to the top of the next
+            // iteration so the adaptive sleep there can subtract it from
+            // TICK_MS. Same value just recorded into stats; one variable,
+            // two readers (the stats accumulator across iterations and the
+            // immediate next sleep).
+            lastWorkMs = static_cast<uint32_t>(workMs);
             lastBlockExitMs = blockExit;
         }
     }
 #endif
 }
 
-void Network::publishMeasurements(const std::vector<Sensor::Measurement>& measurements) {
+void Network::publishMeasurements(const std::vector<Sensor::Measurement> &measurements) {
 #ifdef ARDUINO
     if (!mqttClient || !mqttClient->isConnected()) return;
 
     uint32_t epoch = getCurrentEpoch();
-    const char* prefix = mqttClient->getPrefix();
+    const char *prefix = mqttClient->getPrefix();
 
     uint32_t succeeded = 0;
     uint32_t failed = 0;
 
-    for (const auto& m : measurements) {
+    for (const auto &m: measurements) {
         char topic[128];
         snprintf(topic, sizeof(topic), "%s/%s", prefix, Sensor::measurementTypeLabel(m.type));
 
         char payload[256];
-        if (auto* i = std::get_if<int32_t>(&m.value)) {
+        if (auto *i = std::get_if<int32_t>(&m.value)) {
             snprintf(payload, sizeof(payload),
-                "{\"time\":%u,\"value\":%d,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
-                epoch, *i, Sensor::measurementTypeUnit(m.type), m.sensor, m.calculated ? "true" : "false");
+                     "{\"time\":%u,\"value\":%d,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
+                     epoch, *i, Sensor::measurementTypeUnit(m.type), m.sensor, m.calculated ? "true" : "false");
         } else {
             snprintf(payload, sizeof(payload),
-                "{\"time\":%u,\"value\":%.2f,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
-                epoch, std::get<float>(m.value), Sensor::measurementTypeUnit(m.type), m.sensor, m.calculated ? "true" : "false");
+                     "{\"time\":%u,\"value\":%.2f,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
+                     epoch, std::get<float>(m.value), Sensor::measurementTypeUnit(m.type), m.sensor,
+                     m.calculated ? "true" : "false");
         }
 
         if (mqttClient->publish(topic, payload)) {
@@ -1041,7 +1064,7 @@ void Network::publishMeasurements(const std::vector<Sensor::Measurement>& measur
 #endif
 }
 
-void Network::updateMqttConfig(const Config::MqttConfig& mqttConfig) {
+void Network::updateMqttConfig(const Config::MqttConfig &mqttConfig) {
     if (mqttClient) {
         mqttClient->setConfig(mqttConfig);
     }

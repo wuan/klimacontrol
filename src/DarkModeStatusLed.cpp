@@ -34,8 +34,10 @@ bool DarkModeStatusLed::isDark(uint32_t nowMs) const {
 void DarkModeStatusLed::applyEffectiveState(uint32_t nowMs) {
     const bool suppress = isNormalOperation(logicalState) && isDark(nowMs);
     if (suppress) {
-        led.setState(LedState::OFF);
-        if (!suppressed) led.setPowerRail(false); // black is latched, now cut the rail
+        if (!suppressed) {
+            led.setState(LedState::OFF);
+            led.setPowerRail(false); // black is latched, now cut the rail
+        }
     } else {
         if (suppressed) led.setPowerRail(true);   // re-power before rendering
         led.setState(logicalState);

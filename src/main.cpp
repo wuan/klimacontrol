@@ -399,6 +399,6 @@ void loop() {
 #ifdef ARDUINO
     HardwareWatchdog::feed();
     config.checkRestart();
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
 #endif
 }
