@@ -116,4 +116,4 @@ state, and no `setMeasuring()` / `setNormal()` shortcuts. Don't invent them.
 ## Naming
 
 Device IDs are `klima-AABBCC` (last 3 bytes of the MAC); the mDNS hostname is
-the lowercase form, `klima-aabbcc.local` (see `Network::generateHostname()`).
+the lowercase form, `klima-aabbcc.local` (see `Net::MdnsAdvertiser::hostname()`).

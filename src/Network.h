@@ -1,29 +1,34 @@
 #ifndef KLIMACONTROL_WIFI_H
 #define KLIMACONTROL_WIFI_H
 
+#include <cstdint>
+#include <vector>
+
 #ifdef ARDUINO
-#include <WiFiUdp.h>
-#include <NTPClient.h>
-#include <WiFi.h>
-#include <ESPmDNS.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #endif
 
-#include "CaptivePortal.h"
 #include "DarkModeStatusLed.h"
 #include "MqttClient.h"
-#include "sensor/Sensor.h"
-#include "SensorController.h"
-#include "control/TemperatureController.h"
 #include "actuator/HeatingActuator.h"
-#include "task/SensorMonitor.h"
-#include "support/NetworkWatchdog.h"
+#include "control/TemperatureController.h"
+#include "network/ApProvisioning.h"
+#include "network/InternetHealth.h"
+#include "network/LowHeapGuard.h"
+#include "network/MdnsAdvertiser.h"
+#include "network/MqttPublisher.h"
+#include "network/NtpSync.h"
+#include "network/WifiStation.h"
+#include "sensor/Sensor.h"
 #include "support/Stats.h"
+#include "task/SensorMonitor.h"
 
-// Forward declarations
 namespace Config {
     class ConfigManager;
 }
 
+class SensorController;
 class WebServerManager;
 
 namespace Display {
@@ -39,6 +44,13 @@ enum class NetworkMode {
     NONE // Network disabled
 };
 
+/**
+ * The Network task: boots the device onto WiFi (or into AP provisioning),
+ * then runs the 1 s housekeeping loop — status LED, heating actuator, e-paper
+ * refresh, WiFi supervision, NTP, MQTT, internet-health recovery, low-heap
+ * guard and diagnostics. The individual concerns live in `src/network/`;
+ * this class owns them and sequences their ticks.
+ */
 class Network {
 private:
     Config::ConfigManager &config;
@@ -46,13 +58,23 @@ private:
     // The control loop: read for the actuator tick (output, permission) and
     // told what the relay is actually doing afterwards.
     Control::TemperatureController &temperatureController;
+    Task::SensorMonitor &sensorMonitor;
+    DarkModeStatusLed &statusLed;
 
     // Drives the heating valve. Lives on this task rather than the control loop
     // because an unreachable manifold takes seconds to time out, and the Sensor
     // Monitor task feeds a watchdog every second.
     Actuator::HeatingActuator heatingActuator;
-    unsigned long lastActuatorTickMs = 0;
-    Task::SensorMonitor &sensorMonitor;
+    uint32_t lastActuatorTickMs = 0;
+
+    Net::MdnsAdvertiser mdns;
+    Net::ApProvisioning provisioning;
+    Net::WifiStation wifi;
+    Net::NtpSync ntp;
+    Net::MqttPublisher mqtt;
+    Net::InternetHealth internetHealth;
+    Net::LowHeapGuard lowHeapGuard;
+
     // Per-iteration work duration. Fed from the inner loop with `workMs`
     // (the time from the top of the iteration to the existing DEBUG slow-log
     // check) and read by the 15-min diagnostics line on the network task and
@@ -65,95 +87,36 @@ private:
     // `tick - elapsed + WAKE_MARGIN_MS` pattern). See spec `networking` →
     // "Network task sleeps adaptively based on previous iteration's work".
     uint32_t lastWorkMs = 0;
-    NetworkMode mode;
-
-#ifdef ARDUINO
-    WiFiUDP wifiUdp;
-    NTPClient ntpClient;
-#endif
+    NetworkMode mode = NetworkMode::NONE;
 
     // Long-lived singletons. The web server is constructed once in setup()
     // and the same instance is reused across AP/STA/STA-fallback cycles by
-    // calling setMode(). MqttClient is constructed once in `Network::begin()`
-    // and re-initialized in place on each (re)connect. See spec
-    // `memory-management` → "Long-lived singletons are constructed once".
+    // calling setMode(). See spec `memory-management` → "Long-lived
+    // singletons are constructed once".
     WebServerManager *webServer = nullptr;
     // Non-owning; nullptr when the e-paper display is disabled in config (the
     // default) or on native builds. Wired via setDisplay() after construction,
     // the same way webServer is, so neither object needs the other at
     // construction time.
     Display::DisplayManager *display = nullptr;
-    DarkModeStatusLed &statusLed;
-    std::unique_ptr<MqttClient> mqttClient;
-    uint32_t lastMqttPublish;
-    CaptivePortal captivePortal;
-    TaskHandle_t taskHandle = nullptr;
-    String mdnsInstanceName;  // Must outlive MDNS.setInstanceName() call
-    String cachedHostname;
-
-    // NTP sync state. NTPClient::getEpochTime() returns elapsed-since-boot before any
-    // successful sync (because _currentEpoc is 0 and millis-since-_lastUpdate accumulates),
-    // so "epoch > 0" is not a reliable synced indicator. Track it explicitly instead.
-    bool ntpSynced = false;
-    uint32_t lastNtpUpdateEpoch = 0; // epoch seconds at last successful sync
-    uint32_t ntpBogusSyncCount = 0;  // syncs that passed the boolean check but failed the epoch sanity check
-
-    // WiFi connection state — written from the WiFi event task, read from the network task.
-    // 32-bit aligned scalars are atomic on ESP32, so volatile is sufficient.
-    volatile uint8_t lastWifiDisconnectReason = 0; // esp_wifi_types reason code
-    volatile unsigned long lastWifiConnectMs = 0;
-    volatile unsigned long lastWifiDisconnectMs = 0;
-    unsigned long lastActiveReconnectMs = 0; // network-task-local
-    uint8_t activeReconnectFailures = 0;     // network-task-local
-    bool wifiEventHandlerRegistered = false; // WiFi.onEvent registered only once
-
-    // Internet connectivity tracking - shared with MQTT and OTA
-    // 32-bit aligned volatile for atomic access on ESP32
-    volatile uint32_t internetConnectFailures = 0;
-    uint32_t lastInternetFailureAction = 0;
-    static constexpr uint32_t INTERNET_FAILURE_THRESHOLD = 5;
-    static constexpr uint32_t INTERNET_FAILURE_WINDOW_MS = 60000;
-
 #ifdef ARDUINO
-    void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
+    TaskHandle_t taskHandle = nullptr;
 #endif
 
     /**
-     * Generate mDNS hostname from device ID
-     * Creates hostname like "klima-aabbcc" from device ID (removes dash)
+     * Boot-time station bring-up: associate, then start mDNS, NTP and MQTT.
+     * Returns false when association failed after all retries.
      */
-    String generateHostname();
+    bool startSTA(const char *ssid, const char *password);
 
-    /**
-     * Start Access Point mode for configuration
-     */
-    void startAP();
+    /** Heating actuator tick, rate-limited to HeatingActuator::TICK_MS. */
+    void tickActuator(uint32_t now);
 
-    /**
-     * Start Station mode (WiFi client)
-     * @param ssid WiFi network name
-     * @param password WiFi password
-     */
-    void startSTA(const char *ssid, const char *password);
-
-    void configureUsingAPMode();
-
-    /**
-     * Configure mDNS responder with hostname and HTTP service advertisement
-     */
-    void configureMDNS();
-
-    /**
-     * Run ntpClient.forceUpdate() with the task watchdog fed immediately
-     * before and after. See `src/support/NetworkWatchdog.h` for the helper
-     * and the spec `networking` → "Network task blocking-call safety" for
-     * the contract.
-     */
-    bool safeNtpUpdate();
+    /** 15-minute heap / cycle-stats / stack-HWM log lines. */
+    void logDiagnostics(uint32_t now);
 
 public:
     /**
-     * Network constructor
      * @param config Configuration manager reference
      * @param sensorController Sensor controller reference (MQTT publishing)
      * @param temperatureController Control loop (actuator tick)
@@ -168,6 +131,9 @@ public:
     Network(Config::ConfigManager &config, SensorController &sensorController,
             Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
             DarkModeStatusLed &statusLed, WebServerManager *webServer);
+
+    // disable copy constructor
+    Network(const Network &) = delete;
 
     /** Read-only view of the heating actuator, for the API and displays. */
     const Actuator::HeatingActuator &getHeatingActuator() const { return heatingActuator; }
@@ -184,9 +150,6 @@ public:
      */
     Support::StatsSnapshot getStatsSnapshot() const { return stats.snapshot(); }
 
-    // disable copy constructor
-    Network(const Network &) = delete;
-
     /**
      * Wire the pre-constructed WebServerManager into the network task. Called
      * from main.cpp after both objects exist (the WebServerManager constructor
@@ -194,13 +157,13 @@ public:
      * non-owning — main.cpp keeps the WebServerManager alive for the lifetime
      * of the firmware.
      */
-    void setWebServer(WebServerManager *webServer) { this->webServer = webServer; }
+    void setWebServer(WebServerManager *webServer);
 
     /**
      * Wire in the e-paper display, if one is enabled. Non-owning; pass nullptr
      * (or never call this) to leave the display unused.
      */
-    void setDisplay(Display::DisplayManager *display) { this->display = display; }
+    void setDisplay(Display::DisplayManager *display);
 
     /**
      * The wired-in display, or nullptr when none is enabled. Non-owning.
@@ -209,14 +172,14 @@ public:
 
     /**
      * One-time initialization of long-lived singletons that the network task
-     * depends on. Currently constructs the MqttClient so the same instance is
-     * reused across every (re)connect (idempotent `begin()` re-init only).
-     * Must be called from setup() before the network task starts.
+     * depends on (currently the MqttClient, so the same instance is reused
+     * across every (re)connect). Must be called from setup() before the
+     * network task starts.
      */
     void begin();
 
     /**
-     * Network task (runs on Core 1)
+     * Network task body
      */
     [[noreturn]] void task();
 
@@ -224,11 +187,9 @@ public:
 
     /**
      * Size of the AP password buffer: 8 hex chars from
-     * `Support::computeApPassword` plus a NUL terminator. Public so
-     * main.cpp can size its stack buffer without depending on the
-     * private `apPassword` member.
+     * `Support::computeApPassword` plus a NUL terminator.
      */
-    static constexpr size_t AP_PASSWORD_BUF_SIZE = 9;
+    static constexpr size_t AP_PASSWORD_BUF_SIZE = Net::ApProvisioning::AP_PASSWORD_BUF_SIZE;
 
     /**
      * Static trampoline function for FreeRTOS
@@ -263,39 +224,35 @@ public:
      * Get MQTT client (for API access)
      * @return Pointer to MQTT client, or nullptr if not initialized
      */
-    MqttClient* getMqttClient() { return mqttClient.get(); }
+    MqttClient *getMqttClient() { return mqtt.client(); }
 
     /**
      * Publish sensor measurements via MQTT
      */
-    void publishMeasurements(const std::vector<Sensor::Measurement>& measurements);
+    void publishMeasurements(const std::vector<Sensor::Measurement> &measurements);
 
     /**
      * Update MQTT configuration at runtime
      */
-    void updateMqttConfig(const Config::MqttConfig& mqttConfig);
+    void updateMqttConfig(const Config::MqttConfig &mqttConfig);
 
     /**
      * Report an internet connectivity failure (called by MQTT, OTA, NTP)
      * Increments failure counter and may trigger WiFi reconnection.
      */
-    void reportInternetFailure();
+    void reportInternetFailure() { internetHealth.reportFailure(); }
 
     /**
      * Report successful internet connectivity (called by MQTT, OTA, NTP)
      * Resets failure counter.
      */
-    void reportInternetSuccess();
+    void reportInternetSuccess() { internetHealth.reportSuccess(); }
 
     /**
      * Get current NTP epoch time
      * @return Current epoch time, or 0 if NTP not yet successfully synced
      */
-#ifdef ARDUINO
-    uint32_t getCurrentEpoch() const { return ntpSynced ? ntpClient.getEpochTime() : 0; }
-#else
-    uint32_t getCurrentEpoch() const { return 0; }
-#endif
+    uint32_t getCurrentEpoch() const { return ntp.currentEpoch(); }
 };
 
 

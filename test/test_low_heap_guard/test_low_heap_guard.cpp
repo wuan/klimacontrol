@@ -1,0 +1,53 @@
+#include "network/LowHeapGuard.h"
+#include "unity.h"
+
+using Net::LowHeapGuard;
+
+void setUp() {}
+void tearDown() {}
+
+namespace {
+    constexpr uint32_t LOW = LowHeapGuard::MIN_FREE_INTERNAL_BYTES - 1;
+    constexpr uint32_t OK = LowHeapGuard::MIN_FREE_INTERNAL_BYTES;
+}
+
+void test_healthy_heap_never_restarts() {
+    LowHeapGuard g;
+    for (int i = 0; i < 100; i++) TEST_ASSERT_FALSE(g.sample(OK, false));
+    TEST_ASSERT_EQUAL_UINT8(0, g.streak());
+}
+
+void test_restart_only_after_streak() {
+    LowHeapGuard g;
+    for (uint8_t i = 1; i < LowHeapGuard::RESTART_STREAK; i++) {
+        TEST_ASSERT_FALSE(g.sample(LOW, false));
+        TEST_ASSERT_EQUAL_UINT8(i, g.streak());
+    }
+    TEST_ASSERT_TRUE(g.sample(LOW, false));
+}
+
+void test_transient_dip_resets_streak() {
+    LowHeapGuard g;
+    for (uint8_t i = 1; i < LowHeapGuard::RESTART_STREAK; i++) g.sample(LOW, false);
+    TEST_ASSERT_FALSE(g.sample(OK, false));
+    TEST_ASSERT_EQUAL_UINT8(0, g.streak());
+    TEST_ASSERT_FALSE(g.sample(LOW, false));
+    TEST_ASSERT_EQUAL_UINT8(1, g.streak());
+}
+
+void test_ota_samples_are_ignored_and_reset_streak() {
+    LowHeapGuard g;
+    g.sample(LOW, false);
+    g.sample(LOW, false);
+    for (int i = 0; i < 20; i++) TEST_ASSERT_FALSE(g.sample(1024, true));
+    TEST_ASSERT_EQUAL_UINT8(0, g.streak());
+}
+
+int main() {
+    UNITY_BEGIN();
+    RUN_TEST(test_healthy_heap_never_restarts);
+    RUN_TEST(test_restart_only_after_streak);
+    RUN_TEST(test_transient_dip_resets_streak);
+    RUN_TEST(test_ota_samples_are_ignored_and_reset_streak);
+    return UNITY_END();
+}
