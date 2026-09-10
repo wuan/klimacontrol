@@ -15,7 +15,7 @@
 #include "display/DisplayManager.h"
 #endif
 
-static constexpr const char *const TAG = "net";
+static constexpr auto TAG = "net";
 
 Network::Network(Config::ConfigManager &config, SensorController &sensorController,
                  Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
@@ -88,7 +88,7 @@ bool Network::startSTA(const char *ssid, const char *password) {
     return true;
 }
 
-void Network::tickActuator(uint32_t now) {
+void Network::tickActuator(const uint32_t now) {
     if (now - lastActuatorTickMs < Actuator::HeatingActuator::TICK_MS) return;
     lastActuatorTickMs = now;
     const Config::DeviceConfig cfg = config.getDeviceConfigSnapshot();
@@ -305,8 +305,7 @@ void Network::taskWrapper(void *pvParameters) {
 }
 
 void Network::initialize_watchdog_timer() {
-    esp_err_t wdtAdd = esp_task_wdt_add(NULL);
-    if (wdtAdd != ESP_OK) {
+    if (esp_err_t wdtAdd = esp_task_wdt_add(nullptr); wdtAdd != ESP_OK) {
         ESP_LOGE(TAG, "esp_task_wdt_add failed (err 0x%x) - task runs unguarded", wdtAdd);
     }
 }

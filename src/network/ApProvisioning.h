@@ -73,7 +73,7 @@ namespace Net {
         void enterConfigMode();
         /** Poll the captive portal and feed the watchdog for one 100 ms slot. */
         void serviceSlot();
-        [[noreturn]] void restart(uint32_t delayMs);
+        [[noreturn]] static void restart(uint32_t delayMs);
     };
 
 } // namespace Net

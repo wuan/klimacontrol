@@ -3,7 +3,7 @@
 #include "Log.h"
 
 #ifdef ARDUINO
-static constexpr const char *const TAG = "net";
+static constexpr auto TAG = "net";
 #else
 #define TAG "net"
 #endif
@@ -20,12 +20,12 @@ namespace Net {
         ESP_LOGD(TAG, "Internet connectivity success - reset failure counter");
     }
 
-    void InternetHealth::reset(uint32_t nowMs) {
+    void InternetHealth::reset(const uint32_t nowMs) {
         failureCount.store(0);
         lastActionMs = nowMs;
     }
 
-    bool InternetHealth::shouldForceReconnect(uint32_t nowMs) {
+    bool InternetHealth::shouldForceReconnect(const uint32_t nowMs) {
         if (failureCount.load() < FAILURE_THRESHOLD) return false;
         if (nowMs - lastActionMs < FAILURE_WINDOW_MS) return false;
         lastActionMs = nowMs;

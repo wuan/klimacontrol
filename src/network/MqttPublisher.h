@@ -46,7 +46,7 @@ namespace Net {
         void connect(const Config::MqttConfig &config);
 
         /** Apply a new broker configuration at runtime. */
-        void updateConfig(const Config::MqttConfig &config);
+        void updateConfig(const Config::MqttConfig &config) const;
 
         /**
          * Once-per-second work: failure bridging, keepalive/reconnect, and a
@@ -55,7 +55,7 @@ namespace Net {
          */
         void tick(uint32_t nowMs, uint32_t bootMs, uint32_t epoch, InternetHealth &health);
 
-        void publishMeasurements(const std::vector<Sensor::Measurement> &measurements, uint32_t epoch);
+        void publishMeasurements(const std::vector<Sensor::Measurement> &measurements, uint32_t epoch) const;
 
         /** WiFi came back: restart the publish timer so there is no burst. */
         void onWifiReconnected(uint32_t nowMs) { lastPublishMs = nowMs; }

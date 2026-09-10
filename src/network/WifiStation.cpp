@@ -8,12 +8,11 @@
 #include <esp_task_wdt.h>
 #endif
 
-static constexpr const char *const TAG = "net";
+static constexpr auto TAG = "net";
 
 namespace Net {
-
 #ifdef ARDUINO
-    const char *wifiDisconnectReasonStr(uint8_t reason) {
+    const char *wifiDisconnectReasonStr(const uint8_t reason) {
         switch (reason) {
             case WIFI_REASON_UNSPECIFIED: return "UNSPECIFIED";
             case WIFI_REASON_AUTH_EXPIRE: return "AUTH_EXPIRE";
@@ -34,7 +33,7 @@ namespace Net {
         }
     }
 
-    void WifiStation::onWiFiEvent(WiFiEvent_t& event, WiFiEventInfo_t& info) {
+    void WifiStation::onWiFiEvent(const WiFiEvent_t &event, const WiFiEventInfo_t &info) {
         switch (event) {
             case ARDUINO_EVENT_WIFI_STA_CONNECTED:
                 link.onStaConnected(millis());
@@ -60,13 +59,13 @@ namespace Net {
         }
     }
 
-    void WifiStation::applyEnergyConfig() {
+    void WifiStation::applyEnergyConfig() const {
         const Config::EnergyConfig energyConfig = config.loadEnergyConfig();
         WiFi.setTxPower(static_cast<wifi_power_t>(energyConfig.wifi_power));
 
         // 0=WIFI_PS_NONE, 1=WIFI_PS_MIN_MODEM, 2=WIFI_PS_MAX_MODEM
         wifi_ps_type_t sleepMode = WIFI_PS_NONE;
-        const char *sleepModeStr = "NONE";
+        auto sleepModeStr = "NONE";
         if (energyConfig.wifi_sleep_mode == 1) {
             sleepMode = WIFI_PS_MIN_MODEM;
             sleepModeStr = "MIN_MODEM";
@@ -119,7 +118,7 @@ namespace Net {
         // Guarded so a re-entry can't stack duplicate handlers (Arduino appends,
         // never replaces).
         if (!eventHandlerRegistered) {
-            WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info) {
+            WiFi.onEvent([this](const WiFiEvent_t &event, const WiFiEventInfo_t &info) {
                 this->onWiFiEvent(event, info);
             });
             eventHandlerRegistered = true;
@@ -177,41 +176,42 @@ namespace Net {
 #endif
     }
 
-    void WifiStation::beginSupervision(uint32_t nowMs) {
+    void WifiStation::beginSupervision(const uint32_t nowMs) {
         link.beginSupervision(nowMs);
     }
 
-    WifiStation::Event WifiStation::supervise(uint32_t nowMs) {
+    WifiStation::Event WifiStation::supervise(const uint32_t nowMs) {
 #ifdef ARDUINO
-        const LinkMonitor::Verdict v = link.poll(isConnected(), nowMs);
+        const auto [reconnected, dropped, forceReconnect, reconnectAttempt, downForMs, restart, unstableForMs] = link.
+                poll(isConnected(), nowMs);
         const uint8_t reason = link.disconnectReason();
 
-        if (v.dropped) {
+        if (dropped) {
             ESP_LOGW(TAG, "WiFi disconnected (last reason=%u %s) - waiting for auto-reconnect",
                      reason, wifiDisconnectReasonStr(reason));
         }
 
-        if (v.forceReconnect) {
+        if (forceReconnect) {
             ESP_LOGW(TAG, "WiFi down %lus - forcing reconnect (attempt %u/%u, last reason=%u %s)",
-                     static_cast<unsigned long>(v.downForMs / 1000), v.reconnectAttempt,
+                     static_cast<unsigned long>(downForMs / 1000), reconnectAttempt,
                      LinkMonitor::MAX_ACTIVE_RECONNECT_FAILURES,
                      reason, wifiDisconnectReasonStr(reason));
-            forceReconnect();
+            WifiStation::forceReconnect();
         }
 
-        switch (v.restart) {
+        switch (restart) {
             case LinkMonitor::Restart::ReconnectExhausted:
                 ESP_LOGE(TAG, "Active reconnect exhausted - restarting");
                 return Event::RestartRequired;
             case LinkMonitor::Restart::NoStableLink:
                 ESP_LOGE(TAG, "No stable WiFi for %lus (flapping or stuck) - restarting",
-                         static_cast<unsigned long>(v.unstableForMs / 1000));
+                         static_cast<unsigned long>(unstableForMs / 1000));
                 return Event::RestartRequired;
             case LinkMonitor::Restart::None:
                 break;
         }
 
-        if (v.reconnected) {
+        if (reconnected) {
             ESP_LOGI(TAG, "WiFi reconnected (IP: %s)", WiFi.localIP().toString().c_str());
             return Event::Reconnected;
         }
@@ -229,5 +229,4 @@ namespace Net {
         WiFi.reconnect();
 #endif
     }
-
 } // namespace Net

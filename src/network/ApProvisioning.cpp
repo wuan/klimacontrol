@@ -14,7 +14,7 @@
 #include "display/DisplayManager.h"
 #endif
 
-static constexpr const char *const TAG = "net";
+static constexpr auto TAG = "net";
 
 namespace Net {
 
@@ -45,8 +45,7 @@ namespace Net {
 
         if (display.has_value()) {
             Display::DisplayManager &displayManager = display->get();
-            Config::DisplayConfig apConfig{};
-            if (displayManager.tryBeginForApInfo(apConfig)) {
+            if (const Config::DisplayConfig apConfig{}; displayManager.tryBeginForApInfo(apConfig)) {
                 Support::computeApPassword(deviceId.c_str(), password, sizeof(password));
                 useWpa2 = true;
                 ESP_LOGI(TAG, "Display responded at AP-mode entry — using WPA2-PSK");
@@ -110,7 +109,7 @@ namespace Net {
 #endif
     }
 
-    void ApProvisioning::restart(uint32_t delayMs) {
+    void ApProvisioning::restart(const uint32_t delayMs) {
 #ifdef ARDUINO
         vTaskDelay(delayMs / portTICK_PERIOD_MS);
         ESP.restart();
@@ -161,7 +160,7 @@ namespace Net {
         }
     }
 
-    void ApProvisioning::runFallbackWindow(uint8_t failures) {
+    void ApProvisioning::runFallbackWindow(const uint8_t failures) {
         ESP_LOGW(TAG, "Multiple connection failures (%u) - opening AP for %lu s for reconfiguration",
                  failures, static_cast<unsigned long>(FALLBACK_TIMEOUT_MS / 1000));
 

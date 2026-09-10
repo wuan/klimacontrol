@@ -8,7 +8,7 @@
 #include "network/InternetHealth.h"
 
 #ifdef ARDUINO
-static constexpr const char *const TAG = "net";
+static constexpr auto TAG = "net";
 #else
 #define TAG "net"
 #endif
@@ -31,7 +31,7 @@ namespace Net {
         ESP_LOGI(TAG, "MQTT initialized");
     }
 
-    void MqttPublisher::updateConfig(const Config::MqttConfig &config) {
+    void MqttPublisher::updateConfig(const Config::MqttConfig &config) const {
         if (mqtt) mqtt->setConfig(config);
     }
 
@@ -86,7 +86,7 @@ namespace Net {
     }
 
     void MqttPublisher::publishMeasurements(const std::vector<Sensor::Measurement> &measurements,
-                                            uint32_t epoch) {
+                                            uint32_t epoch) const {
         if (!mqtt || !mqtt->isConnected()) return;
 
         const char *prefix = mqtt->getPrefix();

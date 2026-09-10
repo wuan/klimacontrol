@@ -5,10 +5,9 @@
 #include "support/NetworkWatchdog.h"
 #include "support/NtpEpoch.h"
 
-static constexpr const char *const TAG = "net";
+static constexpr auto TAG = "net";
 
 namespace Net {
-
     NtpSync::NtpSync()
 #ifdef ARDUINO
         : client(udp)
@@ -27,7 +26,7 @@ namespace Net {
     uint32_t NtpSync::currentEpoch() const {
 #ifdef ARDUINO
         if (!synced) return 0;
-        return lastUpdateEpoch + ((millis() - lastUpdateMs) / 1000U);
+        return lastUpdateEpoch + (millis() - lastUpdateMs) / 1000U;
 #else
         return 0;
 #endif
@@ -63,8 +62,7 @@ namespace Net {
         ESP_LOGI(TAG, "Starting NTP...");
         client.begin();
 #endif
-        uint32_t epoch = 0;
-        switch (attempt("initial sync", epoch)) {
+        switch (uint32_t epoch = 0; attempt("initial sync", epoch)) {
             case Result::Ok:
                 synced = true;
                 lastUpdateEpoch = epoch;
@@ -80,11 +78,10 @@ namespace Net {
         }
     }
 
-    void NtpSync::tick(uint32_t nowMs, InternetHealth &health) {
+    void NtpSync::tick(const uint32_t nowMs, InternetHealth &health) {
         uint32_t epoch = 0;
         if (synced) {
-            const uint32_t current = currentEpoch();
-            if (current - lastUpdateEpoch < UPDATE_INTERVAL_S) return;
+            if (const uint32_t current = currentEpoch(); current - lastUpdateEpoch < UPDATE_INTERVAL_S) return;
 
             switch (attempt("update", epoch)) {
                 case Result::Ok:
@@ -134,5 +131,4 @@ namespace Net {
                 break;
         }
     }
-
 } // namespace Net

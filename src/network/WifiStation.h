@@ -66,9 +66,9 @@ namespace Net {
          * Also the remedy `InternetHealth` asks for when the internet is gone
          * but WiFi still reports connected.
          */
-        void forceReconnect();
+        static void forceReconnect();
 
-        const LinkMonitor &monitor() const { return link; }
+        [[nodiscard]] const LinkMonitor &monitor() const { return link; }
 
     private:
         static constexpr int MAX_CONNECT_TRIES = 3;
@@ -80,8 +80,8 @@ namespace Net {
         bool eventHandlerRegistered = false; // WiFi.onEvent appends; register only once
 
 #ifdef ARDUINO
-        void onWiFiEvent(WiFiEvent_t& event, WiFiEventInfo_t& info);
-        void applyEnergyConfig();
+        void onWiFiEvent(const WiFiEvent_t& event, const WiFiEventInfo_t& info);
+        void applyEnergyConfig() const;
 
         static void logConnectionDetails();
 #endif

@@ -1,19 +1,18 @@
 #include "network/LinkMonitor.h"
 
 namespace Net {
-
-    void LinkMonitor::markConnected(uint32_t nowMs) {
+    void LinkMonitor::markConnected(const uint32_t nowMs) {
         if (lastConnectMs.load() == 0) lastConnectMs.store(nowMs);
     }
 
-    void LinkMonitor::beginSupervision(uint32_t nowMs) {
+    void LinkMonitor::beginSupervision(const uint32_t nowMs) {
         wasConnected = true;
         connectedSinceMs = nowMs;
         lastStableConnectMs = nowMs;
         lastDisconnectMs.store(0);
     }
 
-    LinkMonitor::Verdict LinkMonitor::poll(bool isConnected, uint32_t nowMs) {
+    LinkMonitor::Verdict LinkMonitor::poll(const bool isConnected, const uint32_t nowMs) {
         Verdict v;
 
         if (!wasConnected && isConnected) {
@@ -37,8 +36,8 @@ namespace Net {
         if (!isConnected) {
             const uint32_t downSince = lastDisconnectMs.load();
             v.downForMs = downSince != 0 ? nowMs - downSince : 0;
-            const bool due = nowMs - lastActiveReconnectMs >= ACTIVE_RECONNECT_MIN_INTERVAL_MS;
-            if (v.downForMs >= ACTIVE_RECONNECT_AFTER_MS && due) {
+            if (const bool due = nowMs - lastActiveReconnectMs >= ACTIVE_RECONNECT_MIN_INTERVAL_MS;
+                v.downForMs >= ACTIVE_RECONNECT_AFTER_MS && due) {
                 reconnectFailures++;
                 lastActiveReconnectMs = nowMs;
                 v.forceReconnect = true;
@@ -62,5 +61,4 @@ namespace Net {
 
         return v;
     }
-
 } // namespace Net

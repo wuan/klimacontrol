@@ -11,7 +11,7 @@
 #include "DeviceId.h"
 #endif
 
-static constexpr const char *const TAG = "net";
+static constexpr auto TAG = "net";
 
 namespace Net {
 

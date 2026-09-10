@@ -3,14 +3,14 @@
 #include "Log.h"
 
 #ifdef ARDUINO
-static constexpr const char *const TAG = "net";
+static constexpr auto TAG = "net";
 #else
 #define TAG "net"
 #endif
 
 namespace Net {
 
-    bool LowHeapGuard::sample(uint32_t freeInternalBytes) {
+    bool LowHeapGuard::sample(const uint32_t freeInternalBytes) {
         if (freeInternalBytes >= MIN_FREE_INTERNAL_BYTES) {
             lowStreak = 0;
             return false;
