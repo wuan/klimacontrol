@@ -19,13 +19,13 @@ static constexpr auto TAG = "net";
 
 Network::Network(Config::ConfigManager &config, SensorController &sensorController,
                  Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
-                 DarkModeStatusLed &statusLed, WebServerManager *webServer)
+                 DarkModeStatusLed &statusLed, std::optional<std::reference_wrapper<WebServerManager> > webServer)
     : config(config), temperatureController(temperatureController),
       sensorMonitor(sensorMonitor), statusLed(statusLed),
       mdns(config), provisioning(config, mdns), wifi(config), mqtt(sensorController, statusLed),
       webServer(webServer) {
-    if (webServer != nullptr) {
-        provisioning.setWebServer(*webServer);
+    if (webServer.has_value()) {
+        provisioning.setWebServer(webServer->get());
     }
 }
 
@@ -33,22 +33,14 @@ void Network::begin() {
     mqtt.begin();
 }
 
-void Network::setWebServer(WebServerManager *server) {
+void Network::setWebServer(WebServerManager &server) {
     webServer = server;
-    if (server != nullptr) {
-        provisioning.setWebServer(*server);
-    } else {
-        provisioning.clearWebServer();
-    }
+    provisioning.setWebServer(server);
 }
 
-void Network::setDisplay(Display::DisplayManager *displayManager) {
+void Network::setDisplay(Display::DisplayManager &displayManager) {
     display = displayManager;
-    if (displayManager != nullptr) {
-        provisioning.setDisplay(*displayManager);
-    } else {
-        provisioning.clearDisplay();
-    }
+    provisioning.setDisplay(displayManager);
 }
 
 void Network::setStatusLedState(LedState state) {
@@ -229,8 +221,8 @@ void Network::handle_network_events(const uint32_t now) {
 
             tickActuator(startTime);
 
-            if (display) {
-                display->update();
+            if (display.has_value()) {
+                display->get().update();
             }
 
             if (lowHeapGuard.sample(heap_caps_get_free_size(MALLOC_CAP_INTERNAL))) {
@@ -312,8 +304,8 @@ void Network::initialize_watchdog_timer() {
 
 void Network::enable_webserver() {
     ESP_LOGI(TAG, "Switching webserver to OPERATIONAL mode...");
-    if (webServer) {
-        webServer->setMode(WebServerMode::OPERATIONAL);
+    if (webServer.has_value()) {
+        webServer->get().setMode(WebServerMode::OPERATIONAL);
     } else {
         ESP_LOGE(TAG, "webServer not wired up — bug in main.cpp ordering");
     }

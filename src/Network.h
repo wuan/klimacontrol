@@ -73,30 +73,12 @@ class Network {
     Net::InternetHealth internetHealth;
     Net::LowHeapGuard lowHeapGuard;
 
-    // Per-iteration work duration. Fed from the inner loop with `workMs`
-    // (the time from the top of the iteration to the existing DEBUG slow-log
-    // check) and read by the 15-min diagnostics line on the network task and
-    // by the AsyncTCP task at GET /api/about. See spec `networking` →
-    // "Network loop accumulates per-iteration work-duration stats".
     Support::Stats stats;
-    // Previous iteration's `workMs`, carried across the `vTaskDelay`
-    // boundary so the next sleep can be shortened by however long the
-    // last iteration took (mirrors `Task::SensorMonitor`'s
-    // `tick - elapsed + WAKE_MARGIN_MS` pattern). See spec `networking` →
-    // "Network task sleeps adaptively based on previous iteration's work".
     uint32_t lastElapsedMs = 0;
     NetworkMode mode = NetworkMode::NONE;
 
-    // Long-lived singletons. The web server is constructed once in setup()
-    // and the same instance is reused across AP/STA/STA-fallback cycles by
-    // calling setMode(). See spec `memory-management` → "Long-lived
-    // singletons are constructed once".
-    WebServerManager *webServer = nullptr;
-    // Non-owning; nullptr when the e-paper display is disabled in config (the
-    // default) or on native builds. Wired via setDisplay() after construction,
-    // the same way webServer is, so neither object needs the other at
-    // construction time.
-    Display::DisplayManager *display = nullptr;
+    std::optional<std::reference_wrapper<WebServerManager>> webServer;
+    std::optional<std::reference_wrapper<Display::DisplayManager>> display;
 #ifdef ARDUINO
     TaskHandle_t taskHandle = nullptr;
 #endif
@@ -138,7 +120,7 @@ public:
      */
     Network(Config::ConfigManager &config, SensorController &sensorController,
             Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
-            DarkModeStatusLed &statusLed, WebServerManager *webServer);
+            DarkModeStatusLed &statusLed, std::optional<std::reference_wrapper<WebServerManager>> webServer);
 
     // disable copy constructor
     Network(const Network &) = delete;
@@ -165,18 +147,18 @@ public:
      * non-owning — main.cpp keeps the WebServerManager alive for the lifetime
      * of the firmware.
      */
-    void setWebServer(WebServerManager *webServer);
+    void setWebServer(WebServerManager& webServer);
 
     /**
      * Wire in the e-paper display, if one is enabled. Non-owning; pass nullptr
      * (or never call this) to leave the display unused.
      */
-    void setDisplay(Display::DisplayManager *display);
+    void setDisplay(Display::DisplayManager& display);
 
     /**
      * The wired-in display, or nullptr when none is enabled. Non-owning.
      */
-    Display::DisplayManager *getDisplay() const { return display; }
+    std::optional<std::reference_wrapper<Display::DisplayManager>> getDisplay() const { return display; }
 
     /**
      * One-time initialization of long-lived singletons that the network task

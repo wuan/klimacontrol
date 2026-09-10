@@ -65,9 +65,9 @@ void WebServerManager::setupDisplayRoutes() {
                       // is acceptable for a deliberate settings change that is
                       // about to reboot the device anyway.
                       if (wasEnabled && !displayConfig.enabled) {
-                          Display::DisplayManager *display = network.getDisplay();
-                          if (display != nullptr) {
-                              display->disableAndClear();
+                          auto display = network.getDisplay();
+                          if (display.has_value()) {
+                              display->get().disableAndClear();
                           }
                       }
 

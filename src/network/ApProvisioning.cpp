@@ -23,23 +23,6 @@ namespace Net {
         const String deviceId = DeviceId::getDeviceId();
         const String apSsid = Constants::AP_SSID_PREFIX + deviceId;
 
-        // Decide the AP security mode by probing for an e-paper panel.
-        //   - Panel responds (manager already enabled, OR the probe passes and
-        //     the subsequent panel.begin() succeeds): use WPA2-PSK and render
-        //     the password on the panel via showApInfo().
-        //   - Panel does not respond: fall back to an open AP. The probe (the
-        //     BUSY-transition check in EPaperDisplay::probe) is what catches
-        //     the no-panel case — panel.begin() alone cannot, because
-        //     GxEPD2::display.init() silently succeeds when no panel is wired
-        //     up. A false result on the probe is the safer failure mode: the
-        //     user can configure WiFi from a phone over the open AP, where a
-        //     false positive would lock the user out with no way to recover on
-        //     a device with no serial cable, no case label, and no panel. After
-        //     the user submits credentials they can enable the display via the
-        //     web UI for the normal status display; the AP password derivation
-        //     is independent of that choice.
-        //
-        // See change `fix-display-probe-busy-transitions` for the rationale.
         bool useWpa2 = false;
         char password[AP_PASSWORD_BUF_SIZE] = "";
 
@@ -131,11 +114,6 @@ namespace Net {
         config.resetConnectionFailures();
 
 #ifdef ARDUINO
-        // Clear the AP info (SSID + password + IP) off the panel so it does not
-        // persist across the restart into STA mode — important when the normal
-        // status display is disabled and nothing else would overwrite it.
-        // clear() rather than disableAndClear() preserves the user's
-        // DisplayConfig preference for the next boot.
         if (display.has_value() && display->get().isEnabled()) {
             ESP_LOGI(TAG, "Clearing e-paper display before restart");
             display->get().clear();

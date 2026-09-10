@@ -48,12 +48,8 @@ namespace Net {
         ApProvisioning(const ApProvisioning &) = delete;
         ApProvisioning &operator=(const ApProvisioning &) = delete;
 
-        /** Non-owning; omitted when no panel is wired (the AP is then open). */
-        void setDisplay(Display::DisplayManager &display) { this->display = display; }
-        void clearDisplay() { display.reset(); }
-        /** Non-owning; main.cpp keeps the server alive for the firmware's lifetime. */
-        void setWebServer(WebServerManager &webServer) { this->webServer = webServer; }
-        void clearWebServer() { webServer.reset(); }
+        void setDisplay(Display::DisplayManager& display) { this->display = display; }
+        void setWebServer(WebServerManager& webServer) { this->webServer = webServer; }
 
         /** Bring up the SoftAP, mDNS and the captive portal. */
         void startAP();
