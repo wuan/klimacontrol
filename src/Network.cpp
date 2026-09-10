@@ -24,7 +24,9 @@ Network::Network(Config::ConfigManager &config, SensorController &sensorControll
       sensorMonitor(sensorMonitor), statusLed(statusLed),
       mdns(config), provisioning(config, mdns), wifi(config), mqtt(sensorController, statusLed),
       webServer(webServer) {
-    provisioning.setWebServer(webServer);
+    if (webServer != nullptr) {
+        provisioning.setWebServer(*webServer);
+    }
 }
 
 void Network::begin() {
@@ -33,12 +35,20 @@ void Network::begin() {
 
 void Network::setWebServer(WebServerManager *server) {
     webServer = server;
-    provisioning.setWebServer(server);
+    if (server != nullptr) {
+        provisioning.setWebServer(*server);
+    } else {
+        provisioning.clearWebServer();
+    }
 }
 
 void Network::setDisplay(Display::DisplayManager *displayManager) {
     display = displayManager;
-    provisioning.setDisplay(displayManager);
+    if (displayManager != nullptr) {
+        provisioning.setDisplay(*displayManager);
+    } else {
+        provisioning.clearDisplay();
+    }
 }
 
 void Network::setStatusLedState(LedState state) {

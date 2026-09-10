@@ -3,6 +3,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 
 #include "CaptivePortal.h"
 
@@ -46,10 +48,12 @@ namespace Net {
         ApProvisioning(const ApProvisioning &) = delete;
         ApProvisioning &operator=(const ApProvisioning &) = delete;
 
-        /** Non-owning; nullptr when no panel is wired (the AP is then open). */
-        void setDisplay(Display::DisplayManager *display) { this->display = display; }
+        /** Non-owning; omitted when no panel is wired (the AP is then open). */
+        void setDisplay(Display::DisplayManager &display) { this->display = display; }
+        void clearDisplay() { display.reset(); }
         /** Non-owning; main.cpp keeps the server alive for the firmware's lifetime. */
-        void setWebServer(WebServerManager *webServer) { this->webServer = webServer; }
+        void setWebServer(WebServerManager &webServer) { this->webServer = webServer; }
+        void clearWebServer() { webServer.reset(); }
 
         /** Bring up the SoftAP, mDNS and the captive portal. */
         void startAP();
@@ -63,8 +67,8 @@ namespace Net {
         Config::ConfigManager &config;
         MdnsAdvertiser &mdns;
         CaptivePortal captivePortal;
-        Display::DisplayManager *display = nullptr;
-        WebServerManager *webServer = nullptr;
+        std::optional<std::reference_wrapper<Display::DisplayManager>> display;
+        std::optional<std::reference_wrapper<WebServerManager>> webServer;
 
         void enterConfigMode();
         /** Poll the captive portal and feed the watchdog for one 100 ms slot. */

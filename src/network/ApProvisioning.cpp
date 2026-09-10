@@ -43,9 +43,10 @@ namespace Net {
         bool useWpa2 = false;
         char password[AP_PASSWORD_BUF_SIZE] = "";
 
-        if (display != nullptr) {
+        if (display.has_value()) {
+            Display::DisplayManager &displayManager = display->get();
             Config::DisplayConfig apConfig{};
-            if (display->tryBeginForApInfo(apConfig)) {
+            if (displayManager.tryBeginForApInfo(apConfig)) {
                 Support::computeApPassword(deviceId.c_str(), password, sizeof(password));
                 useWpa2 = true;
                 ESP_LOGI(TAG, "Display responded at AP-mode entry — using WPA2-PSK");
@@ -70,8 +71,8 @@ namespace Net {
             const IPAddress apIp = WiFi.softAPIP();
             char ipStr[16];
             snprintf(ipStr, sizeof(ipStr), "%u.%u.%u.%u", apIp[0], apIp[1], apIp[2], apIp[3]);
-            display->showApInfo(apSsid.c_str(), password, ipStr);
-            display->endApInfo();
+            display->get().showApInfo(apSsid.c_str(), password, ipStr);
+            display->get().endApInfo();
         } else {
             ESP_LOGI(TAG, "Starting Access Point: SSID='%s' (open — no display detected)", apSsid.c_str());
             WiFi.softAP(apSsid.c_str());
@@ -91,8 +92,8 @@ namespace Net {
 
         // Switch the long-lived web server to CONFIG mode (WiFi setup + captive
         // portal routes). The same instance is reused; nothing is re-allocated.
-        if (webServer) {
-            webServer->setMode(WebServerMode::CONFIG);
+        if (webServer.has_value()) {
+            webServer->get().setMode(WebServerMode::CONFIG);
         } else {
             ESP_LOGE(TAG, "webServer not wired up — bug in main.cpp ordering");
         }
@@ -136,9 +137,9 @@ namespace Net {
         // status display is disabled and nothing else would overwrite it.
         // clear() rather than disableAndClear() preserves the user's
         // DisplayConfig preference for the next boot.
-        if (display != nullptr && display->isEnabled()) {
+        if (display.has_value() && display->get().isEnabled()) {
             ESP_LOGI(TAG, "Clearing e-paper display before restart");
-            display->clear();
+            display->get().clear();
         }
 
         vTaskDelay(5000 / portTICK_PERIOD_MS);
@@ -179,8 +180,8 @@ namespace Net {
         // alive for the next boot, see spec `memory-management` → "Long-lived
         // singletons are constructed once". `end()` stops the listening socket
         // so a request that arrives during the restart window is rejected.
-        if (webServer) {
-            webServer->end();
+        if (webServer.has_value()) {
+            webServer->get().end();
         }
 
         if (config.isConfigured()) {
@@ -191,9 +192,9 @@ namespace Net {
             // Clear the AP info off the panel before restart (mirrors
             // runFirstBoot). The cold-boot setupDisplay() path will not
             // overwrite it unless DisplayConfig.enabled is true.
-            if (display != nullptr) {
+            if (display.has_value()) {
                 ESP_LOGI(TAG, "Clearing e-paper display before restart");
-                display->clear();
+                display->get().clear();
             }
 #endif
             restart(1000);
