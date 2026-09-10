@@ -645,16 +645,13 @@ void Network::configureUsingAPMode() {
     static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 900000; // 15 minutes
     static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
     static constexpr uint32_t TICK_MS_FINE = 1000;
-    static constexpr uint32_t TICK_MS_COARSE = 15000;
 
     static constexpr uint32_t WAKE_MARGIN_MS = 2;
     while (true) {
-        bool coarse_ticks = statusLed.isDark(static_cast<uint32_t>(millis()));
-        const uint32_t tickMs = coarse_ticks ? TICK_MS_COARSE : TICK_MS_FINE;
-        const uint32_t sleepMs = (lastWorkMs < tickMs)
-                                     ? (tickMs - lastWorkMs + WAKE_MARGIN_MS)
-                                     : 1u;
-        vTaskDelay(pdMS_TO_TICKS(sleepMs));
+        if (lastWorkMs < TICK_MS_FINE) {
+            const uint32_t sleepMs = (TICK_MS_FINE - lastWorkMs + WAKE_MARGIN_MS);
+            vTaskDelay(pdMS_TO_TICKS(sleepMs));
+        }
 
         esp_task_wdt_reset();
 
@@ -919,7 +916,7 @@ void Network::configureUsingAPMode() {
                     if (lastMqttPublish == 0) lastMqttPublish = now;
 
                     bool isSettled = now - bootMs >= 60000;
-                    if (intervalMs > 0 && isSettled && (coarse_ticks || (now - lastMqttPublish >= intervalMs))) {
+                    if (intervalMs > 0 && isSettled && (now - lastMqttPublish >= intervalMs)) {
                         // Atomic snapshot: validity and data are read under the same lock,
                         // so we never publish stale measurements after a fresh read failed.
                         auto measurements = sensorController.getValidMeasurements();
