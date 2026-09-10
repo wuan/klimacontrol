@@ -1,124 +1,46 @@
-#include <sstream>
-
-#include "Constants.h"
-
-#ifdef ARDUINO
-#include <WiFi.h>
-#include <Adafruit_NeoPixel.h>
-#endif
-
 #include "Network.h"
-#include "support/NtpEpoch.h"
+
 #include "Config.h"
-#include "DeviceId.h"
+#include "Constants.h"
+#include "Log.h"
 #include "OTAUpdater.h"
-#include "WebServerManager.h"
+#include "SensorController.h"
 #include "SyslogOutput.h"
+#include "WebServerManager.h"
+#include "support/WifiBackoff.h"
+
 #ifdef ARDUINO
+#include <esp_heap_caps.h>
+#include <esp_task_wdt.h>
 #include "display/DisplayManager.h"
 #endif
-#include "support/NetworkWatchdog.h"
-#include "support/WifiBackoff.h"
-#include "support/ApPassword.h"
 
-#ifdef ARDUINO
-#include <esp_pm.h>
-#include <esp_task_wdt.h>
-#include <esp_heap_caps.h>
-#include "Log.h"
-#endif
-
-#ifdef ARDUINO
-#include <set>
-#endif
-
-static constexpr const char *const TAG = "net";
-
-#ifdef ARDUINO
-namespace {
-    const char *wifiDisconnectReasonStr(uint8_t reason) {
-        switch (reason) {
-            case WIFI_REASON_UNSPECIFIED: return "UNSPECIFIED";
-            case WIFI_REASON_AUTH_EXPIRE: return "AUTH_EXPIRE";
-            case WIFI_REASON_AUTH_LEAVE: return "AUTH_LEAVE";
-            case WIFI_REASON_ASSOC_EXPIRE: return "ASSOC_EXPIRE";
-            case WIFI_REASON_ASSOC_TOOMANY: return "ASSOC_TOOMANY";
-            case WIFI_REASON_NOT_AUTHED: return "NOT_AUTHED";
-            case WIFI_REASON_NOT_ASSOCED: return "NOT_ASSOCED";
-            case WIFI_REASON_ASSOC_LEAVE: return "ASSOC_LEAVE";
-            case WIFI_REASON_ASSOC_NOT_AUTHED: return "ASSOC_NOT_AUTHED";
-            case WIFI_REASON_BEACON_TIMEOUT: return "BEACON_TIMEOUT";
-            case WIFI_REASON_NO_AP_FOUND: return "NO_AP_FOUND";
-            case WIFI_REASON_AUTH_FAIL: return "AUTH_FAIL";
-            case WIFI_REASON_ASSOC_FAIL: return "ASSOC_FAIL";
-            case WIFI_REASON_HANDSHAKE_TIMEOUT: return "HANDSHAKE_TIMEOUT";
-            case WIFI_REASON_CONNECTION_FAIL: return "CONNECTION_FAIL";
-            default: return "OTHER";
-        }
-    }
-}
-#endif
+static constexpr auto TAG = "net";
 
 Network::Network(Config::ConfigManager &config, SensorController &sensorController,
                  Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
-                 DarkModeStatusLed &statusLed, WebServerManager *webServer)
-    : config(config), sensorController(sensorController), temperatureController(temperatureController),
-      sensorMonitor(sensorMonitor), mode(NetworkMode::NONE)
-#ifdef ARDUINO
-      , ntpClient(wifiUdp)
-#endif
-      , webServer(webServer), statusLed(statusLed), lastMqttPublish(0) {
+                 DarkModeStatusLed &statusLed, std::optional<std::reference_wrapper<WebServerManager> > webServer)
+    : config(config), temperatureController(temperatureController),
+      sensorMonitor(sensorMonitor), statusLed(statusLed),
+      mdns(config), provisioning(config, mdns), wifi(config), mqtt(sensorController, statusLed),
+      webServer(webServer) {
+    if (webServer.has_value()) {
+        provisioning.setWebServer(webServer->get());
+    }
 }
 
 void Network::begin() {
-#ifdef ARDUINO
-    // Construct the long-lived MqttClient once. Subsequent (re)connects call
-    // `begin(mqttConfig)` on the same instance — that path is idempotent
-    // (see MqttClient::begin) and does not re-allocate the underlying
-    // PubSubClient. See spec `memory-management` → "Long-lived singletons
-    // are constructed once".
-    mqttClient = std::make_unique<MqttClient>();
-#endif
+    mqtt.begin();
 }
 
-String Network::generateHostname() {
-    if (cachedHostname.isEmpty()) {
-#ifdef ARDUINO
-        String deviceId = DeviceId::getDeviceId();
-        cachedHostname = Constants::HOSTNAME_PREFIX + deviceId;
-        cachedHostname.toLowerCase();
-#else
-        cachedHostname = Constants::PROJECT_NAME;
-#endif
-    }
-    return cachedHostname;
+void Network::setWebServer(WebServerManager &server) {
+    webServer = server;
+    provisioning.setWebServer(server);
 }
 
-void Network::configureMDNS() {
-#ifdef ARDUINO
-    String hostname = generateHostname();
-
-    if (MDNS.begin(hostname.c_str())) {
-        ESP_LOGI(TAG, "mDNS responder started: %s.local", hostname.c_str());
-
-        Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-        bool deviceNameNotEmpty = deviceConfig.device_name[0] != '\0';
-        bool deviceNameIsNotDeviceId = strcmp(deviceConfig.device_name, deviceConfig.device_id) != 0;
-
-        if (deviceNameNotEmpty && deviceNameIsNotDeviceId) {
-            mdnsInstanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_name);
-        } else {
-            mdnsInstanceName = Constants::INSTANCE_NAME_PREFIX + String(deviceConfig.device_id);
-        }
-
-        ESP_LOGI(TAG, "mDNS instance name: '%s'", mdnsInstanceName.c_str());
-        MDNS.setInstanceName(mdnsInstanceName.c_str());
-
-        MDNS.addService("http", "tcp", 80);
-    } else {
-        ESP_LOGE(TAG, "Error starting mDNS responder");
-    }
-#endif
+void Network::setDisplay(Display::DisplayManager &displayManager) {
+    display = displayManager;
+    provisioning.setDisplay(displayManager);
 }
 
 void Network::setStatusLedState(LedState state) {
@@ -133,971 +55,230 @@ void Network::setLedDarkAfterSeconds(uint16_t seconds) {
     statusLed.setDarkAfterSeconds(seconds);
 }
 
-void Network::startAP() {
-#ifdef ARDUINO
-    mode = NetworkMode::AP;
-
-    const String deviceId = DeviceId::getDeviceId();
-    String ap_ssid = Constants::AP_SSID_PREFIX + deviceId;
-
-    // Decide the AP security mode by probing for an e-paper panel.
-    //   - Panel responds (manager already enabled, OR the probe
-    //     passes and the subsequent panel.begin() succeeds): use
-    //     WPA2-PSK and render the password on the panel via
-    //     showApInfo().
-    //   - Panel does not respond: fall back to open AP. The probe
-    //     (the BUSY-transition check in EPaperDisplay::probe) is
-    //     what catches the no-panel case — panel.begin() alone
-    //     cannot, because GxEPD2::display.init() silently succeeds
-    //     when no panel is wired up. A false result on the probe
-    //     is the safer failure mode: the user can configure WiFi
-    //     from a phone over the open AP, where a false positive
-    //     would lock the user out with no way to recover on a
-    //     device with no serial cable, no case label, and no
-    //     panel. After the user submits credentials they can
-    //     enable the display via the web UI for the normal status
-    //     display; the AP password derivation is independent of
-    //     that choice.
-    //
-    // See change `fix-display-probe-busy-transitions` for the
-    // rationale.
-    bool useWpa2 = false;
-    char password[AP_PASSWORD_BUF_SIZE] = "";
-
-    if (display != nullptr) {
-        Config::DisplayConfig apConfig{};
-        if (display->tryBeginForApInfo(apConfig)) {
-            Support::computeApPassword(deviceId.c_str(), password, sizeof(password));
-            useWpa2 = true;
-            ESP_LOGI(TAG, "Display responded at AP-mode entry — using WPA2-PSK");
-        } else {
-            ESP_LOGW(TAG, "No display responded at AP-mode entry — AP will be open");
-        }
-    } else {
-        ESP_LOGW(TAG, "No DisplayManager wired — AP will be open");
-    }
-
-    if (useWpa2) {
-        ESP_LOGI(TAG, "Starting Access Point: SSID='%s' (WPA2-PSK)", ap_ssid.c_str());
-        ESP_LOGI(TAG, "AP password: %s", password);
-
-        // Bring the AP up first so we have a real IP to show. The AP IP
-        // is 192.168.4.1 on ESP32 SoftAP, but we read it from the
-        // runtime to stay honest if that ever changes.
-        WiFi.softAP(ap_ssid.c_str(), password);
-
-        // Render the AP info on the panel. The show must come AFTER
-        // WiFi.softAP() so the IP we hand the panel is the one the
-        // user actually connects to.
-        char ipStr[16];
-        snprintf(ipStr, sizeof(ipStr), "%u.%u.%u.%u",
-                 WiFi.softAPIP()[0], WiFi.softAPIP()[1],
-                 WiFi.softAPIP()[2], WiFi.softAPIP()[3]);
-        display->showApInfo(ap_ssid.c_str(), password, ipStr);
-        display->endApInfo();
-    } else {
-        ESP_LOGI(TAG, "Starting Access Point: SSID='%s' (open — no display detected)",
-                 ap_ssid.c_str());
-        WiFi.softAP(ap_ssid.c_str());
-    }
-
-    IPAddress ip_address = WiFi.softAPIP();
-    ESP_LOGI(TAG, "AP IP address: %s", ip_address.toString().c_str());
-
-    configureMDNS();
-
-    // Start captive portal (redirects all DNS to this device)
-    captivePortal.begin();
-
-#endif
+void Network::publishMeasurements(const std::vector<Sensor::Measurement> &measurements) {
+    mqtt.publishMeasurements(measurements, ntp.currentEpoch());
 }
 
-void Network::onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
-#ifdef ARDUINO
-    switch (event) {
-        case ARDUINO_EVENT_WIFI_STA_CONNECTED:
-            lastWifiConnectMs = millis();
-            ESP_LOGI(TAG, "WiFi event: STA_CONNECTED ch=%u", info.wifi_sta_connected.channel);
-            break;
-        case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-            ESP_LOGI(TAG, "WiFi event: GOT_IP %s rssi=%d",
-                     IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str(),
-                     WiFi.RSSI());
-            break;
-        case ARDUINO_EVENT_WIFI_STA_LOST_IP:
-            ESP_LOGW(TAG, "WiFi event: LOST_IP");
-            break;
-        case ARDUINO_EVENT_WIFI_STA_DISCONNECTED: {
-            uint8_t reason = info.wifi_sta_disconnected.reason;
-            lastWifiDisconnectReason = reason;
-            lastWifiDisconnectMs = millis();
-            ESP_LOGW(TAG, "WiFi event: DISCONNECTED reason=%u (%s)",
-                     reason, wifiDisconnectReasonStr(reason));
-            break;
-        }
-        default:
-            break;
-    }
-#endif
+void Network::updateMqttConfig(const Config::MqttConfig &mqttConfig) {
+    mqtt.updateConfig(mqttConfig);
 }
 
-void Network::startSTA(const char *ssid, const char *password) {
-#ifdef ARDUINO
+bool Network::startSTA(const char *ssid, const char *password) {
     mode = NetworkMode::STA;
 
-    // Clear any previous WiFi state without sending a disconnect frame.
-    // Calling disconnect(true) sends a deauth frame to the AP, which can cause
-    // AP-side rate limiting or blocklisting when connection attempts fail
-    // repeatedly (e.g., during the restart loop bug).
-    WiFi.disconnect(false);
-    vTaskDelay(50 / portTICK_PERIOD_MS);
+    if (!wifi.connect(ssid, password)) return false;
 
-    // WiFi.mode(WIFI_STA) is where esp_wifi_init() runs: it powers up the radio
-    // and allocates the WiFi/TCP-IP task stacks, which must come from one
-    // contiguous block of *internal* SRAM (never PSRAM) — the same constraint
-    // that broke the OTA tasks, see OTAUpdater.h. It is also the current surge
-    // that trips the brownout detector on a marginal supply. Both failure modes
-    // reset the chip with no output surviving on USB CDC, so log the heap state
-    // immediately before the call: this line being the last one in the log
-    // pinpoints esp_wifi_init(), and the numbers say whether memory was the
-    // cause (low largest-block) or not (healthy heap => suspect brownout, and
-    // the next boot's "Reset reason:" line confirms it).
-    ESP_LOGI(TAG, "Pre-WiFi heap: internal free=%u largest=%u, total free=%u",
-             heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-             heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
-             heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
+#ifdef ARDUINO
+    ESP_LOGI(TAG, "Configuring mDNS...");
+    mdns.advertise();
+    ESP_LOGI(TAG, "%s available at http://%s.local/ or http://%s",
+             Constants::PROJECT_NAME, mdns.hostname().c_str(), WiFi.localIP().toString().c_str());
+#endif
 
-    WiFi.mode(WIFI_STA);
-    WiFi.setAutoReconnect(true);
+    ntp.begin();
+    mqtt.connect(config.loadMqttConfig());
+    return true;
+}
 
-    // Register WiFi event handler for diagnostic logging and reconnect tracking.
-    // Guarded so a re-entry of startSTA() can't stack duplicate handlers (Arduino
-    // appends, never replaces). Handler captures `this` for member access.
-    if (!wifiEventHandlerRegistered) {
-        WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info) {
-            this->onWiFiEvent(event, info);
-        });
-        wifiEventHandlerRegistered = true;
+void Network::tickActuator(const uint32_t now) {
+    if (now - lastActuatorTickMs < Actuator::HeatingActuator::TICK_MS) return;
+    lastActuatorTickMs = now;
+    const Config::DeviceConfig cfg = config.getDeviceConfigSnapshot();
+    heatingActuator.configure(cfg);
+    heatingActuator.tick(temperatureController.getControlOutput(),
+                         temperatureController.isHeatingPermitted(), now);
+    temperatureController.publishActuatorState(heatingActuator.isAssigned(),
+                                               heatingActuator.agreement(now));
+}
+
+void Network::logDiagnostics(uint32_t now) {
+#ifdef ARDUINO
+    ESP_LOGI(TAG, "Diagnostics: heap=%u bytes (min=%u), uptime=%lu s",
+             ESP.getFreeHeap(), ESP.getMinFreeHeap(), static_cast<unsigned long>(now / 1000));
+    const Support::StatsSnapshot netStats = stats.snapshot();
+    ESP_LOGI(TAG,
+             "Diagnostics: net_cycle_count=%llu net_avg_cycle_work_ms=%llu net_min_cycle_work_ms=%llu net_max_cycle_work_ms=%llu",
+             (unsigned long long) netStats.count,
+             (unsigned long long) netStats.average,
+             (unsigned long long) netStats.min,
+             (unsigned long long) netStats.max);
+    if (taskHandle) {
+        ESP_LOGI(TAG, "Network task stack HWM: %u bytes",
+                 uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
     }
-
-    // Apply WiFi energy config (TX power and sleep mode)
-    Config::EnergyConfig energyConfig = config.loadEnergyConfig();
-    WiFi.setTxPower(static_cast<wifi_power_t>(energyConfig.wifi_power));
-
-    // Apply WiFi sleep mode: 0=WIFI_PS_NONE, 1=WIFI_PS_MIN_MODEM, 2=WIFI_PS_MAX_MODEM
-    wifi_ps_type_t sleepMode = WIFI_PS_NONE;
-    const char *sleepModeStr = "NONE";
-    if (energyConfig.wifi_sleep_mode == 1) {
-        sleepMode = WIFI_PS_MIN_MODEM;
-        sleepModeStr = "MIN_MODEM";
-    } else if (energyConfig.wifi_sleep_mode == 2) {
-        sleepMode = WIFI_PS_MAX_MODEM;
-        sleepModeStr = "MAX_MODEM";
-    }
-    WiFi.setSleep(sleepMode);
-
-    ESP_LOGI(TAG, "WiFi config: TX Power=%d, Sleep Mode=%s", WiFi.getTxPower(), sleepModeStr);
-
-    // Try up to MAX_CONNECT_TRIES times before giving up. Each attempt waits
-    // MAX_WAIT_SLOTS * 500ms (~15s) for association. Between attempts we briefly
-    // back off so the AP isn't hammered.
-    constexpr int MAX_CONNECT_TRIES = 3;
-    constexpr int MAX_WAIT_SLOTS = 30;
-    constexpr int BACKOFF_MS = 3000;
-
-    for (int tryNum = 1; tryNum <= MAX_CONNECT_TRIES; tryNum++) {
-        ESP_LOGI(TAG, "Connecting to WiFi %s (attempt %d/%d) ...", ssid, tryNum, MAX_CONNECT_TRIES);
-        WiFi.begin(ssid, password);
-
-        int slots = 0;
-        while (WiFi.status() != WL_CONNECTED && slots < MAX_WAIT_SLOTS) {
-            vTaskDelay(500 / portTICK_PERIOD_MS);
-            esp_task_wdt_reset();
-            slots++;
-            if (slots % 5 == 0) {
-                ESP_LOGI(TAG, "Still connecting... (%d/%d, status=%d)",
-                         slots, MAX_WAIT_SLOTS, WiFi.status());
-            }
-        }
-
-        if (WiFi.status() == WL_CONNECTED) break;
-
-        ESP_LOGW(TAG, "Connect attempt %d failed (last reason=%u %s), backing off %d ms",
-                 tryNum, lastWifiDisconnectReason,
-                 wifiDisconnectReasonStr(lastWifiDisconnectReason), BACKOFF_MS);
-        WiFi.disconnect(false);
-        vTaskDelay(BACKOFF_MS / portTICK_PERIOD_MS);
-        esp_task_wdt_reset();
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-        // Seed lastWifiConnectMs so a later silent drop (no DISCONNECTED event
-        // delivered) still has a valid "connected since" baseline to reason from.
-        if (lastWifiConnectMs == 0) lastWifiConnectMs = millis();
-        ESP_LOGI(TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
-        ESP_LOGD(TAG, "WiFi diagnostics: SSID=%s BSSID=%s Ch=%d RSSI=%d dBm MAC=%s",
-                 WiFi.SSID().c_str(), WiFi.BSSIDstr().c_str(), WiFi.channel(),
-                 WiFi.RSSI(), WiFi.macAddress().c_str());
-        ESP_LOGD(TAG, "WiFi network: GW=%s DNS=%s TxPwr=%d Sleep=%d AutoReconn=%d",
-                 WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str(),
-                 WiFi.getTxPower(), WiFi.getSleep(), WiFi.getAutoReconnect());
-
-        ESP_LOGI(TAG, "Configuring mDNS...");
-        configureMDNS();
-
-        String hostname = generateHostname();
-        ESP_LOGI(TAG, "%s available at http://%s.local/ or http://%s",
-                 Constants::PROJECT_NAME, hostname.c_str(), WiFi.localIP().toString().c_str());
-
-        // Start NTP client. Use forceUpdate() so we get a definite sync signal —
-        // update() short-circuits and returns true if its internal interval hasn't elapsed,
-        // which would not actually exchange any packets.
-        ESP_LOGI(TAG, "Starting NTP...");
-        ntpClient.begin();
-        // Use the guarded wrapper so a hung UDP call cannot starve the
-        // 30 s TWDT — see Network::safeNtpUpdate() and the
-        // "Network task blocking-call safety" spec requirement.
-        if (safeNtpUpdate()) {
-            uint32_t epoch = ntpClient.getEpochTime();
-            if (isNtpEpochPlausible(epoch)) {
-                ntpSynced = true;
-                lastNtpUpdateEpoch = epoch;
-                ESP_LOGI(TAG, "NTP time: %s", ntpClient.getFormattedTime().c_str());
-            } else {
-                ntpBogusSyncCount++;
-                ESP_LOGE(TAG, "NTP initial sync returned implausible epoch: %u (expected between %u and %u)",
-                         epoch, NtpEpoch::MIN_VALID, NtpEpoch::MAX_VALID);
-                // Stay unsynced; the 1-minute retry loop in Network::loop() will fire.
-            }
-        } else {
-            ESP_LOGW(TAG, "NTP initial sync failed; will retry");
-        }
-
-        // Initialize MQTT client (re-init the long-lived singleton; no re-allocation).
-        ESP_LOGI(TAG, "Initializing MQTT...");
-        Config::MqttConfig mqttConfig = config.loadMqttConfig();
-        if (mqttClient) {
-            mqttClient->begin(mqttConfig);
-        } else {
-            ESP_LOGE(TAG, "mqttClient not initialized — call Network::begin() first");
-        }
-        ESP_LOGI(TAG, "MQTT initialized");
-    } else {
-        ESP_LOGE(TAG, "WiFi connection failed");
-    }
+#else
+    (void) now;
 #endif
 }
 
-bool Network::safeNtpUpdate() {
-    // Wrap ntpClient.forceUpdate() in a guardedCall so the task watchdog
-    // is fed on both sides. forceUpdate() is bounded by NTPClient's
-    // 1 s internal timeout, but the underlying WiFiUDP::parsePacket()
-    // can stall for tens of seconds on a degraded link (lwIP
-    // retransmits, ARP retries) before that timeout even gets a chance
-    // to fire. Without the guard a single hung call can exceed the 30 s
-    // TWDT and panic-reboot the device mid-NVS-write. See
-    // `src/support/NetworkWatchdog.h` and the spec requirement
-    // "Network task blocking-call safety".
-    return Support::guardedCall([this] { return ntpClient.forceUpdate(); });
+void Network::initialize_wifi(const uint8_t &AP_FALLBACK_THRESHOLD) {
+    if (!config.isConfigured()) {
+        ESP_LOGI(TAG, "No WiFi configuration found - starting AP mode");
+        mode = NetworkMode::AP;
+        provisioning.runFirstBoot();
+    }
+
+    const uint8_t failures = config.getConnectionFailures();
+    ESP_LOGI(TAG, "Previous connection failures: %u", failures);
+    if (failures > 0 && failures % AP_FALLBACK_THRESHOLD == 0) {
+        mode = NetworkMode::AP;
+        provisioning.runFallbackWindow(failures);
+    }
 }
 
-void Network::configureUsingAPMode() {
-    // Start Access Point mode
-    startAP();
+void Network::handle_connection_failure(const uint8_t &AP_FALLBACK_THRESHOLD) {
+    // incrementConnectionFailures() already persists wifi_failures to NVS.
+    const uint8_t newFailures = config.incrementConnectionFailures();
 
-    // Switch the long-lived web server to CONFIG mode (WiFi setup + captive
-    // portal routes). The same instance is reused; nothing is re-allocated.
-    if (webServer) {
-        webServer->setMode(WebServerMode::CONFIG);
-    } else {
-        ESP_LOGE(TAG, "webServer not wired up — bug in main.cpp ordering");
-    }
+    // Doubling backoff (capped at 5 min) instead of a fixed 2 s delay so a
+    // transient AP outage has room to recover before the device tears down
+    // its association state. See the spec `network-wifi-resilience` →
+    // "Exponential backoff on boot-time STA failure".
+    const uint32_t backoffMs = Support::staFailureBackoffMs(newFailures);
+    ESP_LOGW(TAG, "Failed to connect (failure %u/%u) - waiting %u ms before retry...",
+             newFailures, AP_FALLBACK_THRESHOLD, backoffMs);
 
-    // Wait for configuration. This task is subscribed to the task watchdog
-    // (esp_task_wdt_add in task()), so the wait loop must feed it — otherwise
-    // the 30s panic WDT reboots the device while the user is still entering
-    // credentials in the captive portal. Mirrors the AP-fallback loop below.
-    while (!config.isConfigured()) {
-        esp_task_wdt_reset();
-        captivePortal.handleClient(); // Handle DNS requests
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
-    ESP_LOGI(TAG, "Configuration received");
+    vTaskDelay(backoffMs / portTICK_PERIOD_MS);
+    ESP.restart();
+}
 
-    // Reset failure counter since user has provided new credentials
-    config.resetConnectionFailures();
-
-    // Clear the e-paper display so the AP info (SSID + password + IP)
-    // does not persist on the panel across the restart into STA mode.
-    // This is important for users with the normal status display
-    // disabled in config (so nothing else would overwrite the AP info).
-    // Use clear() rather than disableAndClear() so the user's
-    // DisplayConfig preference is preserved for the next boot.
-    if (display != nullptr && display->isEnabled()) {
-        ESP_LOGI(TAG, "Clearing e-paper display before restart");
-        display->clear();
-    }
-
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-
-    ESP_LOGI(TAG, "Stopping captive portal");
-    captivePortal.end();
-
-    ESP_LOGI(TAG, "Scheduling restart");
-    config.requestRestart(1000);
-
-    // Stay in loop until main loop restarts us. Keep feeding the watchdog so we
-    // don't trip a panic reset before the scheduled restart fires.
-    while (true) {
-        esp_task_wdt_reset();
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+void Network::handle_network_events(const uint32_t now) {
+    switch (wifi.supervise(now)) {
+        case Net::WifiStation::Event::Reconnected:
+            mdns.advertise();
+            mqtt.onWifiReconnected(now);
+            break;
+        case Net::WifiStation::Event::RestartRequired:
+            vTaskDelay(500 / portTICK_PERIOD_MS);
+            ESP.restart();
+            break;
+        case Net::WifiStation::Event::None:
+            break;
     }
 }
 
 [[noreturn]] void Network::task() {
 #ifdef ARDUINO
-    const unsigned long bootMs = millis(); // baseline for boot-relative checks (wrap-safe via subtraction)
+    const uint32_t bootMs = millis(); // baseline for boot-relative checks (wrap-safe via subtraction)
 
-    // Subscribe to the TWDT. setup() initializes the TWDT before creating this
-    // task, so this should always succeed; log loudly if it does not, because an
-    // unsubscribed task makes every esp_task_wdt_reset() in startSTA() and
-    // loop() a silent no-op and removes the 30s stall protection entirely.
-    esp_err_t wdtAdd = esp_task_wdt_add(NULL);
-    if (wdtAdd != ESP_OK) {
-        ESP_LOGE(TAG, "esp_task_wdt_add failed (err 0x%x) - task runs unguarded", wdtAdd);
-    }
+    initialize_watchdog_timer();
 
     ESP_LOGI(TAG, "Network task started");
 
-    // Status LED is owned by main.cpp (top-level object); the network task
-    // just drives it. begin() must be called once after construction.
-    statusLed.begin(bootMs);
-    // Dark-mode threshold must be in force before the first ON transition.
-    statusLed.setDarkAfterSeconds(config.loadEnergyConfig().led_dark_after_s);
-    statusLed.setState(LedState::STARTUP); // Indicate booting
+    statusLed.begin(bootMs, config.loadEnergyConfig().led_dark_after_s);
 
-    if (!config.isConfigured()) {
-        ESP_LOGI(TAG, "No WiFi configuration found - starting AP mode");
+    static constexpr uint8_t AP_FALLBACK_THRESHOLD = 3;
+    initialize_wifi(AP_FALLBACK_THRESHOLD);
 
-        configureUsingAPMode();
-    }
     ESP_LOGI(TAG, "Network task configured");
 
-    // Check connection failure count — fall back to AP mode after repeated failures
-    static constexpr uint8_t AP_FALLBACK_THRESHOLD = 3;
-    uint8_t failures = config.getConnectionFailures();
-    ESP_LOGI(TAG, "Previous connection failures: %u", failures);
-
-    // Enter AP mode every 3rd failure (3, 6, 9, ...) to allow user reconfiguration
-    // while still periodically retrying STA mode for temporary outages
-    if (failures > 0 && failures % AP_FALLBACK_THRESHOLD == 0) {
-        // Open AP mode for WiFi reconfiguration.
-        // Device will enter AP mode periodically (every 3 failures) to allow
-        // user reconfiguration, while still retrying STA mode in between.
-        // Each AP timeout increments the failure counter, ensuring device
-        // will eventually enter AP mode again for reconfiguration.
-
-        static constexpr unsigned long AP_FALLBACK_TIMEOUT_MS = 5UL * 60 * 1000; // 5 minutes
-        ESP_LOGW(TAG, "Multiple connection failures (%u) - opening AP for %lu s for reconfiguration",
-                 failures, AP_FALLBACK_TIMEOUT_MS / 1000);
-
-        startAP();
-        if (webServer) {
-            webServer->setMode(WebServerMode::CONFIG);
-        } else {
-            ESP_LOGE(TAG, "webServer not wired up — bug in main.cpp ordering");
-        }
-
-        unsigned long apStart = millis();
-        while (!config.isConfigured() && (millis() - apStart < AP_FALLBACK_TIMEOUT_MS)) {
-            esp_task_wdt_reset();
-            captivePortal.handleClient();
-            vTaskDelay(100 / portTICK_PERIOD_MS);
-        }
-
-        captivePortal.end();
-        // Drop the AP routes from the long-lived server so the device can be
-        // restarted cleanly. We do NOT destroy the server — the singleton stays
-        // alive for the next boot, see spec `memory-management` → "Long-lived
-        // singletons are constructed once". `end()` stops the listening socket
-        // so a request that arrives during the restart window is rejected.
-        if (webServer) {
-            webServer->end();
-        }
-
-        if (config.isConfigured()) {
-            ESP_LOGI(TAG, "New configuration received - resetting failure count and restarting...");
-            config.resetConnectionFailures();
-
-            // Clear the AP info off the panel before restart (mirrors
-            // configureUsingAPMode above). The cold-boot `setupDisplay()`
-            // path will not overwrite it unless DisplayConfig.enabled
-            // is true, so without this the AP info would persist on
-            // a panel where the user has the status display disabled.
-            if (display != nullptr) {
-                ESP_LOGI(TAG, "Clearing e-paper display before restart");
-                display->clear();
-            }
-
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-            ESP.restart();
-        }
-
-        // AP fallback timed out - increment counter so device will enter AP mode again
-        // on next boot, giving user another opportunity to reconfigure.
-        // incrementConnectionFailures() already writes wifi_failures to NVS.
-        uint8_t newFailures = config.incrementConnectionFailures();
-        ESP_LOGW(TAG, "AP fallback timed out (total failures: %u) - restarting to retry AP mode...",
-                 newFailures);
-
-        // Brief pause so the restart isn't instantaneous
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        ESP.restart();
-    }
-
-    // Load WiFi configuration
-    Config::WiFiConfig wifiConfig = config.loadWiFiConfig();
-
+    const Config::WiFiConfig wifiConfig = config.loadWiFiConfig();
     ESP_LOGI(TAG, "WiFi configured - starting STA mode");
-
-    // Start Station mode
-    ESP_LOGI(TAG, "Calling startSTA...");
-    startSTA(wifiConfig.ssid, wifiConfig.password);
-    ESP_LOGI(TAG, "startSTA finished");
-
-    // Check if connection succeeded
-    if (WiFi.status() != WL_CONNECTED) {
-        // incrementConnectionFailures() already persists wifi_failures to NVS.
-        uint8_t newFailures = config.incrementConnectionFailures();
-
-        // Use a doubling backoff (capped at 5 min) instead of a fixed 2 s
-        // delay so a transient AP outage has room to recover before the
-        // device tears down its association state. See the spec
-        // `network-wifi-resilience` → "Exponential backoff on boot-time
-        // STA failure" for the contract.
-        uint32_t backoffMs = Support::staFailureBackoffMs(newFailures);
-        ESP_LOGW(TAG, "Failed to connect (failure %u/%u) - waiting %u ms before retry...",
-                 newFailures, AP_FALLBACK_THRESHOLD, backoffMs);
-
-        vTaskDelay(backoffMs / portTICK_PERIOD_MS);
-        ESP.restart();
+    if (!startSTA(wifiConfig.ssid, wifiConfig.password)) {
+        handle_connection_failure(AP_FALLBACK_THRESHOLD);
     }
 
-    // Connection successful - reset failure counter
     config.resetConnectionFailures();
 
     statusLed.setState(LedState::ON); // Solid on for connected state
 
-    // Switch the long-lived web server to OPERATIONAL mode. The same
-    // WebServerManager instance from boot is reused — no re-allocation, no
-    // heap fragmentation. See spec `memory-management` → "Long-lived
-    // singletons are constructed once".
-    ESP_LOGI(TAG, "Switching webserver to OPERATIONAL mode...");
-    if (webServer) {
-        webServer->setMode(WebServerMode::OPERATIONAL);
-    } else {
-        ESP_LOGE(TAG, "webServer not wired up — bug in main.cpp ordering");
-    }
-    ESP_LOGI(TAG, "Webserver started");
-
-    ESP_LOGI(TAG, "Webserver started - system ready, free heap: %u bytes", ESP.getFreeHeap());
+    enable_webserver();
 
     // Set syslog hostname early so it's available if syslog is enabled later via API
-    String syslogHostname = generateHostname();
-    SyslogOutput::setHostname(syslogHostname.c_str());
+    SyslogOutput::setHostname(mdns.hostname().c_str());
+    SyslogOutput::begin(config.loadSyslogConfig());
 
-    // Start syslog forwarding if configured
-    Config::SyslogConfig syslogConfig = config.loadSyslogConfig();
-    SyslogOutput::begin(syslogConfig);
+    uint32_t lastDiagnostics = millis();
+    bool otaWasActive = false;
+    wifi.beginSupervision(millis());
 
-    // Main loop - 1 s housekeeping: LED, actuator, MQTT, NTP, diagnostics
-    unsigned long lastSecond = millis();
-    // Tracks when the previous 1 s block finished its work. Used together with
-    // the new entry time to attribute long iterations to either in-block work
-    // (this task is slow) or external wait (another priority-1 task held the CPU).
-    unsigned long lastBlockExitMs = millis();
-    unsigned long lastDiagnostics = millis();
-    unsigned long lastNtpRetry = 0; // millis() of last NTP retry when unsynced
-    bool wasConnected = true; // Track WiFi state transitions for mDNS re-advertisement
-
-    // Flapping-immune restart backstop. The active-reconnect path below resets
-    // activeReconnectFailures to 0 on *any* brief reconnect, so a link that
-    // flickers connected-then-dropped repeatedly never trips the attempt-based
-    // restart and the device appears stuck offline. Track when WiFi last held a
-    // *stable* connection (continuously up for >= STABLE_CONNECT_MS); a momentary
-    // flicker does not advance it. If no stable connection occurs for
-    // FORCE_RESTART_NO_STABLE_MS, force a clean restart. We enter this loop
-    // connected, so both baselines start at "now".
-    unsigned long connectedSinceMs = millis(); // start of the current connected streak (0 = down)
-    unsigned long lastStableConnectMs = millis(); // last time the link was confirmed stable
-    // Measured against *internal* SRAM only, via heap_caps_get_free_size(), and
-    // deliberately not via ESP.getFreeHeap(). Not for the reason previously
-    // documented here ("getFreeHeap() sums internal and PSRAM") — that is wrong:
-    // the Arduino core implements getFreeHeap() as
-    // heap_caps_get_free_size(MALLOC_CAP_INTERNAL) (cores/esp32/Esp.cpp), so it
-    // is already internal-only. The real reason is explicitness: the allocations
-    // that fail under pressure on this board (task stacks, lwIP/WiFi structures,
-    // DMA buffers) are internal-only, PSRAM is healthy and holds ~2 MB, and
-    // naming the capability at the call site keeps that distinction from being
-    // re-litigated. Verified on the device: psram_size 2094735, ESP.getHeapSize()
-    // 166076 (internal total).
-    static constexpr uint32_t MIN_FREE_INTERNAL_BYTES = 16384; // 16 KB
-    static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 900000; // 15 minutes
-    static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
-    static constexpr uint32_t TICK_MS_FINE = 1000;
-
+    static constexpr uint32_t DIAGNOSTICS_INTERVAL_MS = 900000; // 15 minutes
+    static constexpr uint32_t LOOP_TICKS_MS = 1000;
     static constexpr uint32_t WAKE_MARGIN_MS = 2;
+
     while (true) {
-        if (lastWorkMs < TICK_MS_FINE) {
-            const uint32_t sleepMs = (TICK_MS_FINE - lastWorkMs + WAKE_MARGIN_MS);
+        if (lastElapsedMs < LOOP_TICKS_MS) {
+            const uint32_t sleepMs = (LOOP_TICKS_MS - lastElapsedMs + WAKE_MARGIN_MS);
             vTaskDelay(pdMS_TO_TICKS(sleepMs));
         }
 
         esp_task_wdt_reset();
 
-        unsigned long now = millis();
+        const uint32_t startTime = millis();
 
-        // An OTA download owns the network for minutes and squeezes internal
-        // SRAM down to what the TLS session leaves over. Everything in this task
-        // that either competes for that memory or interprets a failure as "the
-        // link is broken" has to stand down for the duration — see the
-        // individual guards below. Sampled once per iteration so all of them see
-        // one consistent view.
         const bool otaActive = OTAUpdater::isUpdateInProgress();
 
-        statusLed.update(static_cast<uint32_t>(now));
+        statusLed.update(startTime);
 
-        // Heating actuator. Deliberately here and not in the control loop: a
-        // manifold that has gone away blocks for the HTTP timeout, and stalling
-        // the Sensor Monitor task would starve its watchdog.
-        //
-        // Stood down during an OTA, which owns the network for minutes and
-        // squeezes internal SRAM; the relay's own lease closes the valve if the
-        // download outlasts it, which is exactly what the lease is for.
-        if (!otaActive && now - lastActuatorTickMs >= Actuator::HeatingActuator::TICK_MS) {
-            lastActuatorTickMs = now;
-            // Snapshot the config: configure() reads the host and channel as
-            // a pair, and a concurrent updateActuatorAssignment() on the web
-            // task could otherwise leave us with the new host and the old
-            // channel (or vice versa) — a corrupted assignment.
-            const Config::DeviceConfig cfg = config.getDeviceConfigSnapshot();
-            heatingActuator.configure(cfg);
-            heatingActuator.tick(temperatureController.getControlOutput(),
-                                 temperatureController.isHeatingPermitted(), now);
-            // Publish what the relay is actually doing, so isControlActive()
-            // and everything downstream report confirmed state rather than
-            // this controller's intent.
-            temperatureController.publishActuatorState(heatingActuator.isAssigned(),
-                                                       heatingActuator.agreement(now));
-        }
+        handle_network_events(startTime);
 
-        // Repaint the e-paper display if the refresh policy calls for it. The
-        // common case returns immediately without touching SPI; an actual
-        // refresh blocks ~0.5-2.6 s on the panel's BUSY line and feeds the task
-        // watchdog either side (see Display::EPaperDisplay::render).
-        //
-        // Skipped during OTA: a download owns the network for minutes and
-        // squeezes internal SRAM down to what the TLS session leaves over, so
-        // nothing else should be competing for memory or the SPI bus.
-        if (display && !otaActive) {
-            display->update();
-        }
-
-        // Low heap check - restart cleanly before an OOM crash. Require the
-        // condition to persist across several ~1 s iterations so a transient dip
-        // (e.g. a burst of concurrent web requests each allocating a JsonDocument)
-        // doesn't reboot a device that would otherwise recover.
-        // Skip during OTA: TLS buffers temporarily consume most internal SRAM.
-        static constexpr uint8_t LOW_HEAP_RESTART_STREAK = 5;
-        static uint8_t lowHeapStreak = 0;
-        uint32_t freeHeap = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-        if (freeHeap < MIN_FREE_INTERNAL_BYTES && !otaActive) {
-            lowHeapStreak++;
-            ESP_LOGW(TAG, "Low internal heap %u bytes (%u/%u consecutive)",
-                     freeHeap, lowHeapStreak, LOW_HEAP_RESTART_STREAK);
-            if (lowHeapStreak >= LOW_HEAP_RESTART_STREAK) {
-                ESP_LOGE(TAG, "CRITICAL: Low heap persisted - restarting...");
-                vTaskDelay(500 / portTICK_PERIOD_MS);
-                ESP.restart();
-            }
-        } else {
-            lowHeapStreak = 0;
-        }
-
-        if (now - lastSecond >= 1000) {
-            lastSecond = now;
-
-            // WiFi state tracking — auto-reconnect is handled by WiFi.setAutoReconnect(true)
-            bool isConnected = WiFi.status() == WL_CONNECTED;
-            [[maybe_unused]] unsigned long waitMs = now - lastBlockExitMs;
-
-            if (!wasConnected && isConnected) {
-                ESP_LOGI(TAG, "WiFi reconnected (IP: %s)", WiFi.localIP().toString().c_str());
-                configureMDNS();
-                // Reset MQTT publish timer to avoid burst after reconnection
-                lastMqttPublish = now;
-                activeReconnectFailures = 0;
-                // Clear disconnect timestamp so the next drop is timed from when it happens,
-                // not from the previous disconnect period.
-                lastWifiDisconnectMs = 0;
-                lastWifiConnectMs = now;
-            } else if (wasConnected && !isConnected) {
-                // Defensive: stamp the disconnect time from the polling path if the
-                // WiFi event handler did not. Some failure modes observed in the
-                // field never deliver ARDUINO_EVENT_WIFI_STA_DISCONNECTED, leaving
-                // lastWifiDisconnectMs at 0 — the active-reconnect block below
-                // would then never fire and the device gets stuck at WL_IDLE_STATUS.
-                if (lastWifiDisconnectMs == 0) {
-                    lastWifiDisconnectMs = now;
-                }
-                ESP_LOGW(TAG, "WiFi disconnected (last reason=%u %s) - waiting for auto-reconnect",
-                         lastWifiDisconnectReason,
-                         wifiDisconnectReasonStr(lastWifiDisconnectReason));
-            }
-            wasConnected = isConnected;
-
-            // Active reconnect path. Arduino's setAutoReconnect(true) gives up silently on
-            // some disconnect reasons (BEACON_TIMEOUT, ASSOC_EXPIRE, AUTH_EXPIRE after long
-            // sessions). If we've been disconnected for ACTIVE_RECONNECT_AFTER_MS without
-            // recovering, force a reconnect ourselves with exponential-ish backoff.
-            // After MAX_ACTIVE_RECONNECT_FAILURES tries, restart the device — usually it's
-            // a deep stack state that only a clean boot can recover from.
-            static constexpr unsigned long ACTIVE_RECONNECT_AFTER_MS = 30000;
-            static constexpr unsigned long ACTIVE_RECONNECT_MIN_INTERVAL_MS = 30000;
-            static constexpr uint8_t MAX_ACTIVE_RECONNECT_FAILURES = 6;
-            if (!isConnected) {
-                unsigned long downForMs = (lastWifiDisconnectMs != 0)
-                                              ? (now - lastWifiDisconnectMs)
-                                              : 0;
-                bool dueToActiveReconnect = (now - lastActiveReconnectMs) >= ACTIVE_RECONNECT_MIN_INTERVAL_MS;
-                if (downForMs >= ACTIVE_RECONNECT_AFTER_MS && dueToActiveReconnect) {
-                    activeReconnectFailures++;
-                    ESP_LOGW(TAG, "WiFi down %lus - forcing reconnect (attempt %u/%u, last reason=%u %s)",
-                             downForMs / 1000, activeReconnectFailures,
-                             MAX_ACTIVE_RECONNECT_FAILURES,
-                             lastWifiDisconnectReason,
-                             wifiDisconnectReasonStr(lastWifiDisconnectReason));
-                    lastActiveReconnectMs = now;
-                    WiFi.disconnect(false);
-                    vTaskDelay(100 / portTICK_PERIOD_MS);
-                    WiFi.reconnect();
-
-                    if (activeReconnectFailures >= MAX_ACTIVE_RECONNECT_FAILURES) {
-                        ESP_LOGE(TAG, "Active reconnect exhausted - restarting");
-                        vTaskDelay(500 / portTICK_PERIOD_MS);
-                        ESP.restart();
-                    }
-                }
+        if (!otaActive) {
+            if (otaWasActive) {
+                internetHealth.reset(startTime);
+                mqtt.resetBackoff();
+                lowHeapGuard.reset();
             }
 
-            // Flapping-immune restart backstop (see declarations above). A
-            // connection only counts as "stable" after it has held continuously
-            // for STABLE_CONNECT_MS; brief flickers reset the streak and never
-            // advance lastStableConnectMs. If WiFi has not been stable for
-            // FORCE_RESTART_NO_STABLE_MS, only a clean boot tends to recover it.
-            static constexpr unsigned long STABLE_CONNECT_MS = 60000; // 1 min up = "stable"
-            static constexpr unsigned long FORCE_RESTART_NO_STABLE_MS = 600000; // 10 min without stability
-            if (isConnected) {
-                if (connectedSinceMs == 0) connectedSinceMs = now; // streak started
-                if (now - connectedSinceMs >= STABLE_CONNECT_MS) {
-                    lastStableConnectMs = now;
-                }
-            } else {
-                connectedSinceMs = 0; // streak broken
+            tickActuator(startTime);
+
+            if (display.has_value()) {
+                display->get().update();
             }
-            if (now - lastStableConnectMs >= FORCE_RESTART_NO_STABLE_MS) {
-                ESP_LOGE(TAG, "No stable WiFi for %lus (flapping or stuck) - restarting",
-                         (now - lastStableConnectMs) / 1000);
+
+            if (lowHeapGuard.sample(heap_caps_get_free_size(MALLOC_CAP_INTERNAL))) {
                 vTaskDelay(500 / portTICK_PERIOD_MS);
                 ESP.restart();
             }
 
-            // NTP update — drives off the explicit ntpSynced flag, not getEpochTime() > 0.
-            // Each forceUpdate() goes through Network::safeNtpUpdate() so the
-            // task watchdog is fed on both sides of the call — a hung UDP
-            // exchange on a degraded link cannot starve the 30 s TWDT.
-            static constexpr uint32_t NTP_UPDATE_INTERVAL_S = 3600;
-            static bool lastNtpUpdateFailed = false;
+            ntp.tick(startTime, internetHealth);
+            mqtt.tick(startTime, bootMs, ntp.currentEpoch(), internetHealth);
 
-            // Deferred during OTA: a UDP exchange that stalls blocks this task
-            // for the NTP timeout, and a failure would be counted as an internet
-            // outage (see reportInternetFailure below) even though the link is
-            // merely saturated by the download. The clock tolerates a delay of a
-            // few minutes; the interval check re-fires as soon as OTA is done.
-            if (ntpSynced) {
-                uint32_t currentEpoch = ntpClient.getEpochTime();
-                if (!otaActive && currentEpoch - lastNtpUpdateEpoch >= NTP_UPDATE_INTERVAL_S) {
-                    if (safeNtpUpdate()) {
-                        uint32_t epoch = ntpClient.getEpochTime();
-                        if (isNtpEpochPlausible(epoch)) {
-                            lastNtpUpdateEpoch = epoch;
-                            ESP_LOGI(TAG, "NTP update: %s", ntpClient.getFormattedTime().c_str());
-                            if (lastNtpUpdateFailed) {
-                                reportInternetSuccess();
-                                lastNtpUpdateFailed = false;
-                            }
-                        } else {
-                            ntpBogusSyncCount++;
-                            ESP_LOGE(TAG, "NTP update returned implausible epoch: %u (expected between %u and %u)",
-                                     epoch, NtpEpoch::MIN_VALID, NtpEpoch::MAX_VALID);
-                            // Keep the previous epoch and stay synced — do not flap into
-                            // the unsynced state on a one-off bad refresh. The next 1-hour
-                            // interval will retry.
-                            reportInternetFailure();
-                        }
-                    } else {
-                        ESP_LOGW(TAG, "NTP update failed");
-                        reportInternetFailure();
-                        lastNtpUpdateFailed = true;
-                        // Stay synced — the previous epoch is still usable, just stale.
-                    }
-                }
-            } else if (!otaActive && now - lastNtpRetry >= NTP_UNSYNCED_RETRY_MS) {
-                // NTP not yet synced - retry at most once per minute
-                lastNtpRetry = now;
-                if (safeNtpUpdate()) {
-                    uint32_t epoch = ntpClient.getEpochTime();
-                    if (isNtpEpochPlausible(epoch)) {
-                        ntpSynced = true;
-                        lastNtpUpdateEpoch = epoch;
-                        ESP_LOGI(TAG, "NTP initial sync: %s", ntpClient.getFormattedTime().c_str());
-                        if (lastNtpUpdateFailed) {
-                            reportInternetSuccess();
-                            lastNtpUpdateFailed = false;
-                        }
-                    } else {
-                        ntpBogusSyncCount++;
-                        ESP_LOGE(TAG, "NTP retry returned implausible epoch: %u (expected between %u and %u)",
-                                 epoch, NtpEpoch::MIN_VALID, NtpEpoch::MAX_VALID);
-                        // Stay unsynced; the 1-minute timer will fire again.
-                    }
-                } else {
-                    reportInternetFailure();
-                    lastNtpUpdateFailed = true;
-                }
+            if (internetHealth.shouldForceReconnect(startTime)) {
+                ESP_LOGW(TAG, "Internet connectivity lost (%u failures) - forcing WiFi reconnect",
+                         internetHealth.failures());
+                wifi.forceReconnect();
             }
-
-            // MQTT: reconnect/keepalive + publish measurements.
-            //
-            // Suspended for the duration of an OTA download. MQTT is the most
-            // expensive thing this task does while the flash is being written:
-            // MqttClient::loop() opens a TCP socket (a fresh lwIP PCB plus a
-            // 1 KB TX buffer out of the internal pool the download has already
-            // drained) and blocks up to TCP_CONNECT_TIMEOUT_MS + the handshake
-            // on every retry, so the 1 s tick that also drives the status LED
-            // and the WiFi supervision stalls for seconds at a time. Worse, each
-            // failed attempt was counted as an internet outage below and
-            // eventually tore the link down under the downloader. The broker may
-            // drop us on keepalive; that is fine — a successful update reboots
-            // anyway, and a failed one reconnects on the next tick.
-            if (mqttClient && !otaActive) {
-                // Check MQTT connect failures and report to internet monitoring
-                uint32_t mqttFailures = mqttClient->getConsecutiveConnectFailures();
-                static uint32_t lastReportedMqttFailures = 0;
-
-                if (mqttFailures > lastReportedMqttFailures) {
-                    // New failures to report
-                    for (uint32_t i = lastReportedMqttFailures; i < mqttFailures; i++) {
-                        reportInternetFailure();
-                    }
-                    lastReportedMqttFailures = mqttFailures;
-                } else if (lastReportedMqttFailures > 0 && mqttFailures == 0) {
-                    // MQTT recovered - reset network's failure counter
-                    reportInternetSuccess();
-                    lastReportedMqttFailures = 0;
-                }
-
-                mqttClient->loop();
-
-                if (mqttClient->isConnected() && sensorController.isDataValid()) {
-                    uint32_t intervalMs = mqttClient->getIntervalMs();
-
-                    // Seed lastMqttPublish on first eligible cycle
-                    if (lastMqttPublish == 0) lastMqttPublish = now;
-
-                    bool isSettled = now - bootMs >= 60000;
-                    if (intervalMs > 0 && isSettled && (now - lastMqttPublish >= intervalMs)) {
-                        // Atomic snapshot: validity and data are read under the same lock,
-                        // so we never publish stale measurements after a fresh read failed.
-                        auto measurements = sensorController.getValidMeasurements();
-                        if (!measurements.empty()) {
-                            statusLed.setState(LedState::TRANSMIT_DATA);
-                            lastMqttPublish = now;
-                            publishMeasurements(measurements);
-                        }
-                    }
-
-                    if (intervalMs > 0 && isSettled) {
-                        float prog = static_cast<float>(now - lastMqttPublish) / intervalMs;
-                        if (prog > 1.0f) prog = 1.0f;
-                        statusLed.setProgress(prog);
-                        statusLed.setState(LedState::ON);
-                    }
-                } else {
-                    statusLed.setProgress(0.0f);
-                }
-            }
-
-            // Internet connectivity failure monitoring. If we've had repeated
-            // failures from MQTT, OTA, or NTP that indicate internet is down
-            // (not just WiFi), trigger a WiFi reconnect to recover.
-            //
-            // Never while an OTA download is running. The recovery action here is
-            // WiFi.disconnect() + WiFi.reconnect(), which tears the link out from
-            // under the OTA worker mid-transfer: the download dies with
-            // "Connection lost during download", and because nothing resets the
-            // counter without a success it fires again every
-            // INTERNET_FAILURE_WINDOW_MS, leaving the device unreachable for as
-            // long as updates keep being attempted. The premise of the guard —
-            // "repeated failures mean the internet is gone" — simply doesn't hold
-            // during an OTA, when MQTT and NTP fail because the link and the
-            // internal heap are saturated by a transfer that is itself proof the
-            // internet works.
-            static bool otaWasActive = false;
-            if (otaWasActive && !otaActive) {
-                // Start the post-OTA window clean: failures recorded around the
-                // download describe the download, not the link.
-                internetConnectFailures = 0;
-                lastInternetFailureAction = now;
-                if (mqttClient) {
-                    // Drop back to the base reconnect backoff so MQTT returns
-                    // within seconds instead of the minutes the suspended
-                    // attempts would otherwise have escalated to.
-                    mqttClient->resetConsecutiveConnectFailures();
-                }
-            }
-            otaWasActive = otaActive;
-
-            if (!otaActive && internetConnectFailures >= INTERNET_FAILURE_THRESHOLD) {
-                if (now - lastInternetFailureAction >= INTERNET_FAILURE_WINDOW_MS) {
-                    lastInternetFailureAction = now;
-                    ESP_LOGW(TAG, "Internet connectivity lost (%u failures) - forcing WiFi reconnect",
-                             internetConnectFailures);
-                    WiFi.disconnect(false);
-                    vTaskDelay(100 / portTICK_PERIOD_MS);
-                    WiFi.reconnect();
-                }
-            }
-
-            // Periodic diagnostics: heap and task stack high-water marks
-            if (now - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {
-                lastDiagnostics = now;
-                ESP_LOGI(TAG, "Diagnostics: heap=%u bytes (min=%u), uptime=%lu s",
-                         ESP.getFreeHeap(), ESP.getMinFreeHeap(), now / 1000);
-                const Support::StatsSnapshot netStats = stats.snapshot();
-                ESP_LOGI(
-                    TAG,
-                    "Diagnostics: net_cycle_count=%llu net_avg_cycle_work_ms=%llu net_min_cycle_work_ms=%llu net_max_cycle_work_ms=%llu",
-                    (unsigned long long)netStats.count,
-                    (unsigned long long)netStats.average,
-                    (unsigned long long)netStats.min,
-                    (unsigned long long)netStats.max);
-                if (taskHandle) {
-                    ESP_LOGI(TAG, "Network task stack HWM: %u bytes",
-                             uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
-                }
-            }
-
-            // Iteration timing diagnostic at DEBUG level. We only log when this
-            // task's own work is slow — large `wait` is expected RTOS scheduling
-            // contention with SensorMonitor (same priority, single core) and is
-            // harmless. workMs > 500 ms points at something blocking inside the
-            // block (MQTT loop, NTP, mDNS) and is worth investigating.
-            unsigned long blockExit = millis();
-            unsigned long workMs = blockExit - now;
-            if (workMs > 500) {
-                ESP_LOGD(TAG, "Tick slow work: work=%lums wait=%lums status=%d",
-                         workMs, waitMs, WiFi.status());
-            }
-
-            stats.add(workMs);
-            // Carry this iteration's work duration to the top of the next
-            // iteration so the adaptive sleep there can subtract it from
-            // TICK_MS. Same value just recorded into stats; one variable,
-            // two readers (the stats accumulator across iterations and the
-            // immediate next sleep).
-            lastWorkMs = static_cast<uint32_t>(workMs);
-            lastBlockExitMs = blockExit;
         }
+
+        otaWasActive = otaActive;
+
+        if (startTime - lastDiagnostics >= DIAGNOSTICS_INTERVAL_MS) {
+            lastDiagnostics = startTime;
+            logDiagnostics(startTime);
+        }
+
+        const uint32_t elapsedMs = millis() - startTime;
+        if (elapsedMs > 500) {
+            ESP_LOGD(TAG, "Tick slow work: work=%lums wait=%lums status=%d",
+                     static_cast<unsigned long>(elapsedMs), static_cast<unsigned long>(LOOP_TICKS_MS),
+                     WiFi.status());
+        }
+
+        stats.add(elapsedMs);
+
+        lastElapsedMs = elapsedMs;
+    }
+#else
+    for (;;) {
     }
 #endif
-}
-
-void Network::publishMeasurements(const std::vector<Sensor::Measurement> &measurements) {
-#ifdef ARDUINO
-    if (!mqttClient || !mqttClient->isConnected()) return;
-
-    uint32_t epoch = getCurrentEpoch();
-    const char *prefix = mqttClient->getPrefix();
-
-    uint32_t succeeded = 0;
-    uint32_t failed = 0;
-
-    for (const auto &m: measurements) {
-        char topic[128];
-        snprintf(topic, sizeof(topic), "%s/%s", prefix, Sensor::measurementTypeLabel(m.type));
-
-        char payload[256];
-        if (auto *i = std::get_if<int32_t>(&m.value)) {
-            snprintf(payload, sizeof(payload),
-                     "{\"time\":%u,\"value\":%d,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
-                     epoch, *i, Sensor::measurementTypeUnit(m.type), m.sensor, m.calculated ? "true" : "false");
-        } else {
-            snprintf(payload, sizeof(payload),
-                     "{\"time\":%u,\"value\":%.2f,\"unit\":\"%s\",\"sensor\":\"%s\",\"calculated\":%s}",
-                     epoch, std::get<float>(m.value), Sensor::measurementTypeUnit(m.type), m.sensor,
-                     m.calculated ? "true" : "false");
-        }
-
-        if (mqttClient->publish(topic, payload)) {
-            succeeded++;
-        } else {
-            failed++;
-        }
-    }
-
-    mqttClient->recordPublishResult(succeeded, failed);
-
-    if (failed > 0) {
-        ESP_LOGW(TAG, "MQTT: Published %u/%u measurements (%u failed)",
-                 succeeded, succeeded + failed, failed);
-    }
-#endif
-}
-
-void Network::updateMqttConfig(const Config::MqttConfig &mqttConfig) {
-    if (mqttClient) {
-        mqttClient->setConfig(mqttConfig);
-    }
-}
-
-void Network::reportInternetFailure() {
-    // 32-bit aligned volatile is atomic on ESP32
-    internetConnectFailures++;
-    ESP_LOGW(TAG, "Internet connectivity failure #%u", internetConnectFailures);
-}
-
-void Network::reportInternetSuccess() {
-    // Reset failure counter on success
-    internetConnectFailures = 0;
-    ESP_LOGD(TAG, "Internet connectivity success - reset failure counter");
 }
 
 void Network::startTask() {
+#ifdef ARDUINO
     // Stack size is measured, not guessed. Like SensorMonitor's, this stack is
     // carved out of *internal* SRAM, the pool that OTA downloads, lwIP and
     // AsyncTCP contend for; 20480 B was reserved on a "for stability" hunch while
     // 17.3% of it was ever touched.
     //
     // Measured peak: 3544 B used (HWM reported 16936 B free of 20480) after a run
-    // covering the deepest paths this task takes — startSTA() with WiFi init and
-    // association, NTP sync, MQTT connect + publish, and the syslog formatting
-    // buffer inside the logging macro. 8192 keeps ~2.3x headroom rather than the
-    // 3x used for SensorMonitor, because two paths had not been exercised when
-    // the mark was taken: the AP/captive-portal fallback (startAP) and
-    // configureMDNS() re-advertising on reconnect. The periodic "Network task
-    // stack HWM" diagnostic re-measures this; raise it if the number ever
-    // approaches 0.
+    // covering the deepest paths this task takes — station bring-up with WiFi
+    // init and association, NTP sync, MQTT connect + publish, and the syslog
+    // formatting buffer inside the logging macro. 8192 keeps ~2.3x headroom
+    // rather than the 3x used for SensorMonitor, because two paths had not been
+    // exercised when the mark was taken: the AP/captive-portal fallback and the
+    // mDNS re-advertisement on reconnect. The periodic "Network task stack HWM"
+    // diagnostic re-measures this; raise it if the number ever approaches 0.
     xTaskCreate(
         taskWrapper, // Task Function
         "Network", // Task Name
@@ -1106,10 +287,27 @@ void Network::startTask() {
         1, // Priority
         &taskHandle // Task Handle
     );
+#endif
 }
 
 void Network::taskWrapper(void *pvParameters) {
     ESP_LOGI(TAG, "taskWrapper()");
     auto *instance = static_cast<Network *>(pvParameters);
     instance->task();
+}
+
+void Network::initialize_watchdog_timer() {
+    if (esp_err_t wdtAdd = esp_task_wdt_add(nullptr); wdtAdd != ESP_OK) {
+        ESP_LOGE(TAG, "esp_task_wdt_add failed (err 0x%x) - task runs unguarded", wdtAdd);
+    }
+}
+
+void Network::enable_webserver() {
+    ESP_LOGI(TAG, "Switching webserver to OPERATIONAL mode...");
+    if (webServer.has_value()) {
+        webServer->get().setMode(WebServerMode::OPERATIONAL);
+    } else {
+        ESP_LOGE(TAG, "webServer not wired up — bug in main.cpp ordering");
+    }
+    ESP_LOGI(TAG, "Webserver started - system ready, free heap: %u bytes", ESP.getFreeHeap());
 }

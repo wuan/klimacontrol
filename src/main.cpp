@@ -137,7 +137,7 @@ Task::SensorMonitor sensorMonitor(sensorController, temperatureController);
 // and wired in via setWebServer. This breaks the circular reference while
 // keeping both objects as long-lived singletons — see spec `memory-management`
 // → "Long-lived singletons are constructed once".
-Network network(config, sensorController, temperatureController, sensorMonitor, statusLed, nullptr);
+Network network(config, sensorController, temperatureController, sensorMonitor, statusLed, std::nullopt);
 WebServerManager webServer(config, network, sensorController, temperatureController, sensorMonitor);
 #ifdef ARDUINO
 // E-paper display. Constructed unconditionally (its 625 B page buffer is in BSS
@@ -176,7 +176,7 @@ static void setupDisplay(const Config::DeviceConfig &deviceConfig) {
     Config::DisplayConfig displayConfig = config.loadDisplayConfig();
 
     // Always wire up the pointer so Network::startAP() can probe.
-    network.setDisplay(&displayManager);
+    network.setDisplay(displayManager);
 
     if (!displayConfig.enabled) {
         ESP_LOGI(TAG, "Display disabled in config; "
@@ -222,7 +222,7 @@ void setup() {
     // pointer to break the circular reference, WebServerManager is constructed
     // next and given the Network& reference it needs); this call completes
     // the long-lived wiring before the network task starts.
-    network.setWebServer(&webServer);
+    network.setWebServer(webServer);
 
     // Reserve the sensor + measurement vector capacity so the I2C scan loop's
     // addSensor() calls do not reallocate. Must happen before the scan loop —

@@ -5,7 +5,7 @@ TBD - created by archiving change baseline-capabilities. Update Purpose after ar
 ## Requirements
 ### Requirement: Target hardware platform
 
-The firmware SHALL run on the Adafruit QT Py ESP32-S2 board, using the ESP32-S2 single-core processor clocked at 80 MHz, the Stemma QT I2C connector for external sensors, and the on-board NeoPixel LED for status indication. The board exposes ~2 MB of PSRAM (`psram_size ≈ 2094735` on the production batch, recorded on-device at `src/Network.cpp:555`). The real-time constraints of the firmware (task stacks, FreeRTOS / lwIP / WiFi / mbedTLS working set, DMA buffers) remain *internal-SRAM-only* even with PSRAM available; see the *Memory budget* requirement for the corresponding constraint.
+The firmware SHALL run on the Adafruit QT Py ESP32-S2 board, using the ESP32-S2 single-core processor clocked at 80 MHz, the Stemma QT I2C connector for external sensors, and the on-board NeoPixel LED for status indication. The board exposes ~2 MB of PSRAM (`psram_size ≈ 2094735` on the production batch, recorded on-device, see the comment in `src/network/LowHeapGuard.h`). The real-time constraints of the firmware (task stacks, FreeRTOS / lwIP / WiFi / mbedTLS working set, DMA buffers) remain *internal-SRAM-only* even with PSRAM available; see the *Memory budget* requirement for the corresponding constraint.
 
 #### Scenario: PlatformIO target selection
 
@@ -37,7 +37,7 @@ OTA memory accounting SHALL use `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` r
 
 The firmware SHALL use FreeRTOS with two long-running tasks: a Network task running `Network::task()` and a Sensor Monitor task running `Task::SensorMonitor::task()`. Both tasks SHALL be registered with the ESP-IDF task watchdog using a 30-second timeout, and watchdog timeout SHALL trigger a panic. Each task body SHALL call `esp_task_wdt_reset()` at least once per iteration AND, in addition, SHALL feed the watchdog before and after any blocking external call that may exceed the per-iteration budget (see the *Network task blocking-call safety* requirement in `networking` for the Network task's specific obligations).
 
-The Network task stack SHALL be at least 6 KB (in-tree: 8192 B at `src/Network.cpp:993`, justified against a measured peak of 3544 B in the comment at `src/Network.cpp:976-989`). The Sensor Monitor task stack SHALL be at least 4 KB (in-tree: 6144 B at `src/task/SensorMonitor.cpp:33`, justified against a measured peak of 2056 B in the comment at `src/task/SensorMonitor.cpp:22-29`). Both tasks SHALL emit a periodic "stack HWM" diagnostic line so a future review can verify the threshold against measured use rather than guesswork.
+The Network task stack SHALL be at least 6 KB (in-tree: 8192 B in `Network::startTask()`, justified against a measured peak of 3544 B in its adjacent comment). The Sensor Monitor task stack SHALL be at least 4 KB (in-tree: 6144 B at `src/task/SensorMonitor.cpp:33`, justified against a measured peak of 2056 B in the comment at `src/task/SensorMonitor.cpp:22-29`). Both tasks SHALL emit a periodic "stack HWM" diagnostic line so a future review can verify the threshold against measured use rather than guesswork.
 
 #### Scenario: Tasks register with watchdog
 
@@ -47,7 +47,7 @@ The Network task stack SHALL be at least 6 KB (in-tree: 8192 B at `src/Network.c
 #### Scenario: Network task stack size
 
 - **WHEN** the Network task is created via `xTaskCreate`
-- **THEN** its stack is at least 6 KB; the in-tree value is 8192 B at `src/Network.cpp:993`, chosen against a measured peak of 3544 B (~2.3x headroom) per the comment at `src/Network.cpp:976-989`
+- **THEN** its stack is at least 6 KB; the in-tree value is 8192 B at `src/Network.cpp:361`, chosen against a measured peak of 3544 B (~2.3x headroom) per the comment at `src/Network.cpp:345-357`
 
 #### Scenario: Sensor Monitor task stack size
 
@@ -107,7 +107,7 @@ Resource ownership SHALL be expressed through `std::unique_ptr<T>`. Non-owning a
 #### Scenario: Webserver lifetime
 
 - **WHEN** the device transitions between AP and STA modes
-- **THEN** the same `WebServerManager` instance is reused; the route set changes via a `setMode(WebServerMode::...)` call (see `src/Network.cpp:347-352, 427-432, 504-512`). No `WebServerManager` is destroyed or re-allocated as part of the transition.
+- **THEN** the same `WebServerManager` instance is reused; the route set changes via a `setMode(WebServerMode::...)` call (see `Net::ApProvisioning::enterConfigMode()` in `src/network/ApProvisioning.cpp` for CONFIG and `Network::task()` in `src/Network.cpp` for OPERATIONAL). No `WebServerManager` is destroyed or re-allocated as part of the transition.
 
 ### Requirement: Thread safety for shared sensor data
 

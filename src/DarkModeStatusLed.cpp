@@ -1,8 +1,11 @@
 #include "DarkModeStatusLed.h"
 
-void DarkModeStatusLed::begin(uint32_t nowMs) {
+void DarkModeStatusLed::begin(uint32_t nowMs, uint16_t led_dark_after_s) {
     led.begin();
     onSinceMs = nowMs;
+
+    setDarkAfterSeconds(led_dark_after_s);
+    setState(LedState::STARTUP); // Indicate booting
 }
 
 void DarkModeStatusLed::setState(LedState newState) {

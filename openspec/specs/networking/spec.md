@@ -103,7 +103,7 @@ A sync SHALL only count as successful when **both** `forceUpdate()` returns `tru
 
 Every external (non-loopback) network call made from the Network task SHALL either bound its own execution time (via a documented socket, library, or application-level timeout) or feed the FreeRTOS task watchdog (`esp_task_wdt_reset()`) immediately before and after the call. This contract exists so that a hung UDP socket, a stalled TCP connection, or any other blocking call inside the task cannot starve the 30 s task watchdog and force a panic reset that may land inside an NVS write.
 
-The NTP update is the canonical example: `Network::safeNtpUpdate()` SHALL call `esp_task_wdt_reset()` before and after `ntpClient.forceUpdate()` and SHALL return the NTPClient result unchanged. Any future external network call added to the Network task MUST follow the same pattern (helper or inline WDT feeds) and MUST be added to the audit table in the change design.
+The NTP update is the canonical example: `Net::NtpSync::safeNtpUpdate()` SHALL call `esp_task_wdt_reset()` before and after `ntpClient.forceUpdate()` and SHALL return the NTPClient result unchanged. Any future external network call added to the Network task MUST follow the same pattern (helper or inline WDT feeds) and MUST be added to the audit table in the change design.
 
 #### Scenario: NTP call completes normally
 
@@ -126,7 +126,7 @@ The configuration AP SHALL run with `WiFi.softAP(ssid, password)` (WPA2-PSK)
 when an e-paper panel responds to the probe at AP-mode entry, and SHALL
 fall back to `WiFi.softAP(ssid)` (open AP) when no panel responds.
 
-**The probe is the security decision.** It runs inside `Network::startAP()`,
+**The probe is the security decision.** It runs inside `Net::ApProvisioning::startAP()`,
 not at boot, so STA-mode boots do not pay the detection cost. The probe
 path is `DisplayManager::tryBeginForApInfo()`, which calls
 `panel.probe(timeoutMs)` (the BUSY-transition check described under
@@ -147,8 +147,9 @@ after three consecutive refresh timeouts, never on init. The probe's
 manual RST pulse + BUSY-transition check is what makes the absent-panel
 case observable.
 
-**`Network::startAP()` requires `display != nullptr`.** The
-`DisplayManager` pointer is installed into Network by
+**`Net::ApProvisioning::startAP()` requires `display != nullptr`.** The
+`DisplayManager` pointer is installed into Network (which forwards it to
+its `ApProvisioning`) by
 `setupDisplay()` unconditionally — both when the normal status
 display is enabled (after `displayManager.begin()` succeeds) and
 when it is disabled (so the deferred probe can still bring the
@@ -164,7 +165,7 @@ seen the SSID, not against a targeted attacker.
 
 #### Scenario: Panel responds at AP-mode entry
 
-- **WHEN** `Network::startAP()` is called, `Network::display` is
+- **WHEN** `Net::ApProvisioning::startAP()` is called, its `display` is
   non-null, and the e-paper panel responds to the manual RST pulse in
   the probe (BUSY transitions through LOW to HIGH, both within
   `timeoutMs`)
@@ -179,7 +180,7 @@ seen the SSID, not against a targeted attacker.
 #### Scenario: DisplayConfig disabled but panel responds
 
 - **WHEN** `DisplayConfig.enabled == false` in NVS, a panel is
-  physically connected, and `Network::startAP()` is called
+  physically connected, and `Net::ApProvisioning::startAP()` is called
 - **THEN** the deferred probe in `tryBeginForApInfo()` SHALL run
   `panel.probe(timeoutMs)` (because `enabled == false` in
   DisplayManager, so the probe path runs rather than the
@@ -189,7 +190,7 @@ seen the SSID, not against a targeted attacker.
 
 #### Scenario: No panel responds at AP-mode entry
 
-- **WHEN** `Network::startAP()` is called and no e-paper panel
+- **WHEN** `Net::ApProvisioning::startAP()` is called and no e-paper panel
   responds to the manual RST pulse in the probe (BUSY stays HIGH
   because the connector is empty, or BUSY is stuck LOW because of a
   damaged panel, or BUSY is stuck HIGH because of interference), or
@@ -203,13 +204,13 @@ seen the SSID, not against a targeted attacker.
 #### Scenario: Probe does not run at boot
 
 - **WHEN** `setup()` brings up the network task in STA mode
-- **THEN** no e-paper probe runs. `Network::apPassword` is never
-  read or written. Boot cost in STA mode is unaffected by the
+- **THEN** no e-paper probe runs. The AP password is never
+  derived. Boot cost in STA mode is unaffected by the
   panel probe
 
 #### Scenario: Probe is re-run on every AP-mode entry
 
-- **WHEN** `Network::startAP()` is called multiple times in a boot
+- **WHEN** `Net::ApProvisioning::startAP()` is called multiple times in a boot
   (cold-boot first-WiFi path AND every-third-failed-reconnection
   fallback path)
 - **THEN** the probe runs on each entry. A panel that was responsive
@@ -267,7 +268,7 @@ password without needing the device's case label or a separate
 reference. The firmware SHALL satisfy both of:
 
 1. Log the SSID and the derived password at `ESP_LOGI` (or the local
-   equivalent) when `Network::startAP()` runs, so a developer with a
+   equivalent) when `Net::ApProvisioning::startAP()` runs, so a developer with a
    serial monitor can read the password from the boot log.
 2. Render the SSID and password on the captive portal page itself (the
    settings page served in AP mode), so a phone user does not need a
@@ -302,7 +303,7 @@ request, so an attacker who is not yet on the AP cannot read it.
 ### Requirement: Configuration AP probes the panel on every factory-fresh boot
 
 The configuration AP SHALL probe for an e-paper panel inside
-`Network::startAP()` on every entry — including the very first boot
+`Net::ApProvisioning::startAP()` on every entry — including the very first boot
 where no NVS WiFi configuration exists — and SHALL run WPA2-PSK with the
 password shown on the panel when one responds.
 
@@ -319,7 +320,7 @@ panel brings the AP up WPA2-PSK with the password on the panel.
 - **WHEN** the firmware boots for the first time (no NVS WiFi config, no
   NVS display config — `DisplayConfig.enabled == false` is the spec
   default), a panel is physically wired up to the SPI connector, and
-  `Network::startAP()` runs
+  `Net::ApProvisioning::startAP()` runs
 - **THEN** `DisplayManager::tryBeginForApInfo()` SHALL call
   `panel.begin(0)` (the default rotation), the panel SHALL respond, and
   the AP SHALL come up WPA2-PSK with the password rendered on the panel
