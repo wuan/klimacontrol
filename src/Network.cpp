@@ -211,6 +211,12 @@ void Network::handle_network_events(const uint32_t now) {
         handle_network_events(startTime);
 
         if (!otaActive) {
+            if (otaWasActive) {
+                internetHealth.reset(startTime);
+                mqtt.resetBackoff();
+                lowHeapGuard.reset();
+            }
+
             tickActuator(startTime);
 
             if (display) {
@@ -224,12 +230,6 @@ void Network::handle_network_events(const uint32_t now) {
 
             ntp.tick(startTime, internetHealth);
             mqtt.tick(startTime, bootMs, ntp.currentEpoch(), internetHealth);
-
-            if (otaWasActive) {
-                internetHealth.reset(startTime);
-                mqtt.resetBackoff();
-                lowHeapGuard.reset();
-            }
 
             if (internetHealth.shouldForceReconnect(startTime)) {
                 ESP_LOGW(TAG, "Internet connectivity lost (%u failures) - forcing WiFi reconnect",
