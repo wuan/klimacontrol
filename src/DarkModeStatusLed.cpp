@@ -26,7 +26,7 @@ void DarkModeStatusLed::setState(LedState newState) {
 }
 
 bool DarkModeStatusLed::isDark(uint32_t nowMs) const {
-    const uint32_t threshold = darkAfterMs.load(std::memory_order_relaxed);
+    const uint32_t threshold = darkAfterMs.load();
     if (threshold == 0 || !darkAnchorArmed) return false;
     return (nowMs - onSinceMs) >= threshold; // wrap-safe unsigned arithmetic
 }
@@ -50,5 +50,5 @@ void DarkModeStatusLed::update(uint32_t nowMs) {
 }
 
 void DarkModeStatusLed::setDarkAfterSeconds(uint16_t seconds) {
-    darkAfterMs.store(static_cast<uint32_t>(seconds) * 1000u, std::memory_order_relaxed);
+    darkAfterMs.store(static_cast<uint32_t>(seconds) * 1000u);
 }

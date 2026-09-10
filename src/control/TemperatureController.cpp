@@ -122,7 +122,7 @@ namespace Control {
         // with what was persisted rather than with what was asked for.
         const Config::DeviceConfig &cfg = config.getDeviceConfig();
         pendingGains = Control::PidGains{cfg.kp, cfg.ki, cfg.kd};
-        gainsChangeRequested.store(true, std::memory_order_release);
+        gainsChangeRequested.store(true);
     }
 
     bool TemperatureController::isHeatingPermitted() const {
@@ -166,7 +166,7 @@ namespace Control {
         // treats the change as the discontinuity it is: the next computing tick
         // restarts bumplessly rather than carrying an integral accumulated under
         // the old gains into the new ones.
-        if (gainsChangeRequested.exchange(false, std::memory_order_acquire)) {
+        if (gainsChangeRequested.exchange(false)) {
             const Control::PidGains gains = pendingGains;
             pid.setGains(gains);
             lastPidComputeMs = now;

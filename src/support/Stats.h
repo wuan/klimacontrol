@@ -37,13 +37,13 @@ namespace Support
         mutable std::atomic_flag lock = ATOMIC_FLAG_INIT;
 
         void lockStats() const {
-            while (lock.test_and_set(std::memory_order_acquire)) {
+            while (lock.test_and_set()) {
                 // spin
             }
         }
 
         void unlockStats() const {
-            lock.clear(std::memory_order_release);
+            lock.clear();
         }
 
     public:

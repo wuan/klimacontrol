@@ -81,7 +81,7 @@ public:
 
     /** @return Configured dark-mode threshold in seconds (0 = disabled) */
     [[nodiscard]] uint16_t getDarkAfterSeconds() const {
-        return static_cast<uint16_t>(darkAfterMs.load(std::memory_order_relaxed) / 1000u);
+        return static_cast<uint16_t>(darkAfterMs.load() / 1000u);
     }
 
     /**

@@ -363,14 +363,14 @@ namespace Config {
 
         // Acquire the spinlock. Caller must already be prepared to busy-wait.
         void lockRestart() const {
-            while (restartLock.test_and_set(std::memory_order_seq_cst)) {
+            while (restartLock.test_and_set()) {
                 // spin
             }
         }
 
         // Release the spinlock.
         void unlockRestart() const {
-            restartLock.clear(std::memory_order_seq_cst);
+            restartLock.clear();
         }
 
         // Spinlock protecting the in-memory DeviceConfig cache. Same shape and
@@ -387,13 +387,13 @@ namespace Config {
         mutable std::atomic_flag deviceConfigLock = ATOMIC_FLAG_INIT;
 
         void lockDeviceConfig() const {
-            while (deviceConfigLock.test_and_set(std::memory_order_acquire)) {
+            while (deviceConfigLock.test_and_set()) {
                 // spin
             }
         }
 
         void unlockDeviceConfig() const {
-            deviceConfigLock.clear(std::memory_order_seq_cst);
+            deviceConfigLock.clear();
         }
 
     public:
