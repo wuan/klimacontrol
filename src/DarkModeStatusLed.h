@@ -56,7 +56,7 @@ public:
     DarkModeStatusLed() = default;
 
     /** Initialize the wrapped LED. */
-    void begin(uint32_t nowMs);
+    void begin(uint32_t nowMs, uint16_t led_dark_after_s);
 
     /**
      * Set the logical LED state. Applied immediately using the last clock

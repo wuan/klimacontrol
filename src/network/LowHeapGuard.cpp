@@ -10,8 +10,8 @@ static constexpr const char *const TAG = "net";
 
 namespace Net {
 
-    bool LowHeapGuard::sample(uint32_t freeInternalBytes, bool otaActive) {
-        if (otaActive || freeInternalBytes >= MIN_FREE_INTERNAL_BYTES) {
+    bool LowHeapGuard::sample(uint32_t freeInternalBytes) {
+        if (freeInternalBytes >= MIN_FREE_INTERNAL_BYTES) {
             lowStreak = 0;
             return false;
         }

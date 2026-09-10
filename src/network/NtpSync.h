@@ -48,7 +48,7 @@ namespace Net {
          * download. The clock tolerates the delay; the interval check re-fires
          * as soon as OTA is done.
          */
-        void tick(uint32_t nowMs, bool otaActive, InternetHealth &health);
+        void tick(uint32_t nowMs, InternetHealth &health);
 
         /** Current epoch seconds, or 0 before the first successful sync. */
         uint32_t currentEpoch() const;

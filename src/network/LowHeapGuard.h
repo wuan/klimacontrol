@@ -33,7 +33,7 @@ namespace Net {
          * Record one sample. Returns true when the low condition has persisted
          * for RESTART_STREAK consecutive samples and the device should restart.
          */
-        bool sample(uint32_t freeInternalBytes, bool otaActive);
+        bool sample(uint32_t freeInternalBytes);
 
         uint8_t streak() const { return lowStreak; }
 

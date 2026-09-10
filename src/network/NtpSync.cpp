@@ -78,9 +78,7 @@ namespace Net {
         }
     }
 
-    void NtpSync::tick(uint32_t nowMs, bool otaActive, InternetHealth &health) {
-        if (otaActive) return;
-
+    void NtpSync::tick(uint32_t nowMs, InternetHealth &health) {
         uint32_t epoch = 0;
         if (synced) {
 #ifdef ARDUINO

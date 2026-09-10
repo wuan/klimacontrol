@@ -52,7 +52,6 @@ enum class NetworkMode {
  * this class owns them and sequences their ticks.
  */
 class Network {
-private:
     Config::ConfigManager &config;
     SensorController &sensorController;
     // The control loop: read for the actuator tick (output, permission) and
@@ -86,7 +85,7 @@ private:
     // last iteration took (mirrors `Task::SensorMonitor`'s
     // `tick - elapsed + WAKE_MARGIN_MS` pattern). See spec `networking` →
     // "Network task sleeps adaptively based on previous iteration's work".
-    uint32_t lastWorkMs = 0;
+    uint32_t lastElapsedMs = 0;
     NetworkMode mode = NetworkMode::NONE;
 
     // Long-lived singletons. The web server is constructed once in setup()
@@ -114,6 +113,16 @@ private:
 
     /** 15-minute heap / cycle-stats / stack-HWM log lines. */
     void logDiagnostics(uint32_t now);
+
+    void initialize_wifi(const uint8_t &AP_FALLBACK_THRESHOLD);
+
+    void handle_connection_failure(const uint8_t &AP_FALLBACK_THRESHOLD);
+
+    void handle_network_events(uint32_t now);
+
+    static void initialize_watchdog_timer();
+
+    void enable_webserver();
 
 public:
     /**
