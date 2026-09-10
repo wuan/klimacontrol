@@ -26,7 +26,8 @@ namespace Net {
 
     uint32_t NtpSync::currentEpoch() const {
 #ifdef ARDUINO
-        return synced ? client.getEpochTime() : 0;
+        if (!synced) return 0;
+        return lastUpdateEpoch + ((millis() - lastUpdateMs) / 1000U);
 #else
         return 0;
 #endif
@@ -67,6 +68,7 @@ namespace Net {
             case Result::Ok:
                 synced = true;
                 lastUpdateEpoch = epoch;
+                lastUpdateMs = millis();
                 logTime("time");
                 break;
             case Result::Implausible:
@@ -81,16 +83,13 @@ namespace Net {
     void NtpSync::tick(uint32_t nowMs, InternetHealth &health) {
         uint32_t epoch = 0;
         if (synced) {
-#ifdef ARDUINO
-            const uint32_t current = client.getEpochTime();
-#else
-            const uint32_t current = 0;
-#endif
+            const uint32_t current = currentEpoch();
             if (current - lastUpdateEpoch < UPDATE_INTERVAL_S) return;
 
             switch (attempt("update", epoch)) {
                 case Result::Ok:
                     lastUpdateEpoch = epoch;
+                    lastUpdateMs = millis();
                     logTime("update");
                     if (lastUpdateFailed) {
                         health.reportSuccess();
@@ -119,6 +118,7 @@ namespace Net {
             case Result::Ok:
                 synced = true;
                 lastUpdateEpoch = epoch;
+                lastUpdateMs = millis();
                 logTime("initial sync");
                 if (lastUpdateFailed) {
                     health.reportSuccess();

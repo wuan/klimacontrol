@@ -85,6 +85,7 @@ namespace Net {
 #endif
         bool synced = false;
         uint32_t lastUpdateEpoch = 0; // epoch seconds at last successful sync
+        uint32_t lastUpdateMs = 0;    // millis() captured with lastUpdateEpoch
         uint32_t bogusCount = 0;      // syncs that passed the boolean check but failed the epoch sanity check
         uint32_t lastRetryMs = 0;     // millis() of last retry while unsynced
         bool lastUpdateFailed = false;
