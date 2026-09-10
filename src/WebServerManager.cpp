@@ -199,7 +199,7 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
         serializeJson(responseDoc, response);
         request->send(200, CONTENT_TYPE_JSON, response);
 
-        // Note: The Network task will detect config.isConfigured() and restart the device
+        config.requestRestart(1000);
     }
 }
 #endif

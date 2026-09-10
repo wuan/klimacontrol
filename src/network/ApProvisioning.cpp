@@ -169,7 +169,7 @@ namespace Net {
 
 #ifdef ARDUINO
         const uint32_t apStart = millis();
-        while (!config.isConfigured() && millis() - apStart < FALLBACK_TIMEOUT_MS) {
+        while (!config.isRestartPending() && millis() - apStart < FALLBACK_TIMEOUT_MS) {
             serviceSlot();
         }
 #endif
@@ -184,7 +184,7 @@ namespace Net {
             webServer->get().end();
         }
 
-        if (config.isConfigured()) {
+        if (config.isRestartPending()) {
             ESP_LOGI(TAG, "New configuration received - resetting failure count and restarting...");
             config.resetConnectionFailures();
 
