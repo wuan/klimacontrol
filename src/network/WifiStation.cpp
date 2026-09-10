@@ -34,7 +34,7 @@ namespace Net {
         }
     }
 
-    void WifiStation::onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+    void WifiStation::onWiFiEvent(WiFiEvent_t& event, WiFiEventInfo_t& info) {
         switch (event) {
             case ARDUINO_EVENT_WIFI_STA_CONNECTED:
                 link.onStaConnected(millis());
@@ -79,7 +79,7 @@ namespace Net {
         ESP_LOGI(TAG, "WiFi config: TX Power=%d, Sleep Mode=%s", WiFi.getTxPower(), sleepModeStr);
     }
 
-    void WifiStation::logConnectionDetails() const {
+    void WifiStation::logConnectionDetails() {
         ESP_LOGI(TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
         ESP_LOGD(TAG, "WiFi diagnostics: SSID=%s BSSID=%s Ch=%d RSSI=%d dBm MAC=%s",
                  WiFi.SSID().c_str(), WiFi.BSSIDstr().c_str(), WiFi.channel(),
@@ -113,7 +113,7 @@ namespace Net {
                  heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
                  heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
 
-        WiFi.mode(WIFI_STA);
+        WiFiClass::mode(WIFI_STA);
         WiFi.setAutoReconnect(true);
 
         // Guarded so a re-entry can't stack duplicate handlers (Arduino appends,
@@ -134,7 +134,7 @@ namespace Net {
             WiFi.begin(ssid, password);
 
             int slots = 0;
-            while (WiFi.status() != WL_CONNECTED && slots < MAX_WAIT_SLOTS) {
+            while (WiFiClass::status() != WL_CONNECTED && slots < MAX_WAIT_SLOTS) {
                 vTaskDelay(500 / portTICK_PERIOD_MS);
                 esp_task_wdt_reset();
                 slots++;
@@ -144,7 +144,7 @@ namespace Net {
                 }
             }
 
-            if (WiFi.status() == WL_CONNECTED) break;
+            if (WiFiClass::status() == WL_CONNECTED) break;
 
             const uint8_t reason = link.disconnectReason();
             ESP_LOGW(TAG, "Connect attempt %d failed (last reason=%u %s), backing off %d ms",
@@ -154,7 +154,7 @@ namespace Net {
             esp_task_wdt_reset();
         }
 
-        if (WiFi.status() != WL_CONNECTED) {
+        if (WiFiClass::status() != WL_CONNECTED) {
             ESP_LOGE(TAG, "WiFi connection failed");
             return false;
         }
@@ -169,9 +169,9 @@ namespace Net {
 #endif
     }
 
-    bool WifiStation::isConnected() const {
+    bool WifiStation::isConnected() {
 #ifdef ARDUINO
-        return WiFi.status() == WL_CONNECTED;
+        return WiFiClass::status() == WL_CONNECTED;
 #else
         return false;
 #endif

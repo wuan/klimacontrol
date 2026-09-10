@@ -53,7 +53,6 @@ enum class NetworkMode {
  */
 class Network {
     Config::ConfigManager &config;
-    SensorController &sensorController;
     // The control loop: read for the actuator tick (output, permission) and
     // told what the relay is actually doing afterwards.
     Control::TemperatureController &temperatureController;

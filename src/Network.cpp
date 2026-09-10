@@ -20,7 +20,7 @@ static constexpr const char *const TAG = "net";
 Network::Network(Config::ConfigManager &config, SensorController &sensorController,
                  Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
                  DarkModeStatusLed &statusLed, WebServerManager *webServer)
-    : config(config), sensorController(sensorController), temperatureController(temperatureController),
+    : config(config), temperatureController(temperatureController),
       sensorMonitor(sensorMonitor), statusLed(statusLed),
       mdns(config), provisioning(config, mdns), wifi(config), mqtt(sensorController, statusLed),
       webServer(webServer) {

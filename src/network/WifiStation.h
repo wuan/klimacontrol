@@ -41,7 +41,7 @@ namespace Net {
          */
         bool connect(const char *ssid, const char *password);
 
-        bool isConnected() const;
+        static bool isConnected();
 
         enum class Event : uint8_t {
             None,
@@ -80,9 +80,10 @@ namespace Net {
         bool eventHandlerRegistered = false; // WiFi.onEvent appends; register only once
 
 #ifdef ARDUINO
-        void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info);
+        void onWiFiEvent(WiFiEvent_t& event, WiFiEventInfo_t& info);
         void applyEnergyConfig();
-        void logConnectionDetails() const;
+
+        static void logConnectionDetails();
 #endif
     };
 
