@@ -10,7 +10,7 @@ DarkModeStatusLed* testLed;
 
 void setUp() {
     testLed = new DarkModeStatusLed();
-    testLed->begin();
+    testLed->begin(0);
 }
 
 void tearDown() {

@@ -456,6 +456,8 @@ void Network::configureUsingAPMode() {
 
 [[noreturn]] void Network::task() {
 #ifdef ARDUINO
+    const unsigned long bootMs = millis(); // baseline for boot-relative checks (wrap-safe via subtraction)
+
     // Subscribe to the TWDT. setup() initializes the TWDT before creating this
     // task, so this should always succeed; log loudly if it does not, because an
     // unsubscribed task makes every esp_task_wdt_reset() in startSTA() and
@@ -469,7 +471,7 @@ void Network::configureUsingAPMode() {
 
     // Status LED is owned by main.cpp (top-level object); the network task
     // just drives it. begin() must be called once after construction.
-    statusLed.begin();
+    statusLed.begin(bootMs);
     // Dark-mode threshold must be in force before the first ON transition.
     statusLed.setDarkAfterSeconds(config.loadEnergyConfig().led_dark_after_s);
     statusLed.setState(LedState::STARTUP); // Indicate booting
@@ -609,7 +611,6 @@ void Network::configureUsingAPMode() {
     SyslogOutput::begin(syslogConfig);
 
     // Main loop - 1 s housekeeping: LED, actuator, MQTT, NTP, diagnostics
-    const unsigned long bootMs = millis(); // baseline for boot-relative checks (wrap-safe via subtraction)
     unsigned long lastSecond = millis();
     // Tracks when the previous 1 s block finished its work. Used together with
     // the new entry time to attribute long iterations to either in-block work
@@ -643,10 +644,13 @@ void Network::configureUsingAPMode() {
     static constexpr uint32_t MIN_FREE_INTERNAL_BYTES = 16384; // 16 KB
     static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 900000; // 15 minutes
     static constexpr unsigned long NTP_UNSYNCED_RETRY_MS = 60000; // 1 minute
+    static constexpr uint32_t TICK_MS_FINE = 1000;
+    static constexpr uint32_t TICK_MS_COARSE = 15000;
 
     static constexpr uint32_t WAKE_MARGIN_MS = 2;
     while (true) {
-        const uint32_t tickMs = statusLed.isDark(static_cast<uint32_t>(millis())) ? 15000 : 1000;
+        bool coarse_ticks = statusLed.isDark(static_cast<uint32_t>(millis()));
+        const uint32_t tickMs = coarse_ticks ? TICK_MS_COARSE : TICK_MS_FINE;
         const uint32_t sleepMs = (lastWorkMs < tickMs)
                                      ? (tickMs - lastWorkMs + WAKE_MARGIN_MS)
                                      : 1u;
@@ -915,7 +919,7 @@ void Network::configureUsingAPMode() {
                     if (lastMqttPublish == 0) lastMqttPublish = now;
 
                     bool isSettled = now - bootMs >= 60000;
-                    if (intervalMs > 0 && isSettled && (now - lastMqttPublish >= intervalMs)) {
+                    if (intervalMs > 0 && isSettled && (coarse_ticks || (now - lastMqttPublish >= intervalMs))) {
                         // Atomic snapshot: validity and data are read under the same lock,
                         // so we never publish stale measurements after a fresh read failed.
                         auto measurements = sensorController.getValidMeasurements();

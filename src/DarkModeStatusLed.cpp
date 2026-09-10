@@ -1,7 +1,8 @@
 #include "DarkModeStatusLed.h"
 
-void DarkModeStatusLed::begin() {
+void DarkModeStatusLed::begin(uint32_t nowMs) {
     led.begin();
+    onSinceMs = nowMs;
 }
 
 void DarkModeStatusLed::setState(LedState newState) {
