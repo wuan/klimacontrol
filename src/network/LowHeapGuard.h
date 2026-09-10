@@ -35,6 +35,14 @@ namespace Net {
          */
         bool sample(uint32_t freeInternalBytes);
 
+        /**
+         * Forget the current low streak. Called when an OTA update ends: the
+         * guard is not sampled while the download runs, so samples taken just
+         * before it started must not carry over and trip a restart on the
+         * first post-OTA tick.
+         */
+        void reset() { lowStreak = 0; }
+
         uint8_t streak() const { return lowStreak; }
 
     private:

@@ -228,6 +228,7 @@ void Network::handle_network_events(const uint32_t now) {
             if (otaWasActive) {
                 internetHealth.reset(startTime);
                 mqtt.resetBackoff();
+                lowHeapGuard.reset();
             }
 
             if (internetHealth.shouldForceReconnect(startTime)) {

@@ -13,34 +13,36 @@ namespace {
 
 void test_healthy_heap_never_restarts() {
     LowHeapGuard g;
-    for (int i = 0; i < 100; i++) TEST_ASSERT_FALSE(g.sample(OK, false));
+    for (int i = 0; i < 100; i++) TEST_ASSERT_FALSE(g.sample(OK));
     TEST_ASSERT_EQUAL_UINT8(0, g.streak());
 }
 
 void test_restart_only_after_streak() {
     LowHeapGuard g;
     for (uint8_t i = 1; i < LowHeapGuard::RESTART_STREAK; i++) {
-        TEST_ASSERT_FALSE(g.sample(LOW, false));
+        TEST_ASSERT_FALSE(g.sample(LOW));
         TEST_ASSERT_EQUAL_UINT8(i, g.streak());
     }
-    TEST_ASSERT_TRUE(g.sample(LOW, false));
+    TEST_ASSERT_TRUE(g.sample(LOW));
 }
 
 void test_transient_dip_resets_streak() {
     LowHeapGuard g;
-    for (uint8_t i = 1; i < LowHeapGuard::RESTART_STREAK; i++) g.sample(LOW, false);
-    TEST_ASSERT_FALSE(g.sample(OK, false));
+    for (uint8_t i = 1; i < LowHeapGuard::RESTART_STREAK; i++) g.sample(LOW);
+    TEST_ASSERT_FALSE(g.sample(OK));
     TEST_ASSERT_EQUAL_UINT8(0, g.streak());
-    TEST_ASSERT_FALSE(g.sample(LOW, false));
+    TEST_ASSERT_FALSE(g.sample(LOW));
     TEST_ASSERT_EQUAL_UINT8(1, g.streak());
 }
 
-void test_ota_samples_are_ignored_and_reset_streak() {
+void test_reset_clears_streak_after_ota() {
     LowHeapGuard g;
-    g.sample(LOW, false);
-    g.sample(LOW, false);
-    for (int i = 0; i < 20; i++) TEST_ASSERT_FALSE(g.sample(1024, true));
+    for (uint8_t i = 1; i < LowHeapGuard::RESTART_STREAK; i++) g.sample(LOW);
+    TEST_ASSERT_EQUAL_UINT8(LowHeapGuard::RESTART_STREAK - 1, g.streak());
+    g.reset();
     TEST_ASSERT_EQUAL_UINT8(0, g.streak());
+    TEST_ASSERT_FALSE(g.sample(LOW));
+    TEST_ASSERT_EQUAL_UINT8(1, g.streak());
 }
 
 int main() {
@@ -48,6 +50,6 @@ int main() {
     RUN_TEST(test_healthy_heap_never_restarts);
     RUN_TEST(test_restart_only_after_streak);
     RUN_TEST(test_transient_dip_resets_streak);
-    RUN_TEST(test_ota_samples_are_ignored_and_reset_streak);
+    RUN_TEST(test_reset_clears_streak_after_ota);
     return UNITY_END();
 }

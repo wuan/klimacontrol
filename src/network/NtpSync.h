@@ -42,11 +42,11 @@ namespace Net {
         /**
          * Periodic work; call once per second. Refreshes and retries report to
          * `health` so a dead internet link behind a live WiFi association is
-         * noticed. Nothing runs while `otaActive`: a stalled UDP exchange would
-         * block the task for the NTP timeout and its failure would be counted
-         * as an outage even though the link is merely saturated by the
-         * download. The clock tolerates the delay; the interval check re-fires
-         * as soon as OTA is done.
+         * noticed. The caller must not call this while an OTA update is in
+         * progress: a stalled UDP exchange would block the task for the NTP
+         * timeout and its failure would be counted as an outage even though
+         * the link is merely saturated by the download. The clock tolerates
+         * the delay; the interval check re-fires as soon as OTA is done.
          */
         void tick(uint32_t nowMs, InternetHealth &health);
 
