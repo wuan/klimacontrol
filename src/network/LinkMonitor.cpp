@@ -10,6 +10,7 @@ namespace Net {
         wasConnected = true;
         connectedSinceMs = nowMs;
         lastStableConnectMs = nowMs;
+        lastDisconnectMs.store(0);
     }
 
     LinkMonitor::Verdict LinkMonitor::poll(bool isConnected, uint32_t nowMs) {
