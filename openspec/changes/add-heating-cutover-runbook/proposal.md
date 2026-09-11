@@ -6,10 +6,10 @@ The heating actuator is a Shelly relay commanded over HTTP RPC, one channel per
 room. The hardware already exists and is already in service:
 
 ```
-  Heizverteiler1  shellypro4pm  192.168.110.152
-    ch0 Bad          ch1 Wohnzimmer     ch2 Charlotte   ch3 Gästebad
-  Heizverteiler2  shellypro4pm  192.168.110.168
-    ch0 Jungs        ch1 Schlafzimmer   ch2 Küche       ch3 Eingangsbereich
+  Heizverteiler1  shellypro4pm  192.168.1.110
+    ch0 Bad          ch1 Wohnzimmer     ch2 Kind 1   ch3 Gästebad
+  Heizverteiler2  shellypro4pm  192.168.1.111
+    ch0 Kind 2       ch1 Schlafzimmer   ch2 Küche    ch3 Eingangsbereich
 ```
 
 Eight zones. Three rooms currently have a KlimaControl device (Wohnzimmer,

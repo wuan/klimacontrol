@@ -134,7 +134,7 @@
 
 ## Hardware verification: run 2026-09-02, BLOCKED
 
-Flashed to the `Test` device (`F32EB0`, 192.168.110.243). Two pre-existing
+Flashed to the `Test` device. Two pre-existing
 defects surfaced; neither is caused by this change, but the second blocks it.
 
 ### Blocker 1 — NVS keys over the 15-character limit (FIXED, verified)

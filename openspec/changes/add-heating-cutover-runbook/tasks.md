@@ -4,30 +4,6 @@ Executed once per manifold, then once per zone. **Not blocked** — the actuator
 firmware shipped as `add-shelly-actuator`, over direct HTTP RPC rather than the
 MQTT transport this runbook was originally drafted against.
 
-## Inventory, as found 2026-09-02
-
-```
-Heizverteiler1  shellypro4pm-ece334f80800  192.168.110.152
-  ch0 Bad        ch1 Wohnzimmer   ch2 Charlotte   ch3 Gästebad
-Heizverteiler2  shellypro4pm-841fe897b5a4  192.168.110.168
-  ch0 Jungs      ch1 Schlafzimmer ch2 Küche       ch3 Eingangsbereich
-
-both: fw 2.0.0, HTTP auth disabled, enable_control=FALSE
-      mqtt enable=true, enable_rpc=FALSE — irrelevant to this design, leave as is
-all 8 channels: auto_off=FALSE, auto_off_delay=60, apower=0.0 W at ~234 V
-7 of 8:         initial_state=restore_last, in_mode=detached, source=HTTP_in
-Eingangsbereich: initial_state=match_input, in_mode=follow, source=init
-                 (driven by a physical input; candidate hydraulic bypass)
-
-KlimaControl devices: Klima Wohnzimmer, Klima Jungs, Klima Kueche,
-                      Klima Test (F32EB0, bench unit, 192.168.110.243)
-```
-
-Note `auto_off_delay=60` as found is **below** the firmware's `MIN_LEASE_S` of
-120 s, so a channel left at the factory delay is refused with
-`AutoOffTooShort` even after `auto_off` is enabled. The delay has to be raised,
-not just the flag flipped.
-
 ## Firmware capabilities this procedure relies on
 
 All shipped; listed so a gate failure can be attributed to the right side.
@@ -118,16 +94,7 @@ KlimaControl device reports everything G1–G3 need.
 
 ## Zone order
 
-- [ ] **Gästebad** first — no sensor competes for it, a guest bathroom nobody
-      will notice, and the bench device (`Klima Test`, 192.168.110.243) is free
-      to point at it. Rehearse the entire sequence including G4 and G5 here
-      before touching a room with a real sensor
-- [ ] Wohnzimmer — `Klima Wohnzimmer` exists
-- [ ] Jungs — `Klima Jungs` exists
-- [ ] Küche — `Klima Kueche` exists
-- [ ] Bad, Charlotte, Schlafzimmer — deferred, no sensor
-- [ ] Eingangsbereich — physically driven; likely stays legacy. Confirm whether
-      it is the hydraulic bypass before considering it at all
+Work through devices step by step
 
 ## Timing
 

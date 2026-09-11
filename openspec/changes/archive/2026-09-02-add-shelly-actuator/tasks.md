@@ -122,25 +122,6 @@ runbook's per-zone assignment step requires a terminal.
 
 Against the real Heizverteiler1, read-only — no zone was ever commanded.
 
-```
-assign -> 192.168.110.152 ch3 (Gästebad)
-  conformance      auto_off_disabled
-  detail           "Set auto_off=true on this channel: without it nothing
-                    closes the valve if this controller stops"
-  conforming       false
-  commanded_open   false      <- never commanded, which is the point
-  failed_requests  0          <- all three RPCs succeeded
-  observed         output=false power=0.0W  agreement=closed
-  defaults         cycle 1200s, travel 180s, safety 35C
-
-assign -> 192.168.110.9 (unrouted, every call times out)
-  sensor_timestamp deltas over 40 s:
-    4999 5010 5000 5000 6000 4999 5004   <- control loop untouched
-  conformance      not_read
-  observed_valid   false -> agreement "unknown", not a stale belief
-  commanded_open   false
-```
-
 ### Route shadowing, found and fixed
 
 `server.on("/api/actuator", ...)` builds a `Type::BackwardCompatible` matcher,
