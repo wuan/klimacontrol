@@ -426,4 +426,5 @@ Coverage report is automatically generated after running tests.
 
 ## License
 
-MIT
+This project is licensed under the Apache License, Version 2.0. See the
+[LICENSE](LICENSE) file for the full license text.
