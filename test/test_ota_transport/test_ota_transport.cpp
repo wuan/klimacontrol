@@ -7,7 +7,7 @@
 
 #include "unity.h"
 #include "ota/OTAConfig.h"
-#include "ota/RedirectScheme.h"
+#include "ota/http/RedirectScheme.h"
 #include "ota/VersionCompare.h"
 #include <cstring>
 #include <string>
@@ -15,7 +15,7 @@
 using Support::compareVersions;
 using Support::isExpectedFirmwareAsset;
 using Support::isNewerVersion;
-using Support::isSecureRedirectTarget;
+using OTA::Http::isSecureRedirectPrefix;
 
 void setUp() {}
 void tearDown() {}
@@ -64,7 +64,7 @@ void test_version_unparseable_tag_returns_zero() {
 // --- Redirect-scheme classification (see src/support/RedirectScheme.h) -------
 
 void test_redirect_absolute_https_is_accepted() {
-    TEST_ASSERT_TRUE(isSecureRedirectTarget(
+    TEST_ASSERT_TRUE(isSecureRedirectPrefix(
         "https://release-assets.githubusercontent.com/whatever"));
 }
 
@@ -72,25 +72,25 @@ void test_redirect_absolute_http_is_refused() {
     // A downgrade to cleartext on a redirect would silently lose both
     // confidentiality and the CA-bundle check on the hop that actually
     // carries the firmware image.
-    TEST_ASSERT_FALSE(isSecureRedirectTarget("http://example.com/firmware.bin"));
+    TEST_ASSERT_FALSE(isSecureRedirectPrefix("http://example.com/firmware.bin"));
 }
 
 void test_redirect_relative_path_is_accepted() {
     // A relative Location inherits the current request's scheme, which is
     // already HTTPS, so it is safe to follow.
-    TEST_ASSERT_TRUE(isSecureRedirectTarget("/path/to/firmware.bin"));
+    TEST_ASSERT_TRUE(isSecureRedirectPrefix("/path/to/firmware.bin"));
 }
 
 void test_redirect_null_is_refused() {
     // No header captured yet — the safe default is to refuse.
-    TEST_ASSERT_FALSE(isSecureRedirectTarget(nullptr));
+    TEST_ASSERT_FALSE(isSecureRedirectPrefix(nullptr));
 }
 
 void test_redirect_empty_string_is_refused() {
     // The caller resets redirectLocation[0] to '\0' at the top of each
     // iteration; the classifier must not treat the empty buffer as a
     // relative URL.
-    TEST_ASSERT_FALSE(isSecureRedirectTarget(""));
+    TEST_ASSERT_FALSE(isSecureRedirectPrefix(""));
 }
 
 void test_redirect_truncated_absolute_https_still_accepted() {
@@ -103,7 +103,7 @@ void test_redirect_truncated_absolute_https_still_accepted() {
     strncpy(truncated, longHttps, sizeof(truncated) - 1);
     truncated[sizeof(truncated) - 1] = '\0';
     TEST_ASSERT_EQUAL(31, strlen(truncated));
-    TEST_ASSERT_TRUE(isSecureRedirectTarget(truncated));
+    TEST_ASSERT_TRUE(isSecureRedirectPrefix(truncated));
 }
 
 void test_redirect_truncated_absolute_http_still_refused() {
@@ -115,7 +115,7 @@ void test_redirect_truncated_absolute_http_still_refused() {
     strncpy(truncated, longHttp, sizeof(truncated) - 1);
     truncated[sizeof(truncated) - 1] = '\0';
     TEST_ASSERT_EQUAL(31, strlen(truncated));
-    TEST_ASSERT_FALSE(isSecureRedirectTarget(truncated));
+    TEST_ASSERT_FALSE(isSecureRedirectPrefix(truncated));
 }
 
 // --- GitHub API URL composition --------------------------------------------

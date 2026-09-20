@@ -208,23 +208,8 @@ private:
 
     static constexpr int TIMEOUT_MS = 30000;
     static constexpr int CHUNK_SIZE = 4096;
-    // esp_http_client response (RX) buffer. Must be large enough to hold a
-    // whole HTTP response header block in a SINGLE esp_tls_conn_read(): GitHub's
-    // github.com 302 release-download redirect carries a ~3.6 KB
-    // Content-Security-Policy header (total header block ~5 KB) with a 0-byte
-    // body, sent as one small TLS record. mbedTLS decrypts the full record into
-    // its internal buffer on the first read; if our buffer is smaller than the
-    // record, the leftover plaintext stays buffered inside mbedTLS and is
-    // invisible to the socket poll() that esp_http_client's next read performs,
-    // so esp_http_client_fetch_headers() never reaches on_headers_complete and
-    // get_status_code() keeps its -1 init value ("No HTTP response"). 8 KB holds
-    // the current ~5 KB block with headroom for CSP growth.
-    //
-    // Applied to the check request too, not just the download: api.github.com
-    // happens to stream a body across many TLS records today (so the 512-byte
-    // default survives), but that is a property of GitHub's current framing,
-    // not something we should depend on.
-    static constexpr int HTTP_RX_BUFFER = 8192;
+    // HTTP transport constants and rationale live with the transport; see
+    // OTA::Http::kHttpRxBuffer in src/ota/http/HttpClient.h.
 
     // OTA memory floor, measured in *internal* SRAM only.
     //
@@ -250,8 +235,8 @@ private:
     //     they are not heap allocations at all;
     //   - CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096 sends every allocation
     //     larger than 4 KB to PSRAM first, which covers the 8 KB
-    //     HTTP_RX_BUFFER and mbedTLS's 16 KB record buffers (see
-    //     esp_mbedtls_mem_calloc in the .cpp);
+    //     OTA::Http::kHttpRxBuffer and mbedTLS's 16 KB record buffers (see
+    //     esp_mbedtls_mem_calloc in TlsAllocator.cpp);
     //   - what is left is the 2 KB TX buffer plus small lwIP/socket structures.
     // Hence a 4 KB largest-block requirement, and a total that keeps ~4 KB of
     // slack above Network's 16 KB restart threshold for WiFi RX during the

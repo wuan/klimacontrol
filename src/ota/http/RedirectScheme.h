@@ -1,9 +1,9 @@
-#ifndef KLIMACONTROL_REDIRECT_SCHEME_H
-#define KLIMACONTROL_REDIRECT_SCHEME_H
+#ifndef KLIMACONTROL_OTA_HTTP_REDIRECTSCHEME_H
+#define KLIMACONTROL_OTA_HTTP_REDIRECTSCHEME_H
 
 #include <cstring>
 
-namespace Support {
+namespace OTA::Http {
 
     /**
      * Classify the captured `Location` header from an HTTP redirect.
@@ -27,7 +27,7 @@ namespace Support {
      *
      * Pure C++, no Arduino-only headers. Safe to call from native tests.
      */
-    inline bool isSecureRedirectTarget(const char *location) {
+    inline bool isSecureRedirectPrefix(const char *location) {
         if (location == nullptr || location[0] == '\0') {
             return false;
         }
@@ -42,6 +42,6 @@ namespace Support {
         return strstr(location, "://") == nullptr;
     }
 
-} // namespace Support
+} // namespace OTA::Http
 
-#endif // KLIMACONTROL_REDIRECT_SCHEME_H
+#endif // KLIMACONTROL_OTA_HTTP_REDIRECTSCHEME_H

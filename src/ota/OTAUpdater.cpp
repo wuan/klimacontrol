@@ -6,171 +6,20 @@
 #include "OTAUpdater.h"
 #include "Config.h"
 #include "OTAConfig.h"
-#include "RedirectScheme.h"
+#include "ota/http/RedirectScheme.h"
 #include "VersionCompare.h"
 
 #ifdef ARDUINO
 #include <esp_http_client.h>
 #include <esp_heap_caps.h>
 #include "Log.h"
-#include <WiFi.h>
+#include "ota/http/HttpClient.h"
+#include "ota/http/HttpEventHandler.h"
+#include "ota/http/HttpReader.h"
+#include "ota/http/TlsAllocator.h"
 #include <cstring>
 
 static constexpr const char* const TAG = "ota";
-
-// The IDF esp_crt_bundle_attach uses the CA bundle embedded in the firmware binary.
-// We declare it directly because the Arduino WiFiClientSecure wrapper shadows the IDF header.
-extern "C" esp_err_t esp_crt_bundle_attach(void *conf);
-
-// Override the pre-compiled SDK's mbedTLS allocator.
-// The SDK version uses MALLOC_CAP_INTERNAL only, which fails on ESP32-S2 once
-// internal SRAM is fragmented.
-//
-// Routing rule mirrors CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096, i.e. what
-// plain malloc() does on this board: anything larger than 4 KB goes to PSRAM
-// first, small allocations stay internal, and both directions fall back to the
-// other pool. Preferring *internal* for the large blocks (as this override used
-// to do) is actively harmful here: mbedTLS asks for a 16 KB record buffer per
-// direction, so a single TLS session would swallow the entire internal pool the
-// WiFi/lwIP path needs to keep running during the download. Steady-state
-// internal free on this firmware is only ~24 KB.
-extern "C" void *esp_mbedtls_mem_calloc(size_t n, size_t size) {
-    // 4 KB, matching CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL.
-    constexpr size_t PSRAM_THRESHOLD = 4096;
-    const size_t total = n * size;
-    const uint32_t preferred = total > PSRAM_THRESHOLD ? MALLOC_CAP_SPIRAM : MALLOC_CAP_INTERNAL;
-    const uint32_t fallback = total > PSRAM_THRESHOLD ? MALLOC_CAP_INTERNAL : MALLOC_CAP_SPIRAM;
-
-    void *ptr = heap_caps_calloc(n, size, preferred | MALLOC_CAP_8BIT);
-    if (ptr == nullptr) {
-        ptr = heap_caps_calloc(n, size, fallback | MALLOC_CAP_8BIT);
-    }
-    return ptr;
-}
-
-extern "C" void esp_mbedtls_mem_free(void *ptr) {
-    heap_caps_free(ptr);
-}
-
-// Scheme prefix of the most recently seen Location header, captured by
-// otaHttpEventHandler so openWithRedirects() can refuse a downgrade to
-// cleartext before following the hop.
-//
-// A file-static is sufficient because the Activity claim serializes all OTA
-// HTTP: the check and the update are mutually exclusive, so only one client is
-// ever open. It also keeps this off the OTA task stacks, which run within ~2 KB
-// of their measured high-water marks — reconstructing the URL via
-// esp_http_client_get_url() would have needed a ~1 KB stack buffer to hold
-// GitHub's signed CDN URLs.
-static char redirectLocation[32];
-
-static esp_err_t otaHttpEventHandler(esp_http_client_event_t *evt) {
-    if (evt->event_id == HTTP_EVENT_ON_HEADER &&
-        evt->header_key != nullptr && evt->header_value != nullptr &&
-        strcasecmp(evt->header_key, "Location") == 0) {
-        // Only the scheme prefix matters; truncation is intentional.
-        strlcpy(redirectLocation, evt->header_value, sizeof(redirectLocation));
-    }
-    return ESP_OK;
-}
-
-// Streaming reader for ArduinoJson — reads directly from esp_http_client
-// so we don't need a large response buffer in RAM.
-struct EspHttpReader {
-    esp_http_client_handle_t client;
-
-    int read() {
-        char c;
-        int r = esp_http_client_read(client, &c, 1);
-        return r == 1 ? static_cast<unsigned char>(c) : -1;
-    }
-
-    size_t readBytes(char *buffer, size_t length) {
-        int r = esp_http_client_read(client, buffer, length);
-        return r > 0 ? static_cast<size_t>(r) : 0;
-    }
-};
-
-// RAII wrapper for esp_http_client lifecycle
-struct HttpClient {
-    esp_http_client_handle_t handle = nullptr;
-
-    explicit HttpClient(const esp_http_client_config_t &config)
-        : handle(esp_http_client_init(&config)) {}
-
-    ~HttpClient() {
-        if (handle) {
-            esp_http_client_close(handle);
-            esp_http_client_cleanup(handle);
-        }
-    }
-
-    HttpClient(const HttpClient &) = delete;
-    HttpClient &operator=(const HttpClient &) = delete;
-
-    explicit operator bool() const { return handle != nullptr; }
-
-    // Open connection, following redirects (up to maxRedirects hops).
-    // Returns the HTTP status code, or -1 on connection failure.
-    int openWithRedirects(int maxRedirects = 5) {
-        for (int i = 0; i < maxRedirects; i++) {
-            redirectLocation[0] = '\0';
-            esp_err_t err = esp_http_client_open(handle, 0);
-            if (err != ESP_OK) {
-                ESP_LOGE(TAG, "HTTP open failed: %s", esp_err_to_name(err));
-                return -1;
-            }
-
-            esp_http_client_fetch_headers(handle);
-            int status = esp_http_client_get_status_code(handle);
-
-            if (status <= 0) {
-                // open() succeeded (TLS connected) but no valid response line was
-                // parsed — typically the server dropped the connection after we
-                // sent a malformed/truncated request (e.g. TX buffer too small for
-                // a long redirect URL). status_code keeps its -1 init value.
-                ESP_LOGE(TAG, "No HTTP response (status %d) — connection dropped", status);
-                return -1;
-            }
-
-            if (status == 301 || status == 302 || status == 307 || status == 308) {
-                // The caller's host allowlist only covers the first hop, so
-                // enforce the transport on every subsequent one: a
-                // "Location: http://..." would otherwise be followed in
-                // cleartext, silently dropping both confidentiality and the
-                // CA-bundle check for the hop that actually carries the
-                // firmware image.
-                if (!Support::isSecureRedirectTarget(redirectLocation)) {
-                    ESP_LOGE(TAG, "Redirect refused: target is not HTTPS");
-                    return -1;
-                }
-                // Snapshot the URL we just fetched so the post-redirect log line
-                // can name both endpoints. esp_http_client_get_url() takes a
-                // caller buffer; we capture before set_redirection() because
-                // that call rewrites the handle's URL to the redirect target.
-                char currentHost[256] = "?";
-                esp_http_client_get_url(handle, currentHost, sizeof(currentHost));
-                esp_http_client_close(handle);
-                if (esp_http_client_set_redirection(handle) != ESP_OK) {
-                    ESP_LOGE(TAG, "Redirect failed: no Location header");
-                    return -1;
-                }
-                // Diagnostic only: when a hop later fails to connect, this
-                // names the URL we were navigating to instead of leaving the
-                // log to describe "Redirect refused: target is not HTTPS" with
-                // no host. Compiled out under CORE_DEBUG_LEVEL=0.
-                ESP_LOGD(TAG, "OTA hop %d: %s -> %s", i, currentHost, redirectLocation);
-                ESP_LOGI(TAG, "Following redirect (%d)...", status);
-                continue;
-            }
-            return status;
-        }
-        ESP_LOGE(TAG, "Too many redirects");
-        return -1;
-    }
-
-private:
-};
 
 // ============================================================================
 // Activity claim
@@ -212,20 +61,20 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     config.crt_bundle_attach = esp_crt_bundle_attach;
     // Captures Location headers so openWithRedirects() can reject a redirect
     // that would downgrade the transport to cleartext.
-    config.event_handler = otaHttpEventHandler;
-    // Same reasoning as the download path — see HTTP_RX_BUFFER. GitHub emits
-    // multi-kilobyte header blocks and we should not depend on its current TLS
-    // record framing to make the 512-byte default work.
-    config.buffer_size = HTTP_RX_BUFFER;
+    config.event_handler = OTA::Http::captureRedirectLocation;
+    // Same reasoning as the download path — see OTA::Http::kHttpRxBuffer.
+    // GitHub emits multi-kilobyte header blocks and we should not depend on
+    // its current TLS record framing to make the 512-byte default work.
+    config.buffer_size = OTA::Http::kHttpRxBuffer;
 
-    HttpClient client(config);
+    OTA::Http::HttpClient client(config);
     if (!client) {
         info.errorMessage = "HTTP client init failed";
         return false;
     }
 
-    esp_http_client_set_header(client.handle, "Accept", "application/vnd.github.v3+json");
-    esp_http_client_set_header(client.handle, "User-Agent", "ESP32-OTA/1.0");
+    esp_http_client_set_header(client.raw(), "Accept", "application/vnd.github.v3+json");
+    esp_http_client_set_header(client.raw(), "User-Agent", "ESP32-OTA/1.0");
 
     int statusCode = client.openWithRedirects();
     if (statusCode != 200) {
@@ -233,7 +82,7 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
         return false;
     }
 
-    EspHttpReader reader{client.handle};
+    OTA::Http::HttpReader reader{client.raw()};
 
     JsonDocument filter;
     filter["tag_name"] = true;
@@ -253,8 +102,8 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     // block trying to consume it, then close the connection to free TLS
     // buffers (~32KB) before we return.
     char discard[256];
-    while (esp_http_client_read(client.handle, discard, sizeof(discard)) > 0) {}
-    esp_http_client_close(client.handle);
+    while (esp_http_client_read(client.raw(), discard, sizeof(discard)) > 0) {}
+    esp_http_client_close(client.raw());
 
     info.version = doc["tag_name"].as<String>();
     info.name = doc["name"].as<String>();
@@ -344,13 +193,13 @@ bool OTAUpdater::performUpdate(
     config.crt_bundle_attach = esp_crt_bundle_attach;
     // Captures Location headers so openWithRedirects() can reject a redirect
     // that would downgrade the transport to cleartext.
-    config.event_handler = otaHttpEventHandler;
+    config.event_handler = OTA::Http::captureRedirectLocation;
     // RX buffer must hold GitHub's whole 302 redirect header block (~5 KB, with a
     // ~3.6 KB Content-Security-Policy line) in one read, or fetch_headers() stalls
     // and openWithRedirects() returns -1 ("No HTTP response") without ever
-    // following the redirect — see HTTP_RX_BUFFER. The default 512 and the
-    // CHUNK_SIZE (4096) are both smaller than that block.
-    config.buffer_size = HTTP_RX_BUFFER;
+    // following the redirect — see OTA::Http::kHttpRxBuffer. The default 512
+    // and the CHUNK_SIZE (4096) are both smaller than that block.
+    config.buffer_size = OTA::Http::kHttpRxBuffer;
     // github.com 302-redirects release downloads to a signed CDN URL
     // (release-assets.githubusercontent.com) whose path+query carries the full
     // AWS/JWT signature (~860 bytes). esp_http_client builds the entire redirect
@@ -358,7 +207,7 @@ bool OTAUpdater::performUpdate(
     // headroom over the default 512.
     config.buffer_size_tx = 2048;
 
-    HttpClient client(config);
+    OTA::Http::HttpClient client(config);
     if (!client) {
         return fail("HTTP client init failed");
     }
@@ -371,7 +220,7 @@ bool OTAUpdater::performUpdate(
         return false;
     }
 
-    int contentLength = esp_http_client_get_content_length(client.handle);
+    int contentLength = esp_http_client_get_content_length(client.raw());
     if (contentLength > 0 && static_cast<size_t>(contentLength) != expectedSize) {
         ESP_LOGE(TAG, "Size mismatch: expected %zu, got %d", expectedSize, contentLength);
         return fail("Download size does not match the release metadata");
@@ -398,7 +247,7 @@ bool OTAUpdater::performUpdate(
     unsigned long lastProgressLog = millis();
 
     while (totalRead < expectedSize) {
-        int bytesRead = esp_http_client_read(client.handle, reinterpret_cast<char *>(buffer),
+        int bytesRead = esp_http_client_read(client.raw(), reinterpret_cast<char *>(buffer),
                                               std::min(static_cast<size_t>(CHUNK_SIZE), expectedSize - totalRead));
 
         if (bytesRead <= 0) {
