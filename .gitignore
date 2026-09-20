@@ -4,6 +4,14 @@
 
 .idea
 
+# AI coding agent state (Claude, Junie, OpenCode) — local-only, never committed
+.claude/
+.junie/
+.opencode/
+
+# Per-developer direnv / shell environment (generated locally by direnv)
+scripts/.envrc
+
 # Auto-generated compressed web content
 src/generated/
 
