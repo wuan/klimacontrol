@@ -51,7 +51,10 @@ must do; the code is the implementation.
   `scripts/*.sh` is not shellcheck clean, or if `openspec/**` doesn't pass
   `openspec validate --all --strict`. Format manually with
   `clang-format -i <file>`; bypass with `git commit --no-verify` only when
-  you really mean it.
+  you really mean it. **Pinned to clang-format 19.1.7** — newer majors
+  (23+) reformat macro line-continuations differently, so locally install
+  via `pip install clang-format==19.1.7` (or `brew install llvm@19`); the
+  CI workflow installs the same wheel.
 
 ## Sensors
 

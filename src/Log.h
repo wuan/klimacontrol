@@ -31,8 +31,8 @@
 
 #define _KLIMA_LOG(letter, tag, format, ...) \
     do { \
-        Serial.printf("%08lu " #letter " %8s " format "\r\n", (unsigned long)(esp_timer_get_time() / 1000ULL), \
-                      tag, ##__VA_ARGS__); \
+        Serial.printf("%08lu " #letter " %8s " format "\r\n", (unsigned long)(esp_timer_get_time() / 1000ULL), tag, \
+                      ##__VA_ARGS__); \
         if (SyslogOutput::isActive()) { \
             char _syslog_buf[256]; \
             snprintf(_syslog_buf, sizeof(_syslog_buf), format, ##__VA_ARGS__); \
