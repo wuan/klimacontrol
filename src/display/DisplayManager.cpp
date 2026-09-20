@@ -24,28 +24,25 @@ namespace Display {
         // the snapshot rather than SensorController's individual accessors
         // keeps temperature, humidity and the validity flag describing the same
         // instant — each accessor takes the lock separately.
-        float floatFrom(const std::vector<Sensor::Measurement> &measurements,
-                        Sensor::MeasurementType type) {
-            const auto *m = Sensor::findMeasurement(measurements, type);
+        float floatFrom(const std::vector<Sensor::Measurement>& measurements, Sensor::MeasurementType type) {
+            const auto* m = Sensor::findMeasurement(measurements, type);
             if (m == nullptr) {
                 return NAN;
             }
-            const float *f = std::get_if<float>(&m->value);
+            const float* f = std::get_if<float>(&m->value);
             return f != nullptr ? *f : NAN;
         }
     } // namespace
 
-    DisplayManager::DisplayManager(SensorController &controller, Control::TemperatureController &control)
-        : controller(controller),
-          control(control),
-          policy(Config::DEFAULT_DISPLAY_INTERVAL) {
+    DisplayManager::DisplayManager(SensorController& controller, Control::TemperatureController& control)
+        : controller(controller), control(control), policy(Config::DEFAULT_DISPLAY_INTERVAL) {
         // Created here rather than lazily: this object is a file-scope
         // singleton, and on this core FreeRTOS is already running by the time
         // static constructors execute (SensorController does the same).
         panelMutex = xSemaphoreCreateMutex();
     }
 
-    bool DisplayManager::tryBeginForApInfo(const Config::DisplayConfig &config) {
+    bool DisplayManager::tryBeginForApInfo(const Config::DisplayConfig& config) {
         // Already up: the user has the normal status display enabled,
         // `setupDisplay()` brought the panel up at boot, and the same
         // panel can show the AP info on top of itself via showApInfo().
@@ -85,7 +82,7 @@ namespace Display {
         return true;
     }
 
-    bool DisplayManager::begin(const Config::DisplayConfig &config, const char *deviceNameIn) {
+    bool DisplayManager::begin(const Config::DisplayConfig& config, const char* deviceNameIn) {
         strlcpy(deviceName, deviceNameIn != nullptr ? deviceNameIn : "", sizeof(deviceName));
 
         policy = RefreshPolicy(config.interval);
@@ -98,8 +95,7 @@ namespace Display {
 
         panel.showSplash(deviceName);
         enabled = true;
-        ESP_LOGI(TAG, "Display enabled (rotation=%u, min interval=%u s)",
-                 config.rotation, config.interval);
+        ESP_LOGI(TAG, "Display enabled (rotation=%u, min interval=%u s)", config.rotation, config.interval);
         return true;
     }
 
@@ -154,7 +150,7 @@ namespace Display {
         }
     }
 
-    void DisplayManager::showApInfo(const char *ssid, const char *password, const char *ip) {
+    void DisplayManager::showApInfo(const char* ssid, const char* password, const char* ip) {
         if (!panel.isInitialised()) {
             return;
         }
@@ -195,7 +191,7 @@ namespace Display {
         }
     }
 
-    void DisplayManager::formatDateTime(char *out, size_t n) const {
+    void DisplayManager::formatDateTime(char* out, size_t n) const {
         if (out == nullptr || n == 0) {
             return;
         }
@@ -285,12 +281,10 @@ namespace Display {
             const float demandFraction = (control.getControlOutput() - outLo) / span;
             demandBucket = Display::nextDemandBucket(demandFraction, demandBucket);
 
-            const RefreshKind kind = policy.evaluate(temperature, humidity, snapshot.valid,
-                                                     millis(), clockMinute, target, controlState,
-                                                     demandBucket);
+            const RefreshKind kind = policy.evaluate(temperature, humidity, snapshot.valid, millis(), clockMinute,
+                                                     target, controlState, demandBucket);
             if (kind != RefreshKind::None) {
-                const bool available =
-                    snapshot.valid && !std::isnan(temperature) && !std::isnan(humidity);
+                const bool available = snapshot.valid && !std::isnan(temperature) && !std::isnan(humidity);
 
                 char tempStr[16];
                 char humStr[16];
@@ -311,8 +305,7 @@ namespace Display {
                 // Bare numbers: EPaperDisplay owns the unit decoration, because
                 // the degree mark has to be drawn geometrically (the GFX fonts
                 // only carry glyphs 0x20-0x7E) rather than printed.
-                panel.render(tempStr, humStr, deviceName, dateTime, controlState, setpointStr,
-                             demandBucket, kind);
+                panel.render(tempStr, humStr, deviceName, dateTime, controlState, setpointStr, demandBucket, kind);
             }
         }
 

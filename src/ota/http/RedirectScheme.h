@@ -27,7 +27,7 @@ namespace OTA::Http {
      *
      * Pure C++, no Arduino-only headers. Safe to call from native tests.
      */
-    inline bool isSecureRedirectPrefix(const char *location) {
+    inline bool isSecureRedirectPrefix(const char* location) {
         if (location == nullptr || location[0] == '\0') {
             return false;
         }

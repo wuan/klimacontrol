@@ -359,4 +359,3 @@ The Sensor Monitor task SHALL compute its tick once, when the task starts and af
 
 - **WHEN** the task's `vTaskDelay` returns one RTOS tick before the nominal sleep has elapsed
 - **THEN** because of `WAKE_MARGIN_MS` the next `readSensors(millis())` SHALL still find the default phase due, and no 15 s cycle SHALL be skipped
-

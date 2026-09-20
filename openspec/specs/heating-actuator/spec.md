@@ -206,4 +206,3 @@ away from its configured manifold.
   `deviceConfig.actuator_channel` SHALL be `-1` — the existing "host with
   no channel clears the assignment" behaviour is preserved for empty
   input as well
-

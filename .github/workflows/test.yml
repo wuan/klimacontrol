@@ -27,6 +27,31 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install clang-format 19 and shellcheck
+        # clang-format 19 is the canonical version for this repo — pinned
+        # here to match the version contributors should install locally
+        # (see AGENTS.md). Different clang-format major versions disagree
+        # on macro/line-continuation formatting, so a version mismatch
+        # silently re-formats files between local and CI. The pip wheel
+        # is bit-compatible with Homebrew's llvm@19, so contributors can
+        # use either.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'clang-format==19.1.7'
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          clang-format --version
+
+      - name: Run pre-commit hooks
+        # Mirrors the local pre-commit gate: clang-format, shellcheck,
+        # openspec validate, plus the standard hygiene hooks
+        # (whitespace, EOF newlines, YAML/JSON/TOML syntax, etc.).
+        # Fails fast so a formatting regression surfaces before the
+        # PlatformIO build kicks off.
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files --show-diff-on-failure
+
       - name: Install build-wrapper
         uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v8
 
@@ -70,9 +95,9 @@ jobs:
           SIZE=$(stat -c%s .pio/build/adafruit_qtpy_esp32s2/firmware.bin 2>/dev/null || stat -f%z .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.bin)
           SIZE_KB=$((SIZE / 1024))
           SIZE_MB=$((SIZE / 1024 / 1024))
-          
+
           echo "📦 Firmware Size: ${SIZE_KB}KB (${SIZE_MB}MB)"
-          
+
           # Check if firmware fits in partition (1856KB max)
           MAX_SIZE=$((1856 * 1024))
           if [ $SIZE -gt $MAX_SIZE ]; then

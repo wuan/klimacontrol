@@ -17,7 +17,7 @@
 void WebServerManager::setupStatusRoutes() {
 #ifdef ARDUINO
     // GET /api/status - Get device status
-    server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
         JsonDocument doc;
 
         // Device info
@@ -28,7 +28,7 @@ void WebServerManager::setupStatusRoutes() {
         doc["elevation"] = deviceConfig.elevation;
 
         // OTA partition info
-        const esp_partition_t *running_partition = esp_ota_get_running_partition();
+        const esp_partition_t* running_partition = esp_ota_get_running_partition();
         if (running_partition != nullptr) {
             doc["ota_partition"] = running_partition->label;
         }
@@ -47,7 +47,6 @@ void WebServerManager::setupStatusRoutes() {
             if (!isnan(dewPoint)) doc["dew_point"] = dewPoint;
             doc["sensor_timestamp"] = sensorController.getLastReadingTimestamp();
         }
-
 
         // Temperature control info
         doc["target_temperature"] = temperatureController.getTargetTemperature();
@@ -78,7 +77,7 @@ void WebServerManager::setupStatusRoutes() {
     });
 
     // GET /api/about - Device information
-    server.on("/api/about", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    server.on("/api/about", HTTP_GET, [this](AsyncWebServerRequest* request) {
         // Bumped to 1024: the about payload is fixed-size but large (chip,
         // memory, flash, network, sensor stats). The 512-byte baseline is
         // for the request hot path; /api/about is a one-shot diagnostic.
@@ -180,7 +179,7 @@ void WebServerManager::setupStatusRoutes() {
     // row). 2048 is the documented cap for this route; the 512-byte baseline
     // is for the request hot path, /api/measurements is the heaviest fixed
     // route in the API.
-    server.on("/api/measurements", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    server.on("/api/measurements", HTTP_GET, [this](AsyncWebServerRequest* request) {
         JsonDocument doc;
 
         doc["valid"] = sensorController.isDataValid();
@@ -188,13 +187,13 @@ void WebServerManager::setupStatusRoutes() {
 
         JsonArray rows = doc["measurements"].to<JsonArray>();
         if (sensorController.isDataValid()) {
-            for (const auto &m : sensorController.getMeasurements()) {
+            for (const auto& m : sensorController.getMeasurements()) {
                 auto row = rows.add<JsonObject>();
                 row["type"] = Sensor::measurementTypeLabel(m.type);
                 row["unit"] = Sensor::measurementTypeUnit(m.type);
                 row["sensor"] = m.sensor;
                 row["calculated"] = m.calculated;
-                if (const auto *i = std::get_if<int32_t>(&m.value)) {
+                if (const auto* i = std::get_if<int32_t>(&m.value)) {
                     row["value"] = *i;
                 } else {
                     row["value"] = std::get<float>(m.value);

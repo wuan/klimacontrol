@@ -2,8 +2,7 @@
 
 namespace Sensor {
 
-    TSL2591::TSL2591(uint8_t address) : I2CSensor(address) {
-    }
+    TSL2591::TSL2591(uint8_t address) : I2CSensor(address) {}
 
     bool TSL2591::begin() {
 #ifdef ARDUINO
@@ -23,8 +22,8 @@ namespace Sensor {
     }
 
     SensorReading TSL2591::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
-        (void) config;
-        (void) prior;
+        (void)config;
+        (void)prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();

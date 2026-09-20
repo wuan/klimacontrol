@@ -56,7 +56,7 @@ public:
     static constexpr uint32_t SLOT_EXPIRY_INTERVALS = 3;
 
 private:
-    Config::ConfigManager &config;
+    Config::ConfigManager& config;
     std::vector<std::unique_ptr<Sensor::Sensor>> sensors;
     std::vector<Sensor::Measurement> currentMeasurements;
     uint32_t lastReadingTimestamp;
@@ -66,9 +66,9 @@ private:
     // on the SensorMonitor task; readers see the union via currentMeasurements.
     struct SensorSlot {
         std::vector<Sensor::Measurement> measurements; // last valid reading + Time
-        uint32_t lastValidMs = 0;   // when `measurements` was taken
-        uint32_t lastReadMs = 0;    // when read() was last attempted
-        bool everRead = false;      // lastReadMs is meaningful
+        uint32_t lastValidMs = 0;                      // when `measurements` was taken
+        uint32_t lastReadMs = 0;                       // when read() was last attempted
+        bool everRead = false;                         // lastReadMs is meaningful
         bool valid = false;
     };
     std::vector<SensorSlot> slots;
@@ -81,13 +81,13 @@ private:
     bool defaultCycleRun = false;
 
     // Effective read interval for a sensor: its own requirement, or the system default.
-    static uint32_t effectiveIntervalMs(const Sensor::Sensor &sensor) {
+    static uint32_t effectiveIntervalMs(const Sensor::Sensor& sensor) {
         const uint32_t required = sensor.requiredIntervalMs();
         return required > 0 ? required : MEASUREMENT_INTERVAL_MS;
     }
 
     // Concatenate every valid slot, in sensor order, into `out`.
-    void collectValidSlots(std::vector<Sensor::Measurement> &out) const;
+    void collectValidSlots(std::vector<Sensor::Measurement>& out) const;
 
 #ifdef ARDUINO
     mutable SemaphoreHandle_t dataMutex;
@@ -96,7 +96,7 @@ private:
     // Used on the mutex-creation failure path to surface the error visibly.
     // ARDUINO-only: the failure path is the only consumer.
 #ifdef ARDUINO
-    DarkModeStatusLed *statusLed;
+    DarkModeStatusLed* statusLed;
 #endif
 
     void sortSensors();
@@ -125,7 +125,7 @@ public:
      *                  (e.g. in native unit tests). On the firmware, the
      *                  failure path drives this LED to the ERROR state.
      */
-    explicit SensorController(Config::ConfigManager &config, DarkModeStatusLed *statusLed);
+    explicit SensorController(Config::ConfigManager& config, DarkModeStatusLed* statusLed);
 
     /**
      * Test-only seam: returns true if the underlying mutex allocation failed
@@ -135,8 +135,8 @@ public:
     bool didFailMutexInit() const;
 
     // Delete copy constructor and assignment operator
-    SensorController(const SensorController &) = delete;
-    SensorController &operator=(const SensorController &) = delete;
+    SensorController(const SensorController&) = delete;
+    SensorController& operator=(const SensorController&) = delete;
 
     /**
      * Consistent point-in-time view of the measurement data, read under a single
@@ -158,9 +158,9 @@ public:
      * fragmentation.
      */
     struct ProcessValue {
-        float temperature = NAN;    // what getTemperature() would return
-        bool valid = false;         // what isDataValid() would return
-        uint32_t timestamp = 0;     // what getLastReadingTimestamp() would return
+        float temperature = NAN; // what getTemperature() would return
+        bool valid = false;      // what isDataValid() would return
+        uint32_t timestamp = 0;  // what getLastReadingTimestamp() would return
     };
 
     void begin();
@@ -257,7 +257,7 @@ public:
     bool isDataValid() const;
 
     size_t getSensorCount() const { return sensors.size(); }
-    Sensor::Sensor *getSensor(size_t index);
+    Sensor::Sensor* getSensor(size_t index);
 
     /**
      * Capacity of the internal sensor-list vector. Used by native tests to
@@ -275,7 +275,6 @@ public:
 
     uint32_t getTimeSinceLastReading() const;
     bool hasConnectedSensors() const;
-
 };
 
 #endif // SENSOR_CONTROLLER_H

@@ -37,7 +37,7 @@ namespace {
     // `lastPrior` captures the `prior` vector of the most recent call.
     class MockSensor : public S::Sensor {
     public:
-        const char *name;
+        const char* name;
         uint32_t interval;
         std::vector<S::MeasurementType> provides;
         std::vector<S::MeasurementType> needs;
@@ -47,24 +47,19 @@ namespace {
         int reads = 0;
         std::vector<S::Measurement> lastPrior;
 
-        MockSensor(const char *name, uint32_t interval,
-                   std::vector<S::MeasurementType> provides,
+        MockSensor(const char* name, uint32_t interval, std::vector<S::MeasurementType> provides,
                    std::vector<S::MeasurementType> needs = {})
-            : name(name), interval(interval), provides(std::move(provides)),
-              needs(std::move(needs)) {}
+            : name(name), interval(interval), provides(std::move(provides)), needs(std::move(needs)) {}
 
         bool begin() override { return true; }
-        const char *getType() const override { return name; }
+        const char* getType() const override { return name; }
         uint32_t requiredIntervalMs() const override { return interval; }
         S::TypeSpan providesMeasurements() const override {
             return {provides.data(), static_cast<uint8_t>(provides.size())};
         }
-        S::TypeSpan requiresMeasurements() const override {
-            return {needs.data(), static_cast<uint8_t>(needs.size())};
-        }
+        S::TypeSpan requiresMeasurements() const override { return {needs.data(), static_cast<uint8_t>(needs.size())}; }
 
-        S::SensorReading read(const S::ReadConfig &,
-                              const std::vector<S::Measurement> &prior) override {
+        S::SensorReading read(const S::ReadConfig&, const std::vector<S::Measurement>& prior) override {
             ++reads;
             lastPrior = prior;
             S::SensorReading r;
@@ -93,14 +88,12 @@ namespace {
     struct Rig {
         Config::ConfigManager config;
         SensorController controller{config, nullptr};
-        std::vector<MockSensor *> mocks;
+        std::vector<MockSensor*> mocks;
 
-        MockSensor *add(const char *name, uint32_t interval,
-                        std::vector<Sensor::MeasurementType> provides,
+        MockSensor* add(const char* name, uint32_t interval, std::vector<Sensor::MeasurementType> provides,
                         std::vector<Sensor::MeasurementType> needs = {}) {
-            auto sensor = std::make_unique<MockSensor>(name, interval, std::move(provides),
-                                                       std::move(needs));
-            MockSensor *raw = sensor.get();
+            auto sensor = std::make_unique<MockSensor>(name, interval, std::move(provides), std::move(needs));
+            MockSensor* raw = sensor.get();
             raw->tryBegin();
             controller.addSensor(std::move(sensor));
             mocks.push_back(raw);
@@ -108,9 +101,9 @@ namespace {
         }
     };
 
-    bool hasType(const std::vector<Sensor::Measurement> &ms, Sensor::MeasurementType type,
-                 const char *sensor = nullptr) {
-        for (const auto &m : ms) {
+    bool hasType(const std::vector<Sensor::Measurement>& ms, Sensor::MeasurementType type,
+                 const char* sensor = nullptr) {
+        for (const auto& m : ms) {
             if (m.type == type && (!sensor || m.sensor == sensor)) return true;
         }
         return false;
@@ -126,7 +119,7 @@ namespace {
 
 void test_base_sensor_has_no_interval_requirement() {
     MockSensor s("x", 0, TEMP_RH);
-    const Sensor::Sensor &base = s;
+    const Sensor::Sensor& base = s;
     TEST_ASSERT_EQUAL_UINT32(0, base.requiredIntervalMs());
 }
 
@@ -143,8 +136,8 @@ void test_measurement_interval_constant() {
 
 void test_first_cycle_reads_everything() {
     Rig rig;
-    auto *sht = rig.add("SHT", 0, TEMP_RH);
-    auto *sgp = rig.add("SGP", 1000, VOC, TEMP_RH);
+    auto* sht = rig.add("SHT", 0, TEMP_RH);
+    auto* sgp = rig.add("SGP", 1000, VOC, TEMP_RH);
 
     rig.controller.readSensors(T0);
 
@@ -154,7 +147,7 @@ void test_first_cycle_reads_everything() {
 
 void test_default_sensor_skipped_inside_interval() {
     Rig rig;
-    auto *sht = rig.add("SHT", 0, TEMP_RH);
+    auto* sht = rig.add("SHT", 0, TEMP_RH);
 
     rig.controller.readSensors(T0);
     rig.controller.readSensors(T0 + TICK);
@@ -164,7 +157,7 @@ void test_default_sensor_skipped_inside_interval() {
 
 void test_required_interval_sensor_read_every_tick() {
     Rig rig;
-    auto *sgp = rig.add("SGP", 1000, VOC);
+    auto* sgp = rig.add("SGP", 1000, VOC);
 
     rig.controller.readSensors(T0);
     rig.controller.readSensors(T0 + TICK);
@@ -175,8 +168,8 @@ void test_required_interval_sensor_read_every_tick() {
 
 void test_default_sensors_share_a_phase() {
     Rig rig;
-    auto *a = rig.add("A", 0, TEMP_RH);
-    auto *b = rig.add("B", 0, {MT::Pressure});
+    auto* a = rig.add("A", 0, TEMP_RH);
+    auto* b = rig.add("B", 0, {MT::Pressure});
 
     rig.controller.readSensors(T0);
     for (uint32_t t = TICK; t < INTERVAL; t += TICK) {
@@ -192,7 +185,7 @@ void test_default_sensors_share_a_phase() {
 
 void test_late_tick_shifts_phase_without_double_read() {
     Rig rig;
-    auto *sht = rig.add("SHT", 0, TEMP_RH);
+    auto* sht = rig.add("SHT", 0, TEMP_RH);
 
     rig.controller.readSensors(T0);
     rig.controller.readSensors(T0 + 16000);
@@ -209,9 +202,9 @@ void test_late_online_sensor_joins_shared_phase() {
     // A sensor that only comes Online after the first cycle is read on the
     // next shared phase, together with the others, not on its own timer.
     Rig rig;
-    auto *a = rig.add("A", 0, TEMP_RH);
+    auto* a = rig.add("A", 0, TEMP_RH);
     auto late = std::make_unique<MockSensor>("B", 0, std::vector<MT>{MT::Pressure});
-    MockSensor *b = late.get();
+    MockSensor* b = late.get();
     rig.controller.addSensor(std::move(late)); // Uninitialized: not read
 
     rig.controller.readSensors(T0);
@@ -231,7 +224,7 @@ void test_late_online_sensor_joins_shared_phase() {
 
 void test_measurements_persist_across_skipped_tick() {
     Rig rig;
-    auto *sht = rig.add("SHT", 0, TEMP_RH);
+    auto* sht = rig.add("SHT", 0, TEMP_RH);
     sht->temperature = 22.5f;
 
     rig.controller.readSensors(T0);
@@ -248,7 +241,7 @@ void test_measurements_persist_across_skipped_tick() {
 
 void test_failed_read_keeps_last_good_while_online() {
     Rig rig;
-    auto *sht = rig.add("SHT", 0, TEMP_RH);
+    auto* sht = rig.add("SHT", 0, TEMP_RH);
     sht->temperature = 22.5f;
 
     rig.controller.readSensors(T0);
@@ -267,12 +260,13 @@ void test_slot_cleared_when_sensor_leaves_online() {
     // expiry first, so drive the status directly via recordReadResult() and
     // tick only 1 s later.
     Rig rig;
-    auto *sht = rig.add("SHT", 0, TEMP_RH);
+    auto* sht = rig.add("SHT", 0, TEMP_RH);
 
     rig.controller.readSensors(T0);
     TEST_ASSERT_TRUE(rig.controller.isDataValid());
 
-    for (int i = 0; i < 10; ++i) sht->recordReadResult(false);
+    for (int i = 0; i < 10; ++i)
+        sht->recordReadResult(false);
     TEST_ASSERT_EQUAL(Sensor::SensorStatus::ReadFailing, sht->getStatus());
 
     rig.controller.readSensors(T0 + TICK);
@@ -283,7 +277,7 @@ void test_slot_cleared_when_sensor_leaves_online() {
 
 void test_slot_expires_after_three_missed_intervals() {
     Rig rig;
-    auto *sht = rig.add("SHT", 0, TEMP_RH);
+    auto* sht = rig.add("SHT", 0, TEMP_RH);
 
     rig.controller.readSensors(T0);
     sht->nextValid = false;
@@ -301,7 +295,7 @@ void test_slot_expires_after_three_missed_intervals() {
 
 void test_required_interval_sensor_expiry_uses_its_own_interval() {
     Rig rig;
-    auto *sgp = rig.add("SGP", 1000, VOC);
+    auto* sgp = rig.add("SGP", 1000, VOC);
 
     rig.controller.readSensors(T0);
     sgp->nextValid = false;
@@ -313,8 +307,8 @@ void test_required_interval_sensor_expiry_uses_its_own_interval() {
 
 void test_snapshot_order_follows_sensor_order() {
     Rig rig;
-    auto *first = rig.add("FIRST", 0, TEMP_RH);
-    auto *second = rig.add("SECOND", 0, TEMP_RH);
+    auto* first = rig.add("FIRST", 0, TEMP_RH);
+    auto* second = rig.add("SECOND", 0, TEMP_RH);
     first->temperature = 20.0f;
     second->temperature = 25.0f;
 
@@ -345,8 +339,8 @@ void test_snapshot_timestamp_advances_only_on_a_successful_read() {
 
 void test_dependent_sees_cached_inputs_between_provider_reads() {
     Rig rig;
-    auto *sht = rig.add("SHT", 0, TEMP_RH);
-    auto *sgp = rig.add("SGP", 1000, VOC, TEMP_RH);
+    auto* sht = rig.add("SHT", 0, TEMP_RH);
+    auto* sgp = rig.add("SGP", 1000, VOC, TEMP_RH);
     sht->temperature = 23.0f;
 
     rig.controller.readSensors(T0);
@@ -356,22 +350,22 @@ void test_dependent_sees_cached_inputs_between_provider_reads() {
     TEST_ASSERT_EQUAL(2, sgp->reads);
     TEST_ASSERT_TRUE(hasType(sgp->lastPrior, MT::Temperature, "SHT"));
     TEST_ASSERT_TRUE(hasType(sgp->lastPrior, MT::RelativeHumidity, "SHT"));
-    const auto *t = Sensor::findMeasurement(sgp->lastPrior, MT::Temperature);
+    const auto* t = Sensor::findMeasurement(sgp->lastPrior, MT::Temperature);
     TEST_ASSERT_NOT_NULL(t);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 23.0f, std::get<float>(t->value));
 }
 
 void test_same_tick_provider_is_seen_fresh() {
     Rig rig;
-    auto *sht = rig.add("SHT", 0, TEMP_RH);
-    auto *sgp = rig.add("SGP", 1000, VOC, TEMP_RH);
+    auto* sht = rig.add("SHT", 0, TEMP_RH);
+    auto* sgp = rig.add("SGP", 1000, VOC, TEMP_RH);
 
     sht->temperature = 20.0f;
     rig.controller.readSensors(T0);
 
     sht->temperature = 26.0f;
     rig.controller.readSensors(T0 + INTERVAL); // both due, SHT first
-    const auto *t = Sensor::findMeasurement(sgp->lastPrior, MT::Temperature);
+    const auto* t = Sensor::findMeasurement(sgp->lastPrior, MT::Temperature);
     TEST_ASSERT_NOT_NULL(t);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 26.0f, std::get<float>(t->value));
 }
@@ -381,7 +375,7 @@ void test_prior_has_no_inputs_before_provider_ever_read() {
     Rig rig;
     auto provider = std::make_unique<MockSensor>("SHT", 0, TEMP_RH);
     rig.controller.addSensor(std::move(provider)); // never tryBegin'd
-    auto *sgp = rig.add("SGP", 1000, VOC, TEMP_RH);
+    auto* sgp = rig.add("SGP", 1000, VOC, TEMP_RH);
 
     rig.controller.readSensors(T0);
     TEST_ASSERT_EQUAL(1, sgp->reads);
@@ -424,8 +418,9 @@ void test_min_read_interval_counts_offline_sensors() {
     // the tick already running at its rate when it comes online.
     Rig rig;
     rig.add("SHT", 0, TEMP_RH);
-    auto *sgp = rig.add("SGP", 1000, VOC);
-    for (int i = 0; i < 10; ++i) sgp->recordReadResult(false);
+    auto* sgp = rig.add("SGP", 1000, VOC);
+    for (int i = 0; i < 10; ++i)
+        sgp->recordReadResult(false);
     TEST_ASSERT_EQUAL(Sensor::SensorStatus::ReadFailing, sgp->getStatus());
     TEST_ASSERT_EQUAL_UINT32(1000, rig.controller.minReadIntervalMs());
 }

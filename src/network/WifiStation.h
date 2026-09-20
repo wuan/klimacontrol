@@ -19,7 +19,7 @@ namespace Net {
      * Human-readable name for an esp_wifi_types disconnect reason code.
      * Arduino-only: the WIFI_REASON_* constants come from the ESP-IDF.
      */
-    const char *wifiDisconnectReasonStr(uint8_t reason);
+    const char* wifiDisconnectReasonStr(uint8_t reason);
 
     /**
      * Station-mode WiFi: brings the radio up and associates at boot, then
@@ -29,17 +29,17 @@ namespace Net {
      */
     class WifiStation {
     public:
-        explicit WifiStation(Config::ConfigManager &config) : config(config) {}
+        explicit WifiStation(Config::ConfigManager& config) : config(config) {}
 
-        WifiStation(const WifiStation &) = delete;
-        WifiStation &operator=(const WifiStation &) = delete;
+        WifiStation(const WifiStation&) = delete;
+        WifiStation& operator=(const WifiStation&) = delete;
 
         /**
          * Initialise the radio and associate with `ssid`. Blocks for up to
          * MAX_CONNECT_TRIES attempts of ~15 s each plus back-off, feeding the
          * task watchdog while it waits. Returns true when connected.
          */
-        bool connect(const char *ssid, const char *password);
+        bool connect(const char* ssid, const char* password);
 
         static bool isConnected();
 
@@ -68,14 +68,14 @@ namespace Net {
          */
         static void forceReconnect();
 
-        [[nodiscard]] const LinkMonitor &monitor() const { return link; }
+        [[nodiscard]] const LinkMonitor& monitor() const { return link; }
 
     private:
         static constexpr int MAX_CONNECT_TRIES = 3;
         static constexpr int MAX_WAIT_SLOTS = 30; // x 500 ms per attempt
         static constexpr int BACKOFF_MS = 3000;
 
-        Config::ConfigManager &config;
+        Config::ConfigManager& config;
         LinkMonitor link;
         bool eventHandlerRegistered = false; // WiFi.onEvent appends; register only once
 

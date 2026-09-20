@@ -207,19 +207,23 @@ void test_angle_bracket_rejected() {
 }
 
 void test_non_printable_below_0x20_rejected() {
-    TEST_ASSERT_FALSE(Support::isValidActuatorHost("a\x01""b"));
-    TEST_ASSERT_FALSE(Support::isValidActuatorHost("a\x1f""b"));
+    TEST_ASSERT_FALSE(Support::isValidActuatorHost("a\x01"
+                                                   "b"));
+    TEST_ASSERT_FALSE(Support::isValidActuatorHost("a\x1f"
+                                                   "b"));
 }
 
 void test_del_byte_rejected() {
     // 0x7F is DEL, not in any printable range.
-    TEST_ASSERT_FALSE(Support::isValidActuatorHost("a\x7f""b"));
+    TEST_ASSERT_FALSE(Support::isValidActuatorHost("a\x7f"
+                                                   "b"));
 }
 
 void test_high_byte_rejected() {
     // UTF-8 multi-byte sequences: a single 0xC3 byte is not a valid UTF-8
     // lead-and-trail and is certainly not in the DNS-name character class.
-    TEST_ASSERT_FALSE(Support::isValidActuatorHost("a\xc3\x9f""b"));
+    TEST_ASSERT_FALSE(Support::isValidActuatorHost("a\xc3\x9f"
+                                                   "b"));
 }
 
 // --- The full SSRF attack matrix from the design ---

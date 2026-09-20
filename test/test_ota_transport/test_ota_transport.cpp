@@ -12,10 +12,10 @@
 #include <cstring>
 #include <string>
 
+using OTA::Http::isSecureRedirectPrefix;
 using Support::compareVersions;
 using Support::isExpectedFirmwareAsset;
 using Support::isNewerVersion;
-using OTA::Http::isSecureRedirectPrefix;
 
 void setUp() {}
 void tearDown() {}
@@ -64,8 +64,7 @@ void test_version_unparseable_tag_returns_zero() {
 // --- Redirect-scheme classification (see src/support/RedirectScheme.h) -------
 
 void test_redirect_absolute_https_is_accepted() {
-    TEST_ASSERT_TRUE(isSecureRedirectPrefix(
-        "https://release-assets.githubusercontent.com/whatever"));
+    TEST_ASSERT_TRUE(isSecureRedirectPrefix("https://release-assets.githubusercontent.com/whatever"));
 }
 
 void test_redirect_absolute_http_is_refused() {
@@ -98,8 +97,7 @@ void test_redirect_truncated_absolute_https_still_accepted() {
     // so an absolute URL longer than 31 bytes is truncated. The classifier
     // must still recognise the https:// prefix in the truncated prefix.
     char truncated[32] = {};
-    const char *longHttps =
-        "https://github.com/wuan/klimacontrol/releases/download/v0.0.74/firmware.bin";
+    const char* longHttps = "https://github.com/wuan/klimacontrol/releases/download/v0.0.74/firmware.bin";
     strncpy(truncated, longHttps, sizeof(truncated) - 1);
     truncated[sizeof(truncated) - 1] = '\0';
     TEST_ASSERT_EQUAL(31, strlen(truncated));
@@ -110,8 +108,7 @@ void test_redirect_truncated_absolute_http_still_refused() {
     // Same truncation behaviour must still classify a cleartext target
     // as refused — the prefix check is the whole point.
     char truncated[32] = {};
-    const char *longHttp =
-        "http://malicious.example.com/very/long/path/to/firmware.bin";
+    const char* longHttp = "http://malicious.example.com/very/long/path/to/firmware.bin";
     strncpy(truncated, longHttp, sizeof(truncated) - 1);
     truncated[sizeof(truncated) - 1] = '\0';
     TEST_ASSERT_EQUAL(31, strlen(truncated));
@@ -127,31 +124,24 @@ void test_github_api_url_is_composed_from_constants() {
     // starts failing to find releases.
     const std::string owner = "wuan";
     const std::string repo = "klimacontrol";
-    const std::string url = std::string(OTA_GITHUB_API_HOST)
-        + "repos/" + owner + "/" + repo + "/releases/latest";
-    TEST_ASSERT_EQUAL_STRING(
-        "https://api.github.com/repos/wuan/klimacontrol/releases/latest",
-        url.c_str());
+    const std::string url = std::string(OTA_GITHUB_API_HOST) + "repos/" + owner + "/" + repo + "/releases/latest";
+    TEST_ASSERT_EQUAL_STRING("https://api.github.com/repos/wuan/klimacontrol/releases/latest", url.c_str());
 }
 
 // --- GitHub release-host allowlist (first-hop prefix check) -----------------
 
 void test_host_allowlist_accepts_github_release_url() {
-    TEST_ASSERT_EQUAL_STRING(
-        "https://github.com/", OTA_GITHUB_RELEASE_HOST);
+    TEST_ASSERT_EQUAL_STRING("https://github.com/", OTA_GITHUB_RELEASE_HOST);
     // info.downloadUrl.startsWith(OTA_GITHUB_RELEASE_HOST) in production.
-    const std::string downloadUrl =
-        "https://github.com/wuan/klimacontrol/releases/download/v0.0.74/firmware.bin";
-    TEST_ASSERT_EQUAL_INT(0,
-        downloadUrl.compare(0, strlen(OTA_GITHUB_RELEASE_HOST), OTA_GITHUB_RELEASE_HOST));
+    const std::string downloadUrl = "https://github.com/wuan/klimacontrol/releases/download/v0.0.74/firmware.bin";
+    TEST_ASSERT_EQUAL_INT(0, downloadUrl.compare(0, strlen(OTA_GITHUB_RELEASE_HOST), OTA_GITHUB_RELEASE_HOST));
 }
 
 void test_host_allowlist_rejects_non_github_host() {
     // Mirrors production: !info.downloadUrl.startsWith(OTA_GITHUB_RELEASE_HOST)
     // refuses the update. The prefix check on this URL must return false.
     const std::string downloadUrl = "https://example.com/firmware.bin";
-    TEST_ASSERT_NOT_EQUAL(0,
-        downloadUrl.compare(0, strlen(OTA_GITHUB_RELEASE_HOST), OTA_GITHUB_RELEASE_HOST));
+    TEST_ASSERT_NOT_EQUAL(0, downloadUrl.compare(0, strlen(OTA_GITHUB_RELEASE_HOST), OTA_GITHUB_RELEASE_HOST));
 }
 
 // --- Asset-name strict match (see Support::isExpectedFirmwareAsset) ---------

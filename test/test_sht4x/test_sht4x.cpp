@@ -25,10 +25,8 @@ namespace {
             SensorReading r;
             r.valid = readValid;
             if (readValid) {
-                r.measurements.push_back(
-                    {MeasurementType::Temperature, temperature, "SHT4x", false});
-                r.measurements.push_back(
-                    {MeasurementType::RelativeHumidity, humidity, "SHT4x", false});
+                r.measurements.push_back({MeasurementType::Temperature, temperature, "SHT4x", false});
+                r.measurements.push_back({MeasurementType::RelativeHumidity, humidity, "SHT4x", false});
             }
             return r;
         }
@@ -36,11 +34,8 @@ namespace {
         const char* getType() const override { return "SHT4x"; }
 
         [[nodiscard]] TypeSpan providesMeasurements() const override {
-            static constexpr MeasurementType types[] = {
-                MeasurementType::Temperature,
-                MeasurementType::RelativeHumidity,
-                MeasurementType::DewPoint
-            };
+            static constexpr MeasurementType types[] = {MeasurementType::Temperature, MeasurementType::RelativeHumidity,
+                                                        MeasurementType::DewPoint};
             return {types, 3};
         }
     };

@@ -28,7 +28,7 @@ namespace Support {
 
     // Applied when nothing is configured, or when the stored value is unusable.
     // Reproduces the firmware's pre-timezone behaviour of showing UTC.
-    constexpr const char *DEFAULT_TIMEZONE = "UTC0";
+    constexpr const char* DEFAULT_TIMEZONE = "UTC0";
 
     // Longest POSIX string accepted, excluding the terminator. Real-world rule
     // strings run to ~35 characters.
@@ -42,7 +42,7 @@ namespace Support {
      * a corrupted NVS read degrades to UTC rather than to undefined tzset()
      * behaviour.
      */
-    void applyTimezone(const char *tz);
+    void applyTimezone(const char* tz);
 
     /**
      * Shape check for a POSIX TZ string.
@@ -53,7 +53,7 @@ namespace Support {
      * is malformed is interpreted by tzset() as UTC, which is the same outcome
      * as no configuration at all.
      */
-    bool isPlausibleTimezone(const char *tz);
+    bool isPlausibleTimezone(const char* tz);
 
     /**
      * Format `epoch` as "HH:MM" in the configured zone.
@@ -64,13 +64,13 @@ namespace Support {
      * "NTP not yet synced" sentinel. Rendering the Unix epoch's local
      * representation (01:00 in CET) would be actively misleading.
      */
-    size_t formatLocalHhMm(char *out, size_t n, uint32_t epoch);
+    size_t formatLocalHhMm(char* out, size_t n, uint32_t epoch);
 
     /**
      * Format `epoch` as "YYYY-MM-DD" in the configured zone. Same sentinel and
      * null-safety behaviour as formatLocalHhMm().
      */
-    size_t formatLocalDate(char *out, size_t n, uint32_t epoch);
+    size_t formatLocalDate(char* out, size_t n, uint32_t epoch);
 
     /**
      * Format `epoch` as "YY-MM-DD HH:MM" in the configured zone — a two-digit
@@ -81,7 +81,7 @@ namespace Support {
      * Needs a 15-byte buffer. A shorter one truncates rather than overflowing,
      * as with the other formatters here.
      */
-    size_t formatLocalDateHhMm(char *out, size_t n, uint32_t epoch);
+    size_t formatLocalDateHhMm(char* out, size_t n, uint32_t epoch);
 
 } // namespace Support
 

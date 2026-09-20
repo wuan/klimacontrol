@@ -35,7 +35,7 @@ namespace I2CScanner {
     };
     static constexpr size_t REGISTRY_COUNT = sizeof(REGISTRY) / sizeof(REGISTRY[0]);
 
-    const SensorInfo* getRegistry(size_t &count) {
+    const SensorInfo* getRegistry(size_t& count) {
         count = REGISTRY_COUNT;
         return REGISTRY;
     }

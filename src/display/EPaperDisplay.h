@@ -77,7 +77,7 @@ namespace Display {
         /**
          * Full-refresh a boot splash showing the device name.
          */
-        void showSplash(const char *deviceName);
+        void showSplash(const char* deviceName);
 
         /**
          * Full-refresh a dedicated AP-info screen. Assumes `begin()`
@@ -95,7 +95,7 @@ namespace Display {
          * @param password AP password, e.g. "abcdef01"
          * @param ip       AP IP address, typically "192.168.4.1"
          */
-        void showApInfo(const char *ssid, const char *password, const char *ip);
+        void showApInfo(const char* ssid, const char* password, const char* ip);
 
         /**
          * Paint the current values.
@@ -120,10 +120,8 @@ namespace Display {
          * @param kind        Partial repaints the value+footer window; Full also
          *                    clears ghosting
          */
-        void render(const char *tempStr, const char *humStr,
-                    const char *footerName, const char *footerDateTime,
-                    ControlState controlState, const char *setpointStr,
-                    uint8_t demandSegments, RefreshKind kind);
+        void render(const char* tempStr, const char* humStr, const char* footerName, const char* footerDateTime,
+                    ControlState controlState, const char* setpointStr, uint8_t demandSegments, RefreshKind kind);
 
         /**
          * Blank the panel to white. Used on the disable path — e-paper retains
@@ -163,19 +161,17 @@ namespace Display {
         // callers must set the font they need next.
         void drawHeader();
 
-        void drawMeasurements(const char *tempStr, const char *humStr);
+        void drawMeasurements(const char* tempStr, const char* humStr);
 
-        void drafFooter(const char *footerName, const char *footerDateTime, Display::ControlState controlState,
-                        const char *setpointStr, uint8_t demandSegments);
+        void drafFooter(const char* footerName, const char* footerDateTime, Display::ControlState controlState,
+                        const char* setpointStr, uint8_t demandSegments);
 
-        void runPagedDraw(const char *tempStr, const char *humStr,
-                          const char *footerName, const char *footerDateTime,
-                          ControlState controlState, const char *setpointStr,
-                          uint8_t demandSegments);
+        void runPagedDraw(const char* tempStr, const char* humStr, const char* footerName, const char* footerDateTime,
+                          ControlState controlState, const char* setpointStr, uint8_t demandSegments);
 
         // Records the duration of a completed panel operation and trips the
         // fault guard when the timeout streak is reached.
-        void noteDuration(uint32_t elapsedMs, const char *what);
+        void noteDuration(uint32_t elapsedMs, const char* what);
     };
 
 } // namespace Display

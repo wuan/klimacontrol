@@ -29,7 +29,9 @@
 
 namespace HardwareWatchdog {
 
-    inline const char *TAG() { return "hwwdt"; }
+    inline const char* TAG() {
+        return "hwwdt";
+    }
 
     // Enable the RTC watchdog with the given timeout (ms). Call once, after the
     // tasks that keep loop() fed are running.
@@ -44,7 +46,7 @@ namespace HardwareWatchdog {
         rtc_wdt_protect_on();
         ESP_LOGI(TAG(), "RTC hardware watchdog enabled (%u ms)", timeoutMs);
 #else
-        (void) timeoutMs;
+        (void)timeoutMs;
         ESP_LOGW(TAG(), "RTC hardware watchdog unavailable on IDF >= 5; "
                         "relying on task watchdog only");
 #endif

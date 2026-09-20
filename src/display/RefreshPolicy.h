@@ -110,9 +110,8 @@ namespace Display {
          *                     this is a plain comparison, not another threshold.
          * @return What kind of refresh to perform, if any
          */
-        RefreshKind evaluate(float temperature, float humidity, bool valid, uint32_t nowMs,
-                             uint32_t clockMinute = 0, float setpoint = NAN,
-                             ControlState controlState = ControlState::INACTIVE,
+        RefreshKind evaluate(float temperature, float humidity, bool valid, uint32_t nowMs, uint32_t clockMinute = 0,
+                             float setpoint = NAN, ControlState controlState = ControlState::INACTIVE,
                              uint8_t demandBucket = 0);
 
         /**
@@ -135,8 +134,8 @@ namespace Display {
     private:
         uint16_t minIntervalSec;
 
-        bool everPainted = false;    // false until the first refresh is returned
-        bool lastValid = false;      // validity of the last *rendered* values
+        bool everPainted = false; // false until the first refresh is returned
+        bool lastValid = false;   // validity of the last *rendered* values
         float lastTemperature = 0.0f;
         float lastHumidity = 0.0f;
         uint32_t lastRefreshMs = 0;
@@ -149,22 +148,21 @@ namespace Display {
         // Records the values a refresh is about to render and returns `kind`.
         // Only called when a refresh actually happens, so a change suppressed
         // by the interval floor stays outstanding and fires on a later tick.
-        RefreshKind commit(RefreshKind kind, float temperature, float humidity,
-                           bool valid, uint32_t nowMs, uint32_t clockMinute,
-                           float setpoint, ControlState controlState, uint8_t demandBucket);
+        RefreshKind commit(RefreshKind kind, float temperature, float humidity, bool valid, uint32_t nowMs,
+                           uint32_t clockMinute, float setpoint, ControlState controlState, uint8_t demandBucket);
     };
 
     /**
      * Format a temperature for the panel: one decimal place, or "--.-" when the
      * value is unavailable. Returns the number of characters written.
      */
-    size_t formatTemperature(char *out, size_t n, float value, bool valid);
+    size_t formatTemperature(char* out, size_t n, float value, bool valid);
 
     /**
      * Format a relative humidity for the panel: whole number, or "--" when the
      * value is unavailable. Returns the number of characters written.
      */
-    size_t formatHumidity(char *out, size_t n, float value, bool valid);
+    size_t formatHumidity(char* out, size_t n, float value, bool valid);
 
 } // namespace Display
 

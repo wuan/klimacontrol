@@ -37,8 +37,7 @@ static std::string readStatusRoutesSource() {
 
 void test_status_routes_emits_largest_free_block_field() {
     const std::string src = readStatusRoutesSource();
-    TEST_ASSERT_FALSE_MESSAGE(src.empty(),
-        "could not open src/routes/StatusRoutes.cpp from project root");
+    TEST_ASSERT_FALSE_MESSAGE(src.empty(), "could not open src/routes/StatusRoutes.cpp from project root");
 
     // The contract is that the field is present in BOTH /api/status and
     // /api/about (the latter is the new home for the field in the web UI;
@@ -47,7 +46,7 @@ void test_status_routes_emits_largest_free_block_field() {
     // and the call is gated on #ifdef ARDUINO so the native build still
     // compiles.
     TEST_ASSERT_TRUE_MESSAGE(src.find("\"largest_free_block\"") != std::string::npos,
-        "StatusRoutes.cpp must emit a 'largest_free_block' JSON key");
+                             "StatusRoutes.cpp must emit a 'largest_free_block' JSON key");
 
     // The doc["largest_free_block"] assignment must appear at least twice
     // — once in the /api/status handler (memory-management spec) and once
@@ -61,14 +60,15 @@ void test_status_routes_emits_largest_free_block_field() {
         count++;
         pos += assignment.size();
     }
-    TEST_ASSERT_GREATER_OR_EQUAL_UINT32_MESSAGE(2, count,
-        "StatusRoutes.cpp must emit 'largest_free_block' in BOTH /api/status and /api/about");
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32_MESSAGE(
+        2, count, "StatusRoutes.cpp must emit 'largest_free_block' in BOTH /api/status and /api/about");
 
     TEST_ASSERT_TRUE_MESSAGE(src.find("heap_caps_get_largest_free_block") != std::string::npos,
-        "StatusRoutes.cpp must source the value from heap_caps_get_largest_free_block");
+                             "StatusRoutes.cpp must source the value from heap_caps_get_largest_free_block");
     TEST_ASSERT_TRUE_MESSAGE(src.find("MALLOC_CAP_8BIT") != std::string::npos,
-        "StatusRoutes.cpp must query the 8-bit-capable heap region");
-    TEST_ASSERT_TRUE_MESSAGE(src.find("#ifdef ARDUINO") != std::string::npos,
+                             "StatusRoutes.cpp must query the 8-bit-capable heap region");
+    TEST_ASSERT_TRUE_MESSAGE(
+        src.find("#ifdef ARDUINO") != std::string::npos,
         "StatusRoutes.cpp must guard the heap_caps call with #ifdef ARDUINO so native builds compile");
 }
 

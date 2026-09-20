@@ -21,7 +21,7 @@ namespace Net {
 #endif
     }
 
-    void MqttPublisher::connect(const Config::MqttConfig &config) {
+    void MqttPublisher::connect(const Config::MqttConfig& config) {
         ESP_LOGI(TAG, "Initializing MQTT...");
         if (mqtt) {
             mqtt->begin(config);
@@ -31,7 +31,7 @@ namespace Net {
         ESP_LOGI(TAG, "MQTT initialized");
     }
 
-    void MqttPublisher::updateConfig(const Config::MqttConfig &config) const {
+    void MqttPublisher::updateConfig(const Config::MqttConfig& config) const {
         if (mqtt) mqtt->setConfig(config);
     }
 
@@ -39,7 +39,7 @@ namespace Net {
         if (mqtt) mqtt->resetConsecutiveConnectFailures();
     }
 
-    void MqttPublisher::tick(uint32_t nowMs, uint32_t bootMs, uint32_t epoch, InternetHealth &health) {
+    void MqttPublisher::tick(uint32_t nowMs, uint32_t bootMs, uint32_t epoch, InternetHealth& health) {
         if (!mqtt) return;
 
         // Bridge connect failures into the internet-health counter; a recovery
@@ -85,15 +85,15 @@ namespace Net {
         }
     }
 
-    void MqttPublisher::publishMeasurements(const std::vector<Sensor::Measurement> &measurements,
+    void MqttPublisher::publishMeasurements(const std::vector<Sensor::Measurement>& measurements,
                                             uint32_t epoch) const {
         if (!mqtt || !mqtt->isConnected()) return;
 
-        const char *prefix = mqtt->getPrefix();
+        const char* prefix = mqtt->getPrefix();
         uint32_t succeeded = 0;
         uint32_t failed = 0;
 
-        for (const auto &m: measurements) {
+        for (const auto& m : measurements) {
             char topic[128];
             snprintf(topic, sizeof(topic), "%s/%s", prefix, Sensor::measurementTypeLabel(m.type));
 
@@ -110,8 +110,7 @@ namespace Net {
         mqtt->recordPublishResult(succeeded, failed);
 
         if (failed > 0) {
-            ESP_LOGW(TAG, "MQTT: Published %u/%u measurements (%u failed)",
-                     succeeded, succeeded + failed, failed);
+            ESP_LOGW(TAG, "MQTT: Published %u/%u measurements (%u failed)", succeeded, succeeded + failed, failed);
         }
     }
 

@@ -19,9 +19,7 @@ void test_atomic_uint64_is_always_lock_free() {
 void test_pack_unpack_zero() {
     bool requested = true;
     uint64_t deadline = 0xDEAD;
-    Config::unpackRestartState(
-        Config::packRestartState(false, 0),
-        requested, deadline);
+    Config::unpackRestartState(Config::packRestartState(false, 0), requested, deadline);
     TEST_ASSERT_FALSE(requested);
     TEST_ASSERT_EQUAL_UINT64(0, deadline);
 }
@@ -29,9 +27,7 @@ void test_pack_unpack_zero() {
 void test_pack_unpack_one_second() {
     bool requested = false;
     uint64_t deadline = 0;
-    Config::unpackRestartState(
-        Config::packRestartState(true, 1000),
-        requested, deadline);
+    Config::unpackRestartState(Config::packRestartState(true, 1000), requested, deadline);
     TEST_ASSERT_TRUE(requested);
     TEST_ASSERT_EQUAL_UINT64(1000, deadline);
 }
@@ -40,9 +36,7 @@ void test_pack_unpack_max_deadline() {
     const uint64_t maxDeadline = (1ULL << 63) - 1;
     bool requested = false;
     uint64_t deadline = 0;
-    Config::unpackRestartState(
-        Config::packRestartState(true, maxDeadline),
-        requested, deadline);
+    Config::unpackRestartState(Config::packRestartState(true, maxDeadline), requested, deadline);
     TEST_ASSERT_TRUE(requested);
     TEST_ASSERT_EQUAL_UINT64(maxDeadline, deadline);
 }
@@ -68,8 +62,7 @@ void test_is_requested_of() {
     TEST_ASSERT_TRUE(Config::isRequestedOf(1));
     TEST_ASSERT_TRUE(Config::isRequestedOf(3));
     TEST_ASSERT_FALSE(Config::isRequestedOf(2));
-    TEST_ASSERT_TRUE(Config::isRequestedOf(
-        (1ULL << 63) << 1 | 1ULL));
+    TEST_ASSERT_TRUE(Config::isRequestedOf((1ULL << 63) << 1 | 1ULL));
 }
 
 void test_deadline_of() {
@@ -78,8 +71,7 @@ void test_deadline_of() {
     TEST_ASSERT_EQUAL_UINT64(1, Config::deadlineOf(2));
     TEST_ASSERT_EQUAL_UINT64(1, Config::deadlineOf(3));
     TEST_ASSERT_EQUAL_UINT64(500, Config::deadlineOf(1000));
-    TEST_ASSERT_EQUAL_UINT64((1ULL << 63) - 1,
-                             Config::deadlineOf(((1ULL << 63) - 1) << 1));
+    TEST_ASSERT_EQUAL_UINT64((1ULL << 63) - 1, Config::deadlineOf(((1ULL << 63) - 1) << 1));
 }
 
 // 3.5 — concurrent producer/consumer smoke test. The producer flips the atomic
@@ -110,9 +102,7 @@ void test_concurrent_producer_consumer_no_torn_reads() {
         }
         while (!stop.load(std::memory_order_acquire)) {
             if (cfg.isRestartPending()) {
-                const uint64_t s = cfg.isRestartPending()
-                    ? 0
-                    : 0; // forces a fresh read
+                const uint64_t s = cfg.isRestartPending() ? 0 : 0; // forces a fresh read
                 (void)s;
                 // Read the raw state via the public checkRestart contract:
                 // if "requested" is observed, the deadline field must be
@@ -147,9 +137,11 @@ void test_concurrent_producer_consumer_no_torn_reads() {
 
     start.store(true, std::memory_order_release);
 
-    for (auto& t : threads) t.join();
+    for (auto& t : threads)
+        t.join();
     stop.store(true, std::memory_order_release);
-    for (auto& t : consumers) t.join();
+    for (auto& t : consumers)
+        t.join();
 
     // We don't assert a specific torn count — the value depends on scheduling.
     // What we DO assert is that the loop completed without crashing and that

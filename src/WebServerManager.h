@@ -41,9 +41,9 @@ public:
  * constructed once".
  */
 enum class WebServerMode {
-    NONE,        // server not started
-    CONFIG,      // AP-mode: only serves the WiFi configuration page + /api/wifi
-    OPERATIONAL  // STA-mode: serves the full control UI and API surface
+    NONE,       // server not started
+    CONFIG,     // AP-mode: only serves the WiFi configuration page + /api/wifi
+    OPERATIONAL // STA-mode: serves the full control UI and API surface
 };
 
 /**
@@ -57,11 +57,11 @@ enum class WebServerMode {
  */
 class WebServerManager {
 protected:
-    Config::ConfigManager &config;
-    Network &network;
-    SensorController &sensorController;
-    Control::TemperatureController &temperatureController;
-    Task::SensorMonitor &sensorMonitor;
+    Config::ConfigManager& config;
+    Network& network;
+    SensorController& sensorController;
+    Control::TemperatureController& temperatureController;
+    Task::SensorMonitor& sensorMonitor;
     WebServerMode currentMode = WebServerMode::NONE;
 
 #ifdef ARDUINO
@@ -100,7 +100,7 @@ protected:
      * Handle WiFi configuration POST request
      */
 #ifdef ARDUINO
-    void handleWiFiConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
+    void handleWiFiConfig(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total);
 #endif
 
     /**
@@ -119,8 +119,8 @@ public:
      * @param sensorController SensorController reference
      * @param temperatureController Control loop, for the control/autotune routes
      */
-    WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensorController,
-                     Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor);
+    WebServerManager(Config::ConfigManager& config, Network& network, SensorController& sensorController,
+                     Control::TemperatureController& temperatureController, Task::SensorMonitor& sensorMonitor);
 
     /**
      * Virtual destructor
@@ -149,4 +149,4 @@ public:
     void setMode(WebServerMode mode);
 };
 
-#endif //KLIMACONTROL_WEBSERVERMANAGER_H
+#endif // KLIMACONTROL_WEBSERVERMANAGER_H

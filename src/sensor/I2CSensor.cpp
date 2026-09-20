@@ -3,7 +3,7 @@
 namespace Sensor {
 
 #ifdef ARDUINO
-    I2CSensor::I2CSensor(uint8_t address, TwoWire &wire) : wire(wire) {
+    I2CSensor::I2CSensor(uint8_t address, TwoWire& wire) : wire(wire) {
         i2cAddress = address;
         initialized = false;
     }

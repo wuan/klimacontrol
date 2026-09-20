@@ -22,12 +22,16 @@ namespace Sensor {
         ReadFailing,
     };
 
-    inline const char *sensorStatusLabel(SensorStatus s) {
+    inline const char* sensorStatusLabel(SensorStatus s) {
         switch (s) {
-            case SensorStatus::Uninitialized: return "uninitialized";
-            case SensorStatus::Online: return "online";
-            case SensorStatus::InitFailed: return "init_failed";
-            case SensorStatus::ReadFailing: return "read_failing";
+            case SensorStatus::Uninitialized:
+                return "uninitialized";
+            case SensorStatus::Online:
+                return "online";
+            case SensorStatus::InitFailed:
+                return "init_failed";
+            case SensorStatus::ReadFailing:
+                return "read_failing";
         }
         return "unknown";
     }
@@ -60,70 +64,110 @@ namespace Sensor {
         Time
     };
 
-    inline const char *measurementTypeLabel(MeasurementType t) {
+    inline const char* measurementTypeLabel(MeasurementType t) {
         switch (t) {
-            case MeasurementType::Temperature: return "temperature";
-            case MeasurementType::RelativeHumidity: return "relative humidity";
-            case MeasurementType::DewPoint: return "dew point";
-            case MeasurementType::Pressure: return "pressure";
-            case MeasurementType::SeaLevelPressure: return "sea level pressure";
-            case MeasurementType::GasResistance: return "gas resistance";
-            case MeasurementType::CO2: return "CO2";
-            case MeasurementType::Illuminance: return "illuminance";
-            case MeasurementType::Particles03: return "particles_03";
-            case MeasurementType::Particles05: return "particles_05";
-            case MeasurementType::Particles10: return "particles_10";
-            case MeasurementType::Particles25: return "particles_25";
-            case MeasurementType::Particles50: return "particles_50";
-            case MeasurementType::Particles100: return "particles_100";
-            case MeasurementType::PM10Concentration: return "part_con_10";
-            case MeasurementType::PM25Concentration: return "part_con_25";
-            case MeasurementType::PM100Concentration: return "part_con_100";
-            case MeasurementType::VocIndex: return "VOC index";
-            case MeasurementType::Rssi: return "rssi";
-            case MeasurementType::Channel: return "channel";
-            case MeasurementType::System: return "system";
-            case MeasurementType::FreeHeap: return "free_heap";
-            case MeasurementType::LargestFreeBlock: return "largest_free_block";
-            case MeasurementType::Uptime: return "uptime";
-            case MeasurementType::Time: return "time";
+            case MeasurementType::Temperature:
+                return "temperature";
+            case MeasurementType::RelativeHumidity:
+                return "relative humidity";
+            case MeasurementType::DewPoint:
+                return "dew point";
+            case MeasurementType::Pressure:
+                return "pressure";
+            case MeasurementType::SeaLevelPressure:
+                return "sea level pressure";
+            case MeasurementType::GasResistance:
+                return "gas resistance";
+            case MeasurementType::CO2:
+                return "CO2";
+            case MeasurementType::Illuminance:
+                return "illuminance";
+            case MeasurementType::Particles03:
+                return "particles_03";
+            case MeasurementType::Particles05:
+                return "particles_05";
+            case MeasurementType::Particles10:
+                return "particles_10";
+            case MeasurementType::Particles25:
+                return "particles_25";
+            case MeasurementType::Particles50:
+                return "particles_50";
+            case MeasurementType::Particles100:
+                return "particles_100";
+            case MeasurementType::PM10Concentration:
+                return "part_con_10";
+            case MeasurementType::PM25Concentration:
+                return "part_con_25";
+            case MeasurementType::PM100Concentration:
+                return "part_con_100";
+            case MeasurementType::VocIndex:
+                return "VOC index";
+            case MeasurementType::Rssi:
+                return "rssi";
+            case MeasurementType::Channel:
+                return "channel";
+            case MeasurementType::System:
+                return "system";
+            case MeasurementType::FreeHeap:
+                return "free_heap";
+            case MeasurementType::LargestFreeBlock:
+                return "largest_free_block";
+            case MeasurementType::Uptime:
+                return "uptime";
+            case MeasurementType::Time:
+                return "time";
         }
         return "unknown";
     }
 
-    inline const char *measurementTypeUnit(MeasurementType t) {
+    inline const char* measurementTypeUnit(MeasurementType t) {
         switch (t) {
             case MeasurementType::Temperature:
             case MeasurementType::System:
-            case MeasurementType::DewPoint: return "°C";
-            case MeasurementType::RelativeHumidity: return "%";
+            case MeasurementType::DewPoint:
+                return "°C";
+            case MeasurementType::RelativeHumidity:
+                return "%";
             case MeasurementType::Pressure:
-            case MeasurementType::SeaLevelPressure: return "hPa";
-            case MeasurementType::GasResistance: return "Ohm";
-            case MeasurementType::CO2: return "ppm";
-            case MeasurementType::Illuminance: return "lux";
+            case MeasurementType::SeaLevelPressure:
+                return "hPa";
+            case MeasurementType::GasResistance:
+                return "Ohm";
+            case MeasurementType::CO2:
+                return "ppm";
+            case MeasurementType::Illuminance:
+                return "lux";
             case MeasurementType::Particles03:
             case MeasurementType::Particles05:
             case MeasurementType::Particles10:
             case MeasurementType::Particles25:
             case MeasurementType::Particles50:
-            case MeasurementType::Particles100: return "#";
+            case MeasurementType::Particles100:
+                return "#";
             case MeasurementType::PM10Concentration:
             case MeasurementType::PM25Concentration:
-            case MeasurementType::PM100Concentration: return "ug/m^3";
-            case MeasurementType::VocIndex: return "";
-            case MeasurementType::Rssi: return "dBm";
-            case MeasurementType::Channel: return "";
-            case MeasurementType::FreeHeap: return "kB";
-            case MeasurementType::LargestFreeBlock: return "kB";
-            case MeasurementType::Uptime: return "s";
-            case MeasurementType::Time: return "ms";
+            case MeasurementType::PM100Concentration:
+                return "ug/m^3";
+            case MeasurementType::VocIndex:
+                return "";
+            case MeasurementType::Rssi:
+                return "dBm";
+            case MeasurementType::Channel:
+                return "";
+            case MeasurementType::FreeHeap:
+                return "kB";
+            case MeasurementType::LargestFreeBlock:
+                return "kB";
+            case MeasurementType::Uptime:
+                return "s";
+            case MeasurementType::Time:
+                return "ms";
         }
         return "";
     }
 
     struct TypeSpan {
-        const MeasurementType *data;
+        const MeasurementType* data;
         uint8_t count;
     };
 
@@ -132,8 +176,8 @@ namespace Sensor {
     struct Measurement {
         MeasurementType type;
         Value value;
-        const char *sensor; // e.g., "SHT4x", "BME680"
-        bool calculated; // true for derived values (dew point, sea-level pressure)
+        const char* sensor; // e.g., "SHT4x", "BME680"
+        bool calculated;    // true for derived values (dew point, sea-level pressure)
     };
 
     // Magnus formula dew point from temperature (°C) and relative humidity (%)
@@ -154,9 +198,9 @@ namespace Sensor {
         float elevation = 0.0f; // meters above sea level
     };
 
-    inline const Measurement *findMeasurement(const std::vector<Measurement> &measurements, MeasurementType type) {
+    inline const Measurement* findMeasurement(const std::vector<Measurement>& measurements, MeasurementType type) {
         auto it = std::find_if(measurements.begin(), measurements.end(),
-            [type](const Measurement &m) { return m.type == type; });
+                               [type](const Measurement& m) { return m.type == type; });
         return (it != measurements.end()) ? &(*it) : nullptr;
     }
 
@@ -217,10 +261,9 @@ namespace Sensor {
         // Single read entry point. Drivers that don't need context ignore the parameters
         // (use [[maybe_unused]] or `(void) config; (void) prior;`). SensorController
         // always calls this signature, so there's no dual-dispatch ambiguity.
-        virtual SensorReading read(const ReadConfig &config,
-                                   const std::vector<Measurement> &prior) = 0;
+        virtual SensorReading read(const ReadConfig& config, const std::vector<Measurement>& prior) = 0;
 
-        [[nodiscard]] virtual const char *getType() const = 0;
+        [[nodiscard]] virtual const char* getType() const = 0;
 
         [[nodiscard]] SensorStatus getStatus() const { return sensorStatus; }
         [[nodiscard]] uint32_t getLastInitAttempt() const { return lastInitAttempt; }

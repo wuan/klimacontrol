@@ -39,15 +39,15 @@ private:
     static constexpr uint16_t MQTT_BUFFER_SIZE = 1024;
 
     // Publish statistics
-    uint32_t publishedCount = 0;    // successful individual publishes
-    uint32_t failedCount = 0;       // failed individual publishes
-    uint32_t publishCycles = 0;     // total publish cycles (calls to publishAll)
-    uint32_t failedCycles = 0;      // cycles with at least one failure
+    uint32_t publishedCount = 0;     // successful individual publishes
+    uint32_t failedCount = 0;        // failed individual publishes
+    uint32_t publishCycles = 0;      // total publish cycles (calls to publishAll)
+    uint32_t failedCycles = 0;       // cycles with at least one failure
     uint32_t truncatedPublishes = 0; // publishes that failed while buffer was degraded
 
     // TX buffer state — see spec mqtt-integration → "MQTT TX buffer state is observable"
-    uint16_t bufferSize = 0;        // actual buffer size PubSubClient is using
-    bool bufferDegraded = false;    // true when bufferSize < MQTT_BUFFER_SIZE
+    uint16_t bufferSize = 0;     // actual buffer size PubSubClient is using
+    bool bufferDegraded = false; // true when bufferSize < MQTT_BUFFER_SIZE
 
     void applyServer();
 

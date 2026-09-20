@@ -14,7 +14,7 @@ namespace Net {
      * Integer values print as integers, floats with two decimals. Returns the
      * snprintf length (which exceeds `size` when the output was truncated).
      */
-    int formatMeasurementPayload(char *out, size_t size, const Sensor::Measurement &m, uint32_t epoch);
+    int formatMeasurementPayload(char* out, size_t size, const Sensor::Measurement& m, uint32_t epoch);
 
 } // namespace Net
 

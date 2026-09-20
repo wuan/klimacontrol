@@ -11,10 +11,11 @@ static constexpr const char* const TAG = "mqtt";
 MqttClient::MqttClient()
     : config(), clientId("klima-" + DeviceId::getDeviceId()), configured(false)
 #ifdef ARDUINO
-      , wifiClient(), mqttClient(wifiClient)
+      ,
+      wifiClient(), mqttClient(wifiClient)
 #endif
-      , lastConnectAttempt(0)
-{
+      ,
+      lastConnectAttempt(0) {
 }
 
 void MqttClient::applyServer() {
@@ -43,8 +44,8 @@ void MqttClient::begin(const Config::MqttConfig& mqttConfig) {
 
 #ifdef ARDUINO
     // Cap TCP connect/read timeout to prevent blocking the network task
-    wifiClient.setTimeout(3);  // seconds
-    mqttClient.setSocketTimeout(3);  // seconds
+    wifiClient.setTimeout(3);       // seconds
+    mqttClient.setSocketTimeout(3); // seconds
 
     // Override PubSubClient's compile-time default of MQTT_MAX_PACKET_SIZE = 256.
     // Returns false if heap allocation for the larger buffer fails — log but proceed
@@ -52,16 +53,15 @@ void MqttClient::begin(const Config::MqttConfig& mqttConfig) {
     // PubSubClient ended up with so publish failures can be distinguished from
     // "buffer too small" (see mqtt-integration spec → "MQTT TX buffer state is observable").
     if (!mqttClient.setBufferSize(MQTT_BUFFER_SIZE)) {
-        ESP_LOGW(TAG, "setBufferSize(%u) failed — running with %u bytes (degraded)",
-                 MQTT_BUFFER_SIZE, mqttClient.getBufferSize());
+        ESP_LOGW(TAG, "setBufferSize(%u) failed — running with %u bytes (degraded)", MQTT_BUFFER_SIZE,
+                 mqttClient.getBufferSize());
     }
     bufferSize = mqttClient.getBufferSize();
     bufferDegraded = (bufferSize < MQTT_BUFFER_SIZE);
 #endif
 
 #ifdef ARDUINO
-    ESP_LOGI(TAG, "Initialized (enabled=%d, host=%s, prefix=%s)",
-             config.enabled, config.host, config.prefix);
+    ESP_LOGI(TAG, "Initialized (enabled=%d, host=%s, prefix=%s)", config.enabled, config.host, config.prefix);
 #endif
 }
 
@@ -81,8 +81,7 @@ void MqttClient::setConfig(const Config::MqttConfig& mqttConfig) {
     applyServer();
 
 #ifdef ARDUINO
-    ESP_LOGI(TAG, "Config updated (enabled=%d, host=%s, prefix=%s)",
-             config.enabled, config.host, config.prefix);
+    ESP_LOGI(TAG, "Config updated (enabled=%d, host=%s, prefix=%s)", config.enabled, config.host, config.prefix);
 #endif
 }
 
@@ -101,9 +100,7 @@ void MqttClient::loop() {
     uint32_t now = millis();
     uint32_t shift = consecutiveConnectFailures < 16 ? consecutiveConnectFailures : 16;
     uint64_t scaled = static_cast<uint64_t>(RECONNECT_INTERVAL_MS) << shift;
-    uint32_t backoff = scaled > MAX_RECONNECT_INTERVAL_MS
-        ? MAX_RECONNECT_INTERVAL_MS
-        : static_cast<uint32_t>(scaled);
+    uint32_t backoff = scaled > MAX_RECONNECT_INTERVAL_MS ? MAX_RECONNECT_INTERVAL_MS : static_cast<uint32_t>(scaled);
     if (now - lastConnectAttempt < backoff) return;
     lastConnectAttempt = now;
 
@@ -115,8 +112,8 @@ void MqttClient::loop() {
     static constexpr int TCP_CONNECT_TIMEOUT_MS = 3000;
     if (!wifiClient.connect(config.host, config.port, TCP_CONNECT_TIMEOUT_MS)) {
         consecutiveConnectFailures++;
-        ESP_LOGW(TAG, "TCP connect to %s:%u failed (failures=%u, next retry in %ums)",
-                 config.host, config.port, consecutiveConnectFailures, backoff);
+        ESP_LOGW(TAG, "TCP connect to %s:%u failed (failures=%u, next retry in %ums)", config.host, config.port,
+                 consecutiveConnectFailures, backoff);
         return;
     }
 
@@ -144,8 +141,7 @@ void MqttClient::loop() {
         }
     } else {
         consecutiveConnectFailures++;
-        ESP_LOGW(TAG, "MQTT handshake failed, rc=%d (failures=%u)",
-                 mqttClient.state(), consecutiveConnectFailures);
+        ESP_LOGW(TAG, "MQTT handshake failed, rc=%d (failures=%u)", mqttClient.state(), consecutiveConnectFailures);
         wifiClient.stop();
     }
 #endif
@@ -157,8 +153,8 @@ bool MqttClient::publish([[maybe_unused]] const char* topic, [[maybe_unused]] co
     bool ok = mqttClient.publish(topic, payload);
     if (!ok && bufferDegraded) {
         truncatedPublishes++;
-        ESP_LOGE(TAG, "MQTT publish likely truncated: topic=%s (buffer_size=%u, requested=%u)",
-                 topic, bufferSize, MQTT_BUFFER_SIZE);
+        ESP_LOGE(TAG, "MQTT publish likely truncated: topic=%s (buffer_size=%u, requested=%u)", topic, bufferSize,
+                 MQTT_BUFFER_SIZE);
     }
     return ok;
 #else

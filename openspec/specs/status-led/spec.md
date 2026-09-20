@@ -141,4 +141,3 @@ The threshold SHALL be stored in a `std::atomic<uint32_t>` so it can be written 
 
 - **WHEN** the LED is `ON`, `setPowerRail(false)` is called, `setPowerRail(true)` is called, and `update()` is called
 - **THEN** `lastColor()` SHALL be the `ON` colour after `update()`, even though it was unchanged before the rail cycle
-

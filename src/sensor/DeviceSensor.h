@@ -19,10 +19,8 @@ namespace Sensor {
         [[nodiscard]] const char* getType() const override { return type(); }
         [[nodiscard]] TypeSpan providesMeasurements() const override {
             static constexpr MeasurementType types[] = {
-                MeasurementType::Rssi, MeasurementType::Channel,
-                MeasurementType::System, MeasurementType::FreeHeap,
-                MeasurementType::LargestFreeBlock, MeasurementType::Uptime
-            };
+                MeasurementType::Rssi,     MeasurementType::Channel,          MeasurementType::System,
+                MeasurementType::FreeHeap, MeasurementType::LargestFreeBlock, MeasurementType::Uptime};
             return {types, 6};
         }
     };

@@ -40,10 +40,8 @@ void test_probe_native_stub_ignores_timeout_argument() {
     // observable effect on the return — a future refactor that tries
     // to make the stub honour the timeout (and accidentally flips
     // the return) will fail this test.
-    TEST_ASSERT_EQUAL_UINT8(false,
-                           static_cast<uint8_t>(Display::EPaperDisplay::probe(0)));
-    TEST_ASSERT_EQUAL_UINT8(false,
-                           static_cast<uint8_t>(Display::EPaperDisplay::probe(UINT32_MAX)));
+    TEST_ASSERT_EQUAL_UINT8(false, static_cast<uint8_t>(Display::EPaperDisplay::probe(0)));
+    TEST_ASSERT_EQUAL_UINT8(false, static_cast<uint8_t>(Display::EPaperDisplay::probe(UINT32_MAX)));
 }
 
 void test_probe_static_signature_is_callable_with_uint32() {
@@ -51,8 +49,7 @@ void test_probe_static_signature_is_callable_with_uint32() {
     // bool. Pinning the signature stops a future "I'll change the
     // signature to also return a duration" edit from breaking
     // `DisplayManager::tryBeginForApInfo()` without a test failure.
-    static_assert(std::is_same<decltype(Display::EPaperDisplay::probe),
-                               bool(uint32_t)>::value,
+    static_assert(std::is_same<decltype(Display::EPaperDisplay::probe), bool(uint32_t)>::value,
                   "EPaperDisplay::probe must keep the bool(uint32_t) signature");
     TEST_PASS();
 }

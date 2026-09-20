@@ -144,8 +144,8 @@ void test_control_output_saturation() {
 void test_setpoint_increase() {
     PidController pid({1.0f, 0.0f, 0.0f}, WIDE_MIN, WIDE_MAX);
 
-    pid.update(0.0f, 1000);  // at setpoint
-    pid.update(5.0f, 2000);  // setpoint raised by 5
+    pid.update(0.0f, 1000); // at setpoint
+    pid.update(5.0f, 2000); // setpoint raised by 5
     float outputAfter = pid.update(5.0f, 3000);
 
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 5.0f, outputAfter);
@@ -334,8 +334,8 @@ namespace {
             config.updateTemperatureControlEnabled(true);
             config.updateTargetTemperature(SETPOINT);
             config.updateTuning(gains.kp, gains.ki, gains.kd, intervalS);
-            config.updateActuatorTiming(Config::DEFAULT_TPO_CYCLE_S, Config::DEFAULT_TPO_TRAVEL_S,
-                                        SAFETY_MAX_C, SAFETY_HYST_C);
+            config.updateActuatorTiming(Config::DEFAULT_TPO_CYCLE_S, Config::DEFAULT_TPO_TRAVEL_S, SAFETY_MAX_C,
+                                        SAFETY_HYST_C);
             // As setup() does: adopt the stored tuning before the first tick.
             ctrl.begin();
         }

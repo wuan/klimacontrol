@@ -112,4 +112,3 @@ The firmware SHALL serialize every HTTP route handler's response under `src/rout
 
 - **WHEN** a client POSTs to `/api/wifi` with a valid CSRF header
 - **THEN** the handler parses the body and serializes the response using stack-allocated `JsonDocument` instances; the `JsonDocument` objects are on the handler's stack frame and any data they hold is allocated via the default allocator and freed at handler return
-

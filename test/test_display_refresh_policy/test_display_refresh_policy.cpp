@@ -6,8 +6,8 @@
 
 #include "display/RefreshPolicy.h"
 
-using Display::RefreshKind;
 using Display::ControlState;
+using Display::RefreshKind;
 using Display::RefreshPolicy;
 
 // Default interval used by most tests, matching Config::DEFAULT_DISPLAY_INTERVAL.
@@ -19,9 +19,8 @@ void tearDown() {}
 
 // Drives the policy past its first-paint case so a test can start from a
 // settled state. Returns the timestamp of that initial full refresh.
-static uint32_t primeAt(RefreshPolicy &policy, float temp, float hum, uint32_t nowMs) {
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
-                      static_cast<int>(policy.evaluate(temp, hum, true, nowMs)));
+static uint32_t primeAt(RefreshPolicy& policy, float temp, float hum, uint32_t nowMs) {
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(temp, hum, true, nowMs)));
     return nowMs;
 }
 
@@ -29,24 +28,21 @@ static uint32_t primeAt(RefreshPolicy &policy, float temp, float hum, uint32_t n
 
 void test_first_evaluation_is_full() {
     RefreshPolicy policy(INTERVAL_SEC);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
-                      static_cast<int>(policy.evaluate(21.4f, 47.0f, true, 1000)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(21.4f, 47.0f, true, 1000)));
 }
 
 void test_first_evaluation_is_full_even_when_invalid() {
     // A booting device with no sensor still needs its placeholder painted, and
     // the panel may be holding an arbitrary retained image.
     RefreshPolicy policy(INTERVAL_SEC);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
-                      static_cast<int>(policy.evaluate(NAN, NAN, false, 0)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(NAN, NAN, false, 0)));
 }
 
 void test_reset_restores_first_paint_behaviour() {
     RefreshPolicy policy(INTERVAL_SEC);
     primeAt(policy, 21.4f, 47.0f, 1000);
     policy.reset();
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
-                      static_cast<int>(policy.evaluate(21.4f, 47.0f, true, 2000)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(21.4f, 47.0f, true, 2000)));
 }
 
 // --- hysteresis ---
@@ -133,8 +129,7 @@ void test_zero_interval_allows_immediate_refresh() {
     // underflow on a zero interval.
     RefreshPolicy policy(0);
     uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.5f, 47.0f, true, t)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(policy.evaluate(21.5f, 47.0f, true, t)));
 }
 
 // --- ghosting / periodic full refresh ---
@@ -155,15 +150,13 @@ void test_twelfth_partial_is_promoted_to_full() {
     // The next due refresh clears the accumulated ghosting.
     temp += 0.5f;
     t += INTERVAL_MS;
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
-                      static_cast<int>(policy.evaluate(temp, 47.0f, true, t)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(temp, 47.0f, true, t)));
     TEST_ASSERT_EQUAL(0, policy.getPartialsSinceFull());
 
     // ...and the cycle starts over.
     temp += 0.5f;
     t += INTERVAL_MS;
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(temp, 47.0f, true, t)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(policy.evaluate(temp, 47.0f, true, t)));
 }
 
 void test_suppressed_evaluations_do_not_advance_the_partial_counter() {
@@ -186,8 +179,7 @@ void test_valid_to_invalid_forces_refresh() {
 
 void test_invalid_to_valid_forces_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
-                      static_cast<int>(policy.evaluate(NAN, NAN, false, 1000)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(NAN, NAN, false, 1000)));
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
                       static_cast<int>(policy.evaluate(21.4f, 47.0f, true, 1000 + INTERVAL_MS)));
 }
@@ -359,63 +351,63 @@ void test_setpoint_change_triggers_refresh() {
     // the old target indefinitely.
     RefreshPolicy policy(INTERVAL_SEC);
     policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
-                                                       22.5f, ControlState::ACTIVE_OFF)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 22.5f, ControlState::ACTIVE_OFF)));
 }
 
 void test_unchanged_setpoint_does_not_trigger_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
     policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
-                                                       21.5f, ControlState::ACTIVE_OFF)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::None),
+        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.5f, ControlState::ACTIVE_OFF)));
 }
 
 void test_setpoint_change_below_rendered_precision_is_suppressed() {
     // Rendered with one decimal, so a 0.01 K move is the same picture.
     RefreshPolicy policy(INTERVAL_SEC);
     policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
-                                                       21.51f, ControlState::ACTIVE_OFF)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::None),
+        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.51f, ControlState::ACTIVE_OFF)));
 }
 
 void test_control_state_change_triggers_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
     policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
-                                                       21.5f, ControlState::ACTIVE_ON)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.5f, ControlState::ACTIVE_ON)));
 }
 
 void test_setpoint_nan_transition_triggers_refresh() {
     // NAN renders as a placeholder; gaining or losing a real value is visible.
     RefreshPolicy policy(INTERVAL_SEC);
     policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
-                                                       21.5f, ControlState::INACTIVE)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.5f, ControlState::INACTIVE)));
 }
 
 void test_setpoint_nan_to_nan_does_not_trigger_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
     policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
-                                                       NAN, ControlState::INACTIVE)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::None),
+        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, NAN, ControlState::INACTIVE)));
 }
 
 void test_setpoint_change_still_respects_the_interval_floor() {
     RefreshPolicy policy(INTERVAL_SEC);
     policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS - 1,
-                                                       0, 22.5f, ControlState::ACTIVE_OFF)));
+                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS - 1, 0, 22.5f,
+                                                       ControlState::ACTIVE_OFF)));
     // Still outstanding: it fires once the floor passes.
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0,
-                                                       22.5f, ControlState::ACTIVE_OFF)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 22.5f, ControlState::ACTIVE_OFF)));
 }
 
 // --- demand bar bucketing ---
@@ -479,8 +471,8 @@ void test_demand_bucket_change_triggers_refresh() {
     policy.evaluate(21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 1);
 
     // Same readings, same setpoint, same state — only the bar moved.
-    const RefreshKind kind = policy.evaluate(21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f,
-                                             ControlState::ACTIVE_ON, 3);
+    const RefreshKind kind =
+        policy.evaluate(21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f, ControlState::ACTIVE_ON, 3);
 
     TEST_ASSERT_NOT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
 }
@@ -492,8 +484,8 @@ void test_unchanged_demand_bucket_does_not_trigger_refresh() {
     // Nothing visible changed, so the panel must stay put even though the
     // interval floor has passed. This is the property that keeps the bar from
     // costing refreshes.
-    const RefreshKind kind = policy.evaluate(21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f,
-                                             ControlState::ACTIVE_ON, 3);
+    const RefreshKind kind =
+        policy.evaluate(21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f, ControlState::ACTIVE_ON, 3);
 
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
 }
@@ -504,8 +496,7 @@ void test_demand_bucket_change_respects_the_interval_floor() {
 
     // Too soon: the change is real but the floor still applies, exactly as it
     // does for a setpoint change.
-    const RefreshKind kind =
-        policy.evaluate(21.0f, 50.0f, true, 1500, 0, 22.0f, ControlState::ACTIVE_ON, 4);
+    const RefreshKind kind = policy.evaluate(21.0f, 50.0f, true, 1500, 0, 22.0f, ControlState::ACTIVE_ON, 4);
 
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
 }

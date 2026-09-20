@@ -23,10 +23,10 @@ namespace Net {
      */
     class MdnsAdvertiser {
     public:
-        explicit MdnsAdvertiser(Config::ConfigManager &config) : config(config) {}
+        explicit MdnsAdvertiser(Config::ConfigManager& config) : config(config) {}
 
         /** Cached; computed on first use. */
-        const String &hostname();
+        const String& hostname();
 
         /**
          * (Re)start the mDNS responder and advertise the HTTP service. Safe to
@@ -35,7 +35,7 @@ namespace Net {
         void advertise();
 
     private:
-        Config::ConfigManager &config;
+        Config::ConfigManager& config;
         String cachedHostname;
         String instanceName; // must outlive MDNS.setInstanceName()
     };

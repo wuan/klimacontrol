@@ -6,16 +6,16 @@ rules:
   info-description: off
   operation-description: off
   operation-operationId: error
-  
+
   # Our project-specific rules
-  klimacontrol-tag-description: 
+  klimacontrol-tag-description:
     description: "Tags should have descriptions"
     given: "$.tags[*]"
     then:
       field: "description"
       function: truthy
     severity: error
-  
+
   klimacontrol-security-defined:
     description: "Security schemes must be defined"
     given: "$.components.securitySchemes"

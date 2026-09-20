@@ -26,30 +26,24 @@ void setUp() {}
 void tearDown() {}
 
 void test_largest_free_block_label_is_snake_case() {
-    TEST_ASSERT_EQUAL_STRING(
-        "largest_free_block",
-        ::Sensor::measurementTypeLabel(MeasurementType::LargestFreeBlock));
+    TEST_ASSERT_EQUAL_STRING("largest_free_block", ::Sensor::measurementTypeLabel(MeasurementType::LargestFreeBlock));
 }
 
 void test_largest_free_block_unit_is_kb() {
     // Matches the existing FreeHeap convention so the MQTT topic tree
     // reports device-internal measurements in a single unit.
-    TEST_ASSERT_EQUAL_STRING(
-        "kB",
-        ::Sensor::measurementTypeUnit(MeasurementType::LargestFreeBlock));
+    TEST_ASSERT_EQUAL_STRING("kB", ::Sensor::measurementTypeUnit(MeasurementType::LargestFreeBlock));
 }
 
 void test_device_sensor_provides_largest_free_block() {
     ::Sensor::DeviceSensor sensor;
     const auto span = sensor.providesMeasurements();
-    TEST_ASSERT_NOT_NULL_MESSAGE(span.data,
-        "DeviceSensor::providesMeasurements() returned a null data pointer");
+    TEST_ASSERT_NOT_NULL_MESSAGE(span.data, "DeviceSensor::providesMeasurements() returned a null data pointer");
     TEST_ASSERT_GREATER_THAN_UINT32(0, static_cast<uint32_t>(span.count));
 
-    const auto *end = span.data + span.count;
-    const auto *found = std::find(span.data, end, MeasurementType::LargestFreeBlock);
-    TEST_ASSERT_NOT_NULL_MESSAGE(found,
-        "DeviceSensor::providesMeasurements() must list LargestFreeBlock");
+    const auto* end = span.data + span.count;
+    const auto* found = std::find(span.data, end, MeasurementType::LargestFreeBlock);
+    TEST_ASSERT_NOT_NULL_MESSAGE(found, "DeviceSensor::providesMeasurements() must list LargestFreeBlock");
 }
 
 void test_device_sensor_measurement_count_is_six() {
@@ -73,8 +67,7 @@ void test_device_sensor_read_is_empty_on_native() {
     ::Sensor::DeviceSensor sensor;
     const auto reading = sensor.read({}, {});
     TEST_ASSERT_TRUE(reading.valid);
-    TEST_ASSERT_EQUAL_UINT32(0,
-        static_cast<uint32_t>(reading.measurements.size()));
+    TEST_ASSERT_EQUAL_UINT32(0, static_cast<uint32_t>(reading.measurements.size()));
 }
 
 int runUnityTests() {

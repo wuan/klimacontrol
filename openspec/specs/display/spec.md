@@ -829,4 +829,3 @@ in (the native build can model "panel absent" only).
   `GxEPD2::display.init()` and the fault guard trips
 - **THEN** the function returns false. The caller falls back to open
   AP — same outcome as a stuck-or-missing panel
-

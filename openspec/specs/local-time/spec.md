@@ -127,4 +127,3 @@ continue to carry UTC seconds.
 
 - **WHEN** a non-UTC timezone is configured and a measurement is published
 - **THEN** the `time` field in the MQTT payload SHALL still be the UTC epoch
-

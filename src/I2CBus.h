@@ -90,8 +90,8 @@ namespace I2CBus {
             if (held) xSemaphoreGive(handle);
         }
 
-        Lock(const Lock &) = delete;
-        Lock &operator=(const Lock &) = delete;
+        Lock(const Lock&) = delete;
+        Lock& operator=(const Lock&) = delete;
 
         explicit operator bool() const { return held; }
     };

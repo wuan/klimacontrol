@@ -40,7 +40,7 @@ namespace Display {
  */
 enum class NetworkMode {
     STA, // Station mode (WiFi client)
-    AP, // Access Point mode (for configuration)
+    AP,  // Access Point mode (for configuration)
     NONE // Network disabled
 };
 
@@ -52,12 +52,12 @@ enum class NetworkMode {
  * this class owns them and sequences their ticks.
  */
 class Network {
-    Config::ConfigManager &config;
+    Config::ConfigManager& config;
     // The control loop: read for the actuator tick (output, permission) and
     // told what the relay is actually doing afterwards.
-    Control::TemperatureController &temperatureController;
-    Task::SensorMonitor &sensorMonitor;
-    DarkModeStatusLed &statusLed;
+    Control::TemperatureController& temperatureController;
+    Task::SensorMonitor& sensorMonitor;
+    DarkModeStatusLed& statusLed;
 
     // Drives the heating valve. Lives on this task rather than the control loop
     // because an unreachable manifold takes seconds to time out, and the Sensor
@@ -77,8 +77,8 @@ class Network {
     uint32_t lastElapsedMs = 0;
     NetworkMode mode = NetworkMode::NONE;
 
-    std::optional<std::reference_wrapper<WebServerManager> > webServer;
-    std::optional<std::reference_wrapper<Display::DisplayManager> > display;
+    std::optional<std::reference_wrapper<WebServerManager>> webServer;
+    std::optional<std::reference_wrapper<Display::DisplayManager>> display;
 #ifdef ARDUINO
     TaskHandle_t taskHandle = nullptr;
 #endif
@@ -87,7 +87,7 @@ class Network {
      * Boot-time station bring-up: associate, then start mDNS, NTP and MQTT.
      * Returns false when association failed after all retries.
      */
-    bool startSTA(const char *ssid, const char *password);
+    bool startSTA(const char* ssid, const char* password);
 
     /** Heating actuator tick, rate-limited to HeatingActuator::TICK_MS. */
     void tickActuator(uint32_t now);
@@ -95,9 +95,9 @@ class Network {
     /** 15-minute heap / cycle-stats / stack-HWM log lines. */
     void logDiagnostics(uint32_t now);
 
-    void initialize_wifi(const uint8_t &AP_FALLBACK_THRESHOLD);
+    void initialize_wifi(const uint8_t& AP_FALLBACK_THRESHOLD);
 
-    void handle_connection_failure(const uint8_t &AP_FALLBACK_THRESHOLD);
+    void handle_connection_failure(const uint8_t& AP_FALLBACK_THRESHOLD);
 
     void handle_network_events(uint32_t now);
 
@@ -118,15 +118,15 @@ public:
      *                  caller (main.cpp). Switched into CONFIG/OPERATIONAL
      *                  mode via setMode() from the network task.
      */
-    Network(Config::ConfigManager &config, SensorController &sensorController,
-            Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
-            DarkModeStatusLed &statusLed, std::optional<std::reference_wrapper<WebServerManager> > webServer);
+    Network(Config::ConfigManager& config, SensorController& sensorController,
+            Control::TemperatureController& temperatureController, Task::SensorMonitor& sensorMonitor,
+            DarkModeStatusLed& statusLed, std::optional<std::reference_wrapper<WebServerManager>> webServer);
 
     // disable copy constructor
-    Network(const Network &) = delete;
+    Network(const Network&) = delete;
 
     /** Read-only view of the heating actuator, for the API and displays. */
-    const Actuator::HeatingActuator &getHeatingActuator() const { return heatingActuator; }
+    const Actuator::HeatingActuator& getHeatingActuator() const { return heatingActuator; }
 
     /** Ask the actuator to re-read its channel configuration promptly. */
     void requestActuatorRecheck() { heatingActuator.requestRecheck(); }
@@ -147,18 +147,18 @@ public:
      * non-owning — main.cpp keeps the WebServerManager alive for the lifetime
      * of the firmware.
      */
-    void setWebServer(WebServerManager &webServer);
+    void setWebServer(WebServerManager& webServer);
 
     /**
      * Wire in the e-paper display, if one is enabled. Non-owning; pass nullptr
      * (or never call this) to leave the display unused.
      */
-    void setDisplay(Display::DisplayManager &display);
+    void setDisplay(Display::DisplayManager& display);
 
     /**
      * The wired-in display, or nullptr when none is enabled. Non-owning.
      */
-    std::optional<std::reference_wrapper<Display::DisplayManager> > getDisplay() const { return display; }
+    std::optional<std::reference_wrapper<Display::DisplayManager>> getDisplay() const { return display; }
 
     /**
      * One-time initialization of long-lived singletons that the network task
@@ -184,7 +184,7 @@ public:
     /**
      * Static trampoline function for FreeRTOS
      */
-    static void taskWrapper(void *pvParameters);
+    static void taskWrapper(void* pvParameters);
 
     /**
      * Get current network mode
@@ -214,17 +214,17 @@ public:
      * Get MQTT client (for API access)
      * @return Pointer to MQTT client, or nullptr if not initialized
      */
-    MqttClient *getMqttClient() { return mqtt.client(); }
+    MqttClient* getMqttClient() { return mqtt.client(); }
 
     /**
      * Publish sensor measurements via MQTT
      */
-    void publishMeasurements(const std::vector<Sensor::Measurement> &measurements);
+    void publishMeasurements(const std::vector<Sensor::Measurement>& measurements);
 
     /**
      * Update MQTT configuration at runtime
      */
-    void updateMqttConfig(const Config::MqttConfig &mqttConfig);
+    void updateMqttConfig(const Config::MqttConfig& mqttConfig);
 
     /**
      * Report an internet connectivity failure (called by MQTT, OTA, NTP)
@@ -245,5 +245,4 @@ public:
     uint32_t getCurrentEpoch() const { return ntp.currentEpoch(); }
 };
 
-
-#endif //KLIMACONTROL_WIFI_H
+#endif // KLIMACONTROL_WIFI_H

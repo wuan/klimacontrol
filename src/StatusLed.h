@@ -15,11 +15,11 @@
  * Status LED states
  */
 enum class LedState {
-    OFF,       // LED is off
-    ON,        // LED is on
-    STARTUP, // Steady dim blue while booting / associating
-    TRANSMIT_DATA,  // Brief white flash during MQTT publish
-    ERROR      // Solid red — fatal init error (e.g. mutex allocation failure)
+    OFF,           // LED is off
+    ON,            // LED is on
+    STARTUP,       // Steady dim blue while booting / associating
+    TRANSMIT_DATA, // Brief white flash during MQTT publish
+    ERROR          // Solid red — fatal init error (e.g. mutex allocation failure)
 };
 
 /**
@@ -36,9 +36,9 @@ private:
     Adafruit_NeoPixel pixel;
 #endif
     LedState state;
-    float progress;                // 0.0 = green, 1.0 = red (MQTT interval progress)
+    float progress;                       // 0.0 = green, 1.0 = red (MQTT interval progress)
     uint32_t lastShownColor = 0xFFFFFFFF; // init to impossible value to force first write
-    bool powerRailOn = true;       // NEOPIXEL_POWER is driven high by the board variant before setup()
+    bool powerRailOn = true;              // NEOPIXEL_POWER is driven high by the board variant before setup()
 
     void showColor(uint32_t color);
 
@@ -121,4 +121,4 @@ public:
     [[nodiscard]] float getProgress() const { return progress; }
 };
 
-#endif //KLIMACONTROL_STATUSLED_H
+#endif // KLIMACONTROL_STATUSLED_H

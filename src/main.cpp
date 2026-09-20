@@ -47,19 +47,30 @@ static constexpr const char* const TAG = "main";
 // ESP_RST_BROWNOUT here means the 3.3V rail sagged below the brownout
 // threshold (typically the WiFi radio's TX inrush) and the chip reset
 // instantly, which looks like a silent crash with no backtrace.
-static const char *resetReasonStr(esp_reset_reason_t reason) {
+static const char* resetReasonStr(esp_reset_reason_t reason) {
     switch (reason) {
-        case ESP_RST_POWERON:   return "POWERON";
-        case ESP_RST_EXT:       return "EXT";
-        case ESP_RST_SW:        return "SW";
-        case ESP_RST_PANIC:     return "PANIC";
-        case ESP_RST_INT_WDT:   return "INT_WDT";
-        case ESP_RST_TASK_WDT:  return "TASK_WDT";
-        case ESP_RST_WDT:       return "WDT";
-        case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
-        case ESP_RST_BROWNOUT:  return "BROWNOUT";
-        case ESP_RST_SDIO:      return "SDIO";
-        default:                return "UNKNOWN";
+        case ESP_RST_POWERON:
+            return "POWERON";
+        case ESP_RST_EXT:
+            return "EXT";
+        case ESP_RST_SW:
+            return "SW";
+        case ESP_RST_PANIC:
+            return "PANIC";
+        case ESP_RST_INT_WDT:
+            return "INT_WDT";
+        case ESP_RST_TASK_WDT:
+            return "TASK_WDT";
+        case ESP_RST_WDT:
+            return "WDT";
+        case ESP_RST_DEEPSLEEP:
+            return "DEEPSLEEP";
+        case ESP_RST_BROWNOUT:
+            return "BROWNOUT";
+        case ESP_RST_SDIO:
+            return "SDIO";
+        default:
+            return "UNKNOWN";
     }
 }
 
@@ -94,9 +105,8 @@ static void logCoreDumpSummary() {
         return;
     }
 
-    ESP_LOGE(TAG, "Core dump from previous crash: task='%s' PC=0x%08x cause=%u vaddr=0x%08x",
-             summary.exc_task, summary.exc_pc,
-             summary.ex_info.exc_cause, summary.ex_info.exc_vaddr);
+    ESP_LOGE(TAG, "Core dump from previous crash: task='%s' PC=0x%08x cause=%u vaddr=0x%08x", summary.exc_task,
+             summary.exc_pc, summary.ex_info.exc_cause, summary.ex_info.exc_vaddr);
 
     // One line per frame keeps each Serial.printf small; the USB CDC TX
     // buffer is only 64 bytes and a long line would just stall the boot.
@@ -172,7 +182,7 @@ Display::DisplayManager displayManager(sensorController, temperatureController);
 // be actively cleared — but that happens synchronously in the POST
 // /api/display handler, before the restart, rather than being
 // deferred to the next boot via a persisted flag.
-static void setupDisplay(const Config::DeviceConfig &deviceConfig) {
+static void setupDisplay(const Config::DeviceConfig& deviceConfig) {
     Config::DisplayConfig displayConfig = config.loadDisplayConfig();
 
     // Always wire up the pointer so Network::startAP() can probe.
@@ -200,8 +210,6 @@ static void setupDisplay(const Config::DeviceConfig &deviceConfig) {
 }
 #endif
 
-
-
 void setup() {
     delay(1000);
     // Serial.setDebugOutput(true);
@@ -210,10 +218,8 @@ void setup() {
 #ifdef ARDUINO
     esp_reset_reason_t resetReason = esp_reset_reason();
     ESP_LOGI(TAG, "Reset reason: %s (%d)", resetReasonStr(resetReason), resetReason);
-    ESP_LOGI(TAG, "Boot heap: internal free=%u largest=%u, total free=%u",
-             heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-             heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
-             heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
+    ESP_LOGI(TAG, "Boot heap: internal free=%u largest=%u, total free=%u", heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
     logCoreDumpSummary();
 #endif
     config.begin();
@@ -245,13 +251,13 @@ void setup() {
         char buf[128];
         strlcpy(buf, sensorConfig.assignments, sizeof(buf));
 
-        char *token = strtok(buf, ",");
+        char* token = strtok(buf, ",");
         while (token) {
-            char *eq = strchr(token, '=');
+            char* eq = strchr(token, '=');
             if (eq) {
                 *eq = '\0';
-                uint8_t addr = (uint8_t) strtoul(token, nullptr, 10);
-                const char *name = eq + 1;
+                uint8_t addr = (uint8_t)strtoul(token, nullptr, 10);
+                const char* name = eq + 1;
 
                 try {
                     if (strcmp(name, Sensor::SHT4x::type()) == 0) {
@@ -362,7 +368,7 @@ void setup() {
     try {
         network.begin();
         network.startTask();
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         ESP_LOGE(TAG, "Error starting network task: %s", e.what());
     } catch (...) {
         ESP_LOGE(TAG, "Unknown error starting network task");
@@ -371,7 +377,7 @@ void setup() {
     ESP_LOGI(TAG, "Starting sensor task");
     try {
         sensorMonitor.startTask();
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         ESP_LOGE(TAG, "Error starting sensor monitor task: %s", e.what());
     } catch (...) {
         ESP_LOGE(TAG, "Unknown error starting sensor monitor task");

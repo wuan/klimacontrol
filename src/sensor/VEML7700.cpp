@@ -2,8 +2,7 @@
 
 namespace Sensor {
 
-    VEML7700::VEML7700(uint8_t address) : I2CSensor(address) {
-    }
+    VEML7700::VEML7700(uint8_t address) : I2CSensor(address) {}
 
     bool VEML7700::begin() {
 #ifdef ARDUINO
@@ -23,8 +22,8 @@ namespace Sensor {
     }
 
     SensorReading VEML7700::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
-        (void) config;
-        (void) prior;
+        (void)config;
+        (void)prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();

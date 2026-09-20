@@ -18,7 +18,10 @@ namespace Sensor {
         explicit SGP40(uint8_t address = 0x59);
 
         static const char* type() { return "SGP40"; }
-        static const uint8_t* addresses() { static const uint8_t a[] = {0x59}; return a; }
+        static const uint8_t* addresses() {
+            static const uint8_t a[] = {0x59};
+            return a;
+        }
         static uint8_t addressCount() { return 1; }
 
         bool begin() override;
@@ -33,9 +36,8 @@ namespace Sensor {
             return {types, 1};
         }
         [[nodiscard]] TypeSpan requiresMeasurements() const override {
-            static constexpr MeasurementType types[] = {
-                MeasurementType::Temperature, MeasurementType::RelativeHumidity
-            };
+            static constexpr MeasurementType types[] = {MeasurementType::Temperature,
+                                                        MeasurementType::RelativeHumidity};
             return {types, 2};
         }
     };

@@ -14,27 +14,24 @@ namespace {
     // Captured verbatim from the real manifolds on 2026-09-02. Kept exactly as
     // the devices emit them — including the irregular spacing after commas,
     // which is the sort of thing a hand-written parser gets wrong.
-    const char *GAESTEBAD =
-        R"({"id":3, "name":"Gästebad","in_mode":"detached","in_locked":false,)"
-        R"("initial_state":"restore_last", "auto_on":false, "auto_on_delay":60.00, )"
-        R"("auto_off":false, "auto_off_delay":60.00,"power_limit":4480,"voltage_limit":280,)"
-        R"("undervoltage_limit":0,"autorecover_voltage_errors":false,"current_limit":16.000,)"
-        R"("reverse":false,"counts":{"enable":true,"power_thr":100}})";
+    const char* GAESTEBAD = R"({"id":3, "name":"Gästebad","in_mode":"detached","in_locked":false,)"
+                            R"("initial_state":"restore_last", "auto_on":false, "auto_on_delay":60.00, )"
+                            R"("auto_off":false, "auto_off_delay":60.00,"power_limit":4480,"voltage_limit":280,)"
+                            R"("undervoltage_limit":0,"autorecover_voltage_errors":false,"current_limit":16.000,)"
+                            R"("reverse":false,"counts":{"enable":true,"power_thr":100}})";
 
     // The bathroom fan, which is the one device on the network that already has
     // a lease configured. Different firmware (1.7.5), slightly different shape.
-    const char *BATH_FAN =
-        R"({"id":0, "name":null,"in_mode":"follow","in_locked":false,)"
-        R"("initial_state":"match_input", "auto_on":false, "auto_on_delay":60.00, )"
-        R"("auto_off":true, "auto_off_delay":300.00,"power_limit":4480,)"
-        R"("voltage_limit":280,"autorecover_voltage_errors":false,"current_limit":16.000})";
+    const char* BATH_FAN = R"({"id":0, "name":null,"in_mode":"follow","in_locked":false,)"
+                           R"("initial_state":"match_input", "auto_on":false, "auto_on_delay":60.00, )"
+                           R"("auto_off":true, "auto_off_delay":300.00,"power_limit":4480,)"
+                           R"("voltage_limit":280,"autorecover_voltage_errors":false,"current_limit":16.000})";
 
     // What a correctly prepared heating channel will look like after the
     // cutover runbook has been applied to it.
-    const char *CONFORMING =
-        R"({"id":3, "name":"Gästebad","in_mode":"detached","in_locked":false,)"
-        R"("initial_state":"off", "auto_on":false, "auto_on_delay":60.00, )"
-        R"("auto_off":true, "auto_off_delay":180.00,"power_limit":4480})";
+    const char* CONFORMING = R"({"id":3, "name":"Gästebad","in_mode":"detached","in_locked":false,)"
+                             R"("initial_state":"off", "auto_on":false, "auto_on_delay":60.00, )"
+                             R"("auto_off":true, "auto_off_delay":180.00,"power_limit":4480})";
 
     constexpr float MIN_DELAY = 120.0f;
 }
@@ -130,8 +127,7 @@ void test_gaestebad_as_found_is_refused() {
 void test_conforming_channel_is_accepted() {
     ChannelConfig c;
     TEST_ASSERT_TRUE(c.parse(CONFORMING));
-    TEST_ASSERT_EQUAL(static_cast<int>(Conformance::Ok),
-                      static_cast<int>(Actuator::checkConformance(c, MIN_DELAY)));
+    TEST_ASSERT_EQUAL(static_cast<int>(Conformance::Ok), static_cast<int>(Actuator::checkConformance(c, MIN_DELAY)));
 }
 
 void test_unread_config_is_refused() {
@@ -152,8 +148,7 @@ void test_lease_exactly_at_the_minimum_is_accepted() {
     ChannelConfig c;
     c.parse(CONFORMING);
     c.autoOffDelayS = MIN_DELAY;
-    TEST_ASSERT_EQUAL(static_cast<int>(Conformance::Ok),
-                      static_cast<int>(Actuator::checkConformance(c, MIN_DELAY)));
+    TEST_ASSERT_EQUAL(static_cast<int>(Conformance::Ok), static_cast<int>(Actuator::checkConformance(c, MIN_DELAY)));
 }
 
 void test_restore_last_is_refused() {

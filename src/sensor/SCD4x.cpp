@@ -3,8 +3,7 @@
 
 namespace Sensor {
 
-    SCD4x::SCD4x(uint8_t address) : I2CSensor(address) {
-    }
+    SCD4x::SCD4x(uint8_t address) : I2CSensor(address) {}
 
     bool SCD4x::begin() {
 #ifdef ARDUINO
@@ -38,8 +37,8 @@ namespace Sensor {
     }
 
     SensorReading SCD4x::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
-        (void) config;
-        (void) prior;
+        (void)config;
+        (void)prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();

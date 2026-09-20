@@ -28,7 +28,7 @@ namespace Support {
     // opportunistic association by a passerby who has not seen the SSID,
     // not to defend against a targeted attacker. See change
     // 2026-09-03-harden-config-ap-and-actuator-host for the design.
-    inline void computeApPassword(const char *deviceId, char *out, std::size_t outSize) {
+    inline void computeApPassword(const char* deviceId, char* out, std::size_t outSize) {
         if (out == nullptr || outSize < 9) {
             return;
         }
@@ -37,13 +37,13 @@ namespace Support {
         // password is not a trivial permutation of the device id.
         uint32_t h = 0x811c9dc5u;
         if (deviceId != nullptr) {
-            for (const char *p = deviceId; *p != '\0'; ++p) {
+            for (const char* p = deviceId; *p != '\0'; ++p) {
                 h ^= static_cast<uint8_t>(*p);
                 h *= 0x01000193u;
             }
         }
         static const char salt[] = "klima-ap-v1";
-        for (const char *p = salt; *p != '\0'; ++p) {
+        for (const char* p = salt; *p != '\0'; ++p) {
             h ^= static_cast<uint8_t>(*p);
             h *= 0x01000193u;
         }

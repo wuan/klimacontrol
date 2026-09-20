@@ -33,8 +33,8 @@ namespace Display {
         // is ~24 KB, and 5000 B of it would drop free below OTAUpdater's
         // MIN_FREE_INTERNAL gate of 20480 B, silently making firmware updates
         // impossible. 8 pages of text costs a few hundred microseconds.
-        GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT / 8> display(
-            GxEPD2_154_D67(DisplayPins::CS, DisplayPins::DC, DisplayPins::RST, DisplayPins::BUSY));
+        GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT / 8>
+            display(GxEPD2_154_D67(DisplayPins::CS, DisplayPins::DC, DisplayPins::RST, DisplayPins::BUSY));
 
         // Layout (rotation 0; GFX transforms these for other rotations).
         //
@@ -73,7 +73,7 @@ namespace Display {
         //
         // Ink: y 4..10, tucked against the top edge and well clear of the
         // window at y=30.
-        constexpr const char *HEADER_TITLE = "KlimaControl";
+        constexpr const char* HEADER_TITLE = "KlimaControl";
         constexpr int16_t HEADER_TOP_Y = 4;
         constexpr int16_t HEADER_COLUMN_GAP = 6;
 
@@ -133,13 +133,13 @@ namespace Display {
         // glyphs 0x20-0x7E, so U+00B0 (and the Latin-1 0xB0 byte) renders as
         // nothing — the ring has to be drawn, not printed.
         constexpr int16_t DEGREE_RADIUS = 6;
-        constexpr int16_t DEGREE_GAP = 5;      // space between the digits and the ring
+        constexpr int16_t DEGREE_GAP = 5;       // space between the digits and the ring
         constexpr int16_t DEGREE_TOP_INSET = 0; // below the cap height of the big font
         constexpr int16_t DEGREE_ADVANCE = DEGREE_GAP + 2 * DEGREE_RADIUS;
 
         // Draw `text` horizontally centred on the panel with its baseline at
         // `baselineY`, using whatever font is currently selected.
-        void drawCentered(const char *text, int16_t baselineY) {
+        void drawCentered(const char* text, int16_t baselineY) {
             int16_t x1 = 0;
             int16_t y1 = 0;
             uint16_t w = 0;
@@ -154,8 +154,7 @@ namespace Display {
         void drawControlSymbol(int16_t x, int16_t y, Display::ControlState state) {
             switch (state) {
                 case Display::ControlState::INACTIVE:
-                    display.drawFastHLine(x - CONTROL_SYMBOL_HALF_LINE, y,
-                                          2 * CONTROL_SYMBOL_HALF_LINE, GxEPD_BLACK);
+                    display.drawFastHLine(x - CONTROL_SYMBOL_HALF_LINE, y, 2 * CONTROL_SYMBOL_HALF_LINE, GxEPD_BLACK);
                     break;
                 case Display::ControlState::ACTIVE_OFF:
                     display.drawCircle(x, y, CONTROL_SYMBOL_RADIUS, GxEPD_BLACK);
@@ -183,7 +182,7 @@ namespace Display {
         // roughly a full text height too low (past the humidity line, and
         // outside the partial-refresh window so it only shows up on a full
         // refresh and then sticks).
-        void drawTemperatureWithDegree(const char *text, int16_t baselineY) {
+        void drawTemperatureWithDegree(const char* text, int16_t baselineY) {
             int16_t x1 = 0;
             int16_t y1 = 0;
             uint16_t w = 0;
@@ -197,8 +196,7 @@ namespace Display {
             display.setCursor(x, baselineY);
             display.print(text);
 
-            const int16_t ringCx = static_cast<int16_t>(x + x1 + static_cast<int16_t>(w) +
-                                                        DEGREE_GAP + DEGREE_RADIUS);
+            const int16_t ringCx = static_cast<int16_t>(x + x1 + static_cast<int16_t>(w) + DEGREE_GAP + DEGREE_RADIUS);
             // y1 is already the absolute top of the digits.
             const int16_t ringCy = static_cast<int16_t>(y1 + DEGREE_TOP_INSET + DEGREE_RADIUS);
             display.drawCircle(ringCx, ringCy, DEGREE_RADIUS + 1, GxEPD_BLACK);
@@ -207,7 +205,7 @@ namespace Display {
         }
 
         // Advance width of `text` in the currently selected font.
-        int16_t textWidth(const char *text) {
+        int16_t textWidth(const char* text) {
             int16_t x1 = 0;
             int16_t y1 = 0;
             uint16_t w = 0;
@@ -224,7 +222,7 @@ namespace Display {
         // the centred setpoint group and paints over it. Truncating here is what
         // keeps the three footer fields from colliding. ('…' is not an option:
         // the GFX free fonts only carry glyphs 0x20-0x7E.)
-        void fitToWidth(const char *text, int16_t maxWidth, char *out, size_t outSize) {
+        void fitToWidth(const char* text, int16_t maxWidth, char* out, size_t outSize) {
             if (out == nullptr || outSize == 0) {
                 return;
             }
@@ -252,7 +250,7 @@ namespace Display {
             }
         }
 
-        void drawRightAligned(const char *text, int16_t rightX, int16_t baselineY) {
+        void drawRightAligned(const char* text, int16_t rightX, int16_t baselineY) {
             int16_t x1 = 0;
             int16_t y1 = 0;
             uint16_t w = 0;
@@ -271,20 +269,20 @@ namespace Display {
 
     } // namespace
 
-    void EPaperDisplay::noteDuration(uint32_t elapsedMs, const char *what) {
+    void EPaperDisplay::noteDuration(uint32_t elapsedMs, const char* what) {
         if (elapsedMs > REFRESH_TIMEOUT_MS) {
             consecutiveTimeouts++;
-            ESP_LOGW(TAG, "%s took %u ms (> %u ms timeout), %u/%u consecutive",
-                     what, elapsedMs, REFRESH_TIMEOUT_MS,
+            ESP_LOGW(TAG, "%s took %u ms (> %u ms timeout), %u/%u consecutive", what, elapsedMs, REFRESH_TIMEOUT_MS,
                      consecutiveTimeouts, MAX_CONSECUTIVE_TIMEOUTS);
             if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS && !faulted) {
                 faulted = true;
                 // Logged once. The persisted DisplayConfig is deliberately NOT
                 // touched: a loose connector must not silently rewrite the
                 // user's settings, and a reboot re-tests the hardware.
-                ESP_LOGE(TAG, "Display faulted after %u consecutive timeouts - "
-                              "check the BUSY line and the panel connection. "
-                              "No further refreshes until restart.",
+                ESP_LOGE(TAG,
+                         "Display faulted after %u consecutive timeouts - "
+                         "check the BUSY line and the panel connection. "
+                         "No further refreshes until restart.",
                          consecutiveTimeouts);
             }
         } else {
@@ -333,8 +331,8 @@ namespace Display {
         display.setTextWrap(false);
         initialised = true;
 
-        ESP_LOGI(TAG, "E-paper display initialised (rotation=%u, page buffer=%u B)",
-                 rotation, static_cast<unsigned>((GxEPD2_154_D67::WIDTH / 8) * (GxEPD2_154_D67::HEIGHT / 8)));
+        ESP_LOGI(TAG, "E-paper display initialised (rotation=%u, page buffer=%u B)", rotation,
+                 static_cast<unsigned>((GxEPD2_154_D67::WIDTH / 8) * (GxEPD2_154_D67::HEIGHT / 8)));
 
         hibernate();
         return !faulted;
@@ -382,8 +380,8 @@ namespace Display {
         pinMode(DisplayPins::RST, OUTPUT);
         pinMode(DisplayPins::BUSY, INPUT);
         digitalWrite(DisplayPins::CS, HIGH);  // deselect
-        digitalWrite(DisplayPins::DC, LOW);    // command mode
-        digitalWrite(DisplayPins::RST, HIGH);  // start in idle
+        digitalWrite(DisplayPins::DC, LOW);   // command mode
+        digitalWrite(DisplayPins::RST, HIGH); // start in idle
 
         const uint32_t start = millis();
 
@@ -419,14 +417,12 @@ namespace Display {
         // failure mode — open AP rather than lock the user out).
         while (millis() - start < timeoutMs) {
             if (digitalRead(DisplayPins::BUSY) == HIGH) {
-                ESP_LOGI(TAG, "Display probe: panel responded in %u ms",
-                         static_cast<unsigned>(millis() - start));
+                ESP_LOGI(TAG, "Display probe: panel responded in %u ms", static_cast<unsigned>(millis() - start));
                 return true;
             }
             delay(1);
         }
-        ESP_LOGW(TAG, "Display probe: BUSY stuck LOW past %u ms — panel stuck",
-                 static_cast<unsigned>(timeoutMs));
+        ESP_LOGW(TAG, "Display probe: BUSY stuck LOW past %u ms — panel stuck", static_cast<unsigned>(timeoutMs));
         return false;
     }
 
@@ -437,8 +433,7 @@ namespace Display {
         // blobs would not.
         const int16_t top = static_cast<int16_t>(FOOTER_LINE2_Y - DEMAND_SEG_H);
         for (uint8_t i = 0; i < Display::DEMAND_BUCKETS; ++i) {
-            const int16_t x =
-                static_cast<int16_t>(leftX + i * (DEMAND_SEG_W + DEMAND_SEG_GAP));
+            const int16_t x = static_cast<int16_t>(leftX + i * (DEMAND_SEG_W + DEMAND_SEG_GAP));
             if (i < filledSegments) {
                 display.fillRect(x, top, DEMAND_SEG_W, DEMAND_SEG_H, GxEPD_BLACK);
             } else {
@@ -464,8 +459,7 @@ namespace Display {
         const int16_t titleW = textWidth(HEADER_TITLE);
 
         char version[24];
-        const int16_t versionMaxW = static_cast<int16_t>(FOOTER_RIGHT_X - HEADER_COLUMN_GAP -
-                                                         FOOTER_MARGIN_X - titleW);
+        const int16_t versionMaxW = static_cast<int16_t>(FOOTER_RIGHT_X - HEADER_COLUMN_GAP - FOOTER_MARGIN_X - titleW);
         fitToWidth(FIRMWARE_VERSION, versionMaxW, version, sizeof(version));
         if (version[0] != '\0') {
             drawRightAligned(version, FOOTER_RIGHT_X, HEADER_TOP_Y);
@@ -475,7 +469,7 @@ namespace Display {
         display.print(HEADER_TITLE);
     }
 
-    void EPaperDisplay::drawMeasurements(const char *tempStr, const char *humStr) {
+    void EPaperDisplay::drawMeasurements(const char* tempStr, const char* humStr) {
         display.setFont(&FreeSansBold24pt7b);
         drawTemperatureWithDegree(tempStr, TEMP_BASELINE_Y);
 
@@ -485,11 +479,12 @@ namespace Display {
         drawCentered(humLine, HUMIDITY_BASELINE_Y);
     }
 
-    void EPaperDisplay::drafFooter(const char *footerName, const char *footerDateTime, Display::ControlState controlState, const char *setpointStr, uint8_t demandSegments) {
+    void EPaperDisplay::drafFooter(const char* footerName, const char* footerDateTime,
+                                   Display::ControlState controlState, const char* setpointStr,
+                                   uint8_t demandSegments) {
         // Drawn on every refresh, partial included: the footer carries a
         // live clock, so it must never be older than the values above it.
-        display.drawFastHLine(FOOTER_MARGIN_X, FOOTER_RULE_Y,
-                              PANEL_W - 2 * FOOTER_MARGIN_X, GxEPD_BLACK);
+        display.drawFastHLine(FOOTER_MARGIN_X, FOOTER_RULE_Y, PANEL_W - 2 * FOOTER_MARGIN_X, GxEPD_BLACK);
 
         display.setFont(&FreeSans9pt7b);
 
@@ -500,11 +495,9 @@ namespace Display {
         const int16_t ringCx = static_cast<int16_t>(FOOTER_RIGHT_X - SETPOINT_DEGREE_RADIUS);
         display.drawCircle(ringCx, SETPOINT_DEGREE_CY, SETPOINT_DEGREE_RADIUS, GxEPD_BLACK);
 
-        const int16_t setpointRightX =
-                static_cast<int16_t>(ringCx - SETPOINT_DEGREE_RADIUS - SETPOINT_DEGREE_GAP);
+        const int16_t setpointRightX = static_cast<int16_t>(ringCx - SETPOINT_DEGREE_RADIUS - SETPOINT_DEGREE_GAP);
         drawRightAligned(setpointStr, setpointRightX, FOOTER_LINE1_Y);
-        const int16_t setpointLeftX =
-                static_cast<int16_t>(setpointRightX - textWidth(setpointStr));
+        const int16_t setpointLeftX = static_cast<int16_t>(setpointRightX - textWidth(setpointStr));
 
         // Line 2: control symbol, also flush with the right margin.
         const int16_t symbolCx = static_cast<int16_t>(FOOTER_RIGHT_X - CONTROL_SYMBOL_RADIUS);
@@ -517,8 +510,7 @@ namespace Display {
         // drawn even at zero demand, because "enabled but asking for
         // nothing" is worth distinguishing from "switched off".
         int16_t rightColumnLeftX = symbolLeftX;
-        if (controlState != Display::ControlState::INACTIVE &&
-            controlState != Display::ControlState::UNCERTAIN) {
+        if (controlState != Display::ControlState::INACTIVE && controlState != Display::ControlState::UNCERTAIN) {
             const int16_t barRightX = static_cast<int16_t>(symbolLeftX - DEMAND_BAR_GAP);
             const int16_t barLeftX = static_cast<int16_t>(barRightX - DEMAND_BAR_W);
             drawDemandBar(barLeftX, demandSegments);
@@ -528,8 +520,7 @@ namespace Display {
         // --- left column, each line truncated to what its own row leaves ---
         char footerField[40];
         if (footerName != nullptr && footerName[0] != '\0') {
-            const int16_t maxWidth = static_cast<int16_t>(setpointLeftX - FOOTER_COLUMN_GAP -
-                                                          FOOTER_MARGIN_X);
+            const int16_t maxWidth = static_cast<int16_t>(setpointLeftX - FOOTER_COLUMN_GAP - FOOTER_MARGIN_X);
             fitToWidth(footerName, maxWidth, footerField, sizeof(footerField));
             if (footerField[0] != '\0') {
                 display.setCursor(FOOTER_MARGIN_X, FOOTER_LINE1_Y);
@@ -537,8 +528,7 @@ namespace Display {
             }
         }
         if (footerDateTime != nullptr && footerDateTime[0] != '\0') {
-            const int16_t maxWidth = static_cast<int16_t>(rightColumnLeftX -
-                                                          FOOTER_COLUMN_GAP - FOOTER_MARGIN_X);
+            const int16_t maxWidth = static_cast<int16_t>(rightColumnLeftX - FOOTER_COLUMN_GAP - FOOTER_MARGIN_X);
             fitToWidth(footerDateTime, maxWidth, footerField, sizeof(footerField));
             if (footerField[0] != '\0') {
                 display.setCursor(FOOTER_MARGIN_X, FOOTER_LINE2_Y);
@@ -547,10 +537,9 @@ namespace Display {
         }
     }
 
-    void EPaperDisplay::runPagedDraw(const char *tempStr, const char *humStr,
-                                     const char *footerName, const char *footerDateTime,
-                                     Display::ControlState controlState, const char *setpointStr,
-                                     uint8_t demandSegments) {
+    void EPaperDisplay::runPagedDraw(const char* tempStr, const char* humStr, const char* footerName,
+                                     const char* footerDateTime, Display::ControlState controlState,
+                                     const char* setpointStr, uint8_t demandSegments) {
         display.firstPage();
         do {
             display.fillScreen(GxEPD_WHITE);
@@ -563,11 +552,9 @@ namespace Display {
         } while (display.nextPage());
     }
 
-    void EPaperDisplay::render(const char *tempStr, const char *humStr,
-                               const char *footerName, const char *footerDateTime,
-                               Display::ControlState controlState, const char *setpointStr,
-                               uint8_t demandSegments,
-                               RefreshKind kind) {
+    void EPaperDisplay::render(const char* tempStr, const char* humStr, const char* footerName,
+                               const char* footerDateTime, Display::ControlState controlState, const char* setpointStr,
+                               uint8_t demandSegments, RefreshKind kind) {
         if (!initialised || faulted || kind == RefreshKind::None) {
             return;
         }
@@ -588,14 +575,12 @@ namespace Display {
         // "blocking external call" requirement.
         const uint32_t start = millis();
         feedWatchdog();
-        runPagedDraw(tempStr, humStr, footerName, footerDateTime, controlState, setpointStr,
-                     demandSegments);
+        runPagedDraw(tempStr, humStr, footerName, footerDateTime, controlState, setpointStr, demandSegments);
         feedWatchdog();
         const uint32_t elapsed = millis() - start;
 
         noteDuration(elapsed, full ? "Full refresh" : "Partial refresh");
-        ESP_LOGD(TAG, "%s refresh: '%s' / '%s' in %u ms",
-                 full ? "Full" : "Partial", tempStr, humStr, elapsed);
+        ESP_LOGD(TAG, "%s refresh: '%s' / '%s' in %u ms", full ? "Full" : "Partial", tempStr, humStr, elapsed);
 
         hibernate();
     }
@@ -619,7 +604,7 @@ namespace Display {
         hibernate();
     }
 
-    void EPaperDisplay::showSplash(const char *deviceName) {
+    void EPaperDisplay::showSplash(const char* deviceName) {
         if (!initialised || faulted) {
             return;
         }
@@ -657,7 +642,7 @@ namespace Display {
         hibernate();
     }
 
-    void EPaperDisplay::showApInfo(const char *ssid, const char *password, const char *ip) {
+    void EPaperDisplay::showApInfo(const char* ssid, const char* password, const char* ip) {
         if (!initialised || faulted) {
             return;
         }
@@ -685,7 +670,7 @@ namespace Display {
             constexpr int16_t BODY_LEFT_X = FOOTER_MARGIN_X;
             constexpr int16_t LABEL_BASELINE_Y = 60;
             constexpr int16_t VALUE_BASELINE_Y = 60;
-            constexpr int16_t LABEL_WIDTH = 70;   // "Password: " fits with slack
+            constexpr int16_t LABEL_WIDTH = 70; // "Password: " fits with slack
             constexpr int16_t LINE_GAP = 32;
 
             display.setFont(&FreeSans9pt7b);

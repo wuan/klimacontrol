@@ -24,7 +24,7 @@ namespace Support {
      *         -1 if `available` is strictly older than `current`
      *          0 if they are equal, or either version is unparseable
      */
-    inline int compareVersions(const char *current, const char *available) {
+    inline int compareVersions(const char* current, const char* available) {
         if (current == nullptr || available == nullptr) {
             return 0;
         }
@@ -52,7 +52,7 @@ namespace Support {
      * API and the decision to actually flash, so a downgrade or a re-flash of
      * the running version is never offered or performed.
      */
-    inline bool isNewerVersion(const char *current, const char *available) {
+    inline bool isNewerVersion(const char* current, const char* available) {
         return compareVersions(current, available) > 0;
     }
 
@@ -64,13 +64,11 @@ namespace Support {
      * `allowReinstall`. Lives in this header so the native test can exercise it
      * without dragging in OTA headers.
      */
-    inline bool isReinstallOrNewer(const char *current,
-                                   const char *available,
-                                   bool allowReinstall) {
+    inline bool isReinstallOrNewer(const char* current, const char* available, bool allowReinstall) {
         int cmp = compareVersions(current, available);
-        if (cmp > 0) return true;            // strictly newer
-        if (cmp < 0) return false;           // strictly older — refused either way
-        return allowReinstall;               // semver-equal — gated by flag
+        if (cmp > 0) return true;  // strictly newer
+        if (cmp < 0) return false; // strictly older — refused either way
+        return allowReinstall;     // semver-equal — gated by flag
     }
 
 } // namespace Support

@@ -23,16 +23,14 @@ namespace {
 
 namespace Control {
 
-    TemperatureController::TemperatureController(Config::ConfigManager &config)
+    TemperatureController::TemperatureController(Config::ConfigManager& config)
         : config(config),
           // The config cache holds the compiled-in defaults at this point: this
           // object is a global constructed long before config.begin() has read
           // NVS. begin() applies the stored tuning once it is available.
-          pid(Control::PidGains{config.getDeviceConfig().kp, config.getDeviceConfig().ki,
-                                config.getDeviceConfig().kd},
+          pid(Control::PidGains{config.getDeviceConfig().kp, config.getDeviceConfig().ki, config.getDeviceConfig().kd},
               MinOutput, MaxOutput),
-          autotuner(Control::AutotuneLimits{}) {
-    }
+          autotuner(Control::AutotuneLimits{}) {}
 
     void TemperatureController::begin() {
         // Adopt the stored tuning. This has to happen here rather than in the
@@ -40,11 +38,11 @@ namespace Control {
         // has read NVS, so the constructor could only ever see the compiled-in
         // defaults. Called from setup() before the Sensor Monitor task exists, so
         // writing PID state directly is safe — there is no other task to race.
-        const Config::DeviceConfig &cfg = config.getDeviceConfig();
+        const Config::DeviceConfig& cfg = config.getDeviceConfig();
         pid.setGains(Control::PidGains{cfg.kp, cfg.ki, cfg.kd});
-        ESP_LOGI(TAG, "PID tuning from config: Kp=%.4f Ki=%.5f Kd=%.1f interval=%us",
-                 static_cast<double>(cfg.kp), static_cast<double>(cfg.ki),
-                 static_cast<double>(cfg.kd), static_cast<unsigned>(cfg.control_interval_s));
+        ESP_LOGI(TAG, "PID tuning from config: Kp=%.4f Ki=%.5f Kd=%.1f interval=%us", static_cast<double>(cfg.kp),
+                 static_cast<double>(cfg.ki), static_cast<double>(cfg.kd),
+                 static_cast<unsigned>(cfg.control_interval_s));
     }
 
     void TemperatureController::setTargetTemperature(float temperature) {
@@ -55,8 +53,8 @@ namespace Control {
         // different setpoint than the one asked for is not an acceptable answer to
         // a user. See spec `temperature-control` → "Setpoint range" for the three
         // validation layers and what each is for.
-        float clamped = std::max(Config::TARGET_TEMPERATURE_MIN_C,
-                                 std::min(Config::TARGET_TEMPERATURE_MAX_C, temperature));
+        float clamped =
+            std::max(Config::TARGET_TEMPERATURE_MIN_C, std::min(Config::TARGET_TEMPERATURE_MAX_C, temperature));
         ESP_LOGI(TAG, "Target temperature set to %.1f C", clamped);
 
         // Persist to NVS using partial update (also updates in-memory cache)
@@ -105,8 +103,7 @@ namespace Control {
         const Control::PidGains derived = autotuner.getResultGains();
         requestGains(derived, config.getDeviceConfig().control_interval_s);
         ESP_LOGI(TAG, "Autotune gains stored, awaiting control tick: Kp=%.4f Ki=%.5f Kd=%.1f",
-                 static_cast<double>(derived.kp), static_cast<double>(derived.ki),
-                 static_cast<double>(derived.kd));
+                 static_cast<double>(derived.kp), static_cast<double>(derived.ki), static_cast<double>(derived.kd));
         return true;
     }
 
@@ -120,7 +117,7 @@ namespace Control {
         // Publish the validated values as stored, not as supplied: updateTuning()
         // may have fallen back on a field, and the running controller must agree
         // with what was persisted rather than with what was asked for.
-        const Config::DeviceConfig &cfg = config.getDeviceConfig();
+        const Config::DeviceConfig& cfg = config.getDeviceConfig();
         pendingGains = Control::PidGains{cfg.kp, cfg.ki, cfg.kd};
         gainsChangeRequested.store(true);
     }
@@ -135,8 +132,7 @@ namespace Control {
         // lastInputValid stands in for the live sensor read this used to do:
         // it is what the most recent update() was handed, so at most one
         // Sensor Monitor tick stale, and false until that first tick.
-        return config.getDeviceConfigSnapshot().temperature_control_enabled &&
-               !safetyShutoff && lastInputValid;
+        return config.getDeviceConfigSnapshot().temperature_control_enabled && !safetyShutoff && lastInputValid;
     }
 
     void TemperatureController::suspendPid(uint32_t nowMs) {
@@ -170,9 +166,8 @@ namespace Control {
             const Control::PidGains gains = pendingGains;
             pid.setGains(gains);
             lastPidComputeMs = now;
-            ESP_LOGI(TAG, "PID gains applied: Kp=%.4f Ki=%.5f Kd=%.1f",
-                     static_cast<double>(gains.kp), static_cast<double>(gains.ki),
-                     static_cast<double>(gains.kd));
+            ESP_LOGI(TAG, "PID gains applied: Kp=%.4f Ki=%.5f Kd=%.1f", static_cast<double>(gains.kp),
+                     static_cast<double>(gains.ki), static_cast<double>(gains.kd));
         }
 
         // Over-temperature shutoff, evaluated before anything else so a saturated
@@ -217,8 +212,7 @@ namespace Control {
         }
         if (autotuneStartRequested.exchange(false)) {
             if (cfg.temperature_control_enabled && !isAutotuneActive()) {
-                ESP_LOGI(TAG, "Autotune starting around %.1f C",
-                         static_cast<double>(cfg.target_temperature));
+                ESP_LOGI(TAG, "Autotune starting around %.1f C", static_cast<double>(cfg.target_temperature));
                 autotuner.start(cfg.target_temperature, now);
             }
         }
@@ -242,17 +236,14 @@ namespace Control {
             lastControlOutput = autotuner.update(currentTemp, inputValid, now);
 
             if (!isAutotuneActive()) {
-                ESP_LOGI(TAG, "Autotune finished: state=%d reason=%d cycles=%u",
-                         static_cast<int>(autotuner.state()),
-                         static_cast<int>(autotuner.abortReason()),
-                         static_cast<unsigned>(autotuner.completedCycles()));
+                ESP_LOGI(TAG, "Autotune finished: state=%d reason=%d cycles=%u", static_cast<int>(autotuner.state()),
+                         static_cast<int>(autotuner.abortReason()), static_cast<unsigned>(autotuner.completedCycles()));
             }
             return lastControlOutput;
         }
 
         float currentTemp = temperature;
-        if (!cfg.temperature_control_enabled || !valid ||
-            std::isnan(currentTemp)) {
+        if (!cfg.temperature_control_enabled || !valid || std::isnan(currentTemp)) {
             // Tell the PID it skipped a tick, so the next one that does run
             // restarts bumplessly instead of charging its integral with the whole
             // elapsed gap. All three of the disabled, no-valid-data and NaN cases
@@ -283,8 +274,7 @@ namespace Control {
         // under-estimates `a`, over-estimates `Ku` and yields gains more aggressive
         // than the plant can take — from a run that reports convergence. Only the
         // PID computation below is decimated.
-        const uint32_t intervalMs =
-            static_cast<uint32_t>(cfg.control_interval_s) * 1000u;
+        const uint32_t intervalMs = static_cast<uint32_t>(cfg.control_interval_s) * 1000u;
         if (now - lastPidComputeMs < intervalMs) {
             // A tick between computations, not a skipped one — so pointedly no
             // suspendPid() here. Suspending would make every computation a bumpless
@@ -304,22 +294,18 @@ namespace Control {
         float targetTemperature = cfg.target_temperature;
         float error = targetTemperature - currentTemp;
         float output = pid.update(error, now);
-        ESP_LOGI(TAG, "control update (p: %.2f, i: %.4f, d: %.2f): %.1f K -> %0.2f",
-                 static_cast<double>(cfg.kp),
-                 static_cast<double>(cfg.ki),
-                 static_cast<double>(cfg.kd),
-                 static_cast<double>(error),
-                 static_cast<double>(output)
-                 );
+        ESP_LOGI(TAG, "control update (p: %.2f, i: %.4f, d: %.2f): %.1f K -> %0.2f", static_cast<double>(cfg.kp),
+                 static_cast<double>(cfg.ki), static_cast<double>(cfg.kd), static_cast<double>(error),
+                 static_cast<double>(output));
 
         lastControlOutput = output;
 
         if (restarting) {
-            ESP_LOGD(TAG, "PID restart: T=%.1f C (target=%.1f C), output=%.2f (proportional only)",
-                     currentTemp, targetTemperature, output);
+            ESP_LOGD(TAG, "PID restart: T=%.1f C (target=%.1f C), output=%.2f (proportional only)", currentTemp,
+                     targetTemperature, output);
         } else {
-            ESP_LOGD(TAG, "PID: T=%.1f C (target=%.1f C), output=%.2f, I=%.2f", currentTemp,
-                     targetTemperature, output, pid.getIntegral());
+            ESP_LOGD(TAG, "PID: T=%.1f C (target=%.1f C), output=%.2f, I=%.2f", currentTemp, targetTemperature, output,
+                     pid.getIntegral());
         }
 
         return output;

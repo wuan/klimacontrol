@@ -28,22 +28,22 @@ namespace Support {
      */
     enum RequestStage : uint16_t {
         StageNone = 0,
-        StageBodyEntered = 1u << 0,  // the onBody callback was invoked
-        StageCsrfPassed = 1u << 1,   // CSRF header accepted
-        StageJsonParsed = 1u << 2,   // deserializeJson returned success
-        StageValidated = 1u << 3,    // input passed range checks
-        StageResponded = 1u << 4,    // the handler called send()
+        StageBodyEntered = 1u << 0, // the onBody callback was invoked
+        StageCsrfPassed = 1u << 1,  // CSRF header accepted
+        StageJsonParsed = 1u << 2,  // deserializeJson returned success
+        StageValidated = 1u << 3,   // input passed range checks
+        StageResponded = 1u << 4,   // the handler called send()
     };
 
     struct RequestRecord {
         uint32_t atMs = 0;
         uint16_t stages = StageNone;
-        int16_t code = 0;          // as seen by the middleware; -1 = no response yet
+        int16_t code = 0; // as seen by the middleware; -1 = no response yet
         uint32_t contentLength = 0;
         uint32_t freeHeap = 0;
         uint32_t largestBlock = 0;
         uint16_t elapsedMs = 0;
-        uint16_t params = 0;      // POST params the framework parsed from the body
+        uint16_t params = 0; // POST params the framework parsed from the body
         char method[8] = "";
         char url[40] = "";
         char contentType[32] = "";
@@ -62,17 +62,17 @@ namespace Support {
     uint16_t pendingStages();
 
     /** Append a record and clear the pending marks. */
-    void recordRequest(const char *method, const char *url, int code, uint32_t contentLength,
-                       uint16_t elapsedMs, uint32_t freeHeap, uint32_t largestBlock, uint32_t atMs,
-                       const char *contentType = nullptr, uint16_t params = 0);
+    void recordRequest(const char* method, const char* url, int code, uint32_t contentLength, uint16_t elapsedMs,
+                       uint32_t freeHeap, uint32_t largestBlock, uint32_t atMs, const char* contentType = nullptr,
+                       uint16_t params = 0);
 
-    size_t requestCount();                     // records held, up to capacity
-    uint32_t totalRequests();                  // seen since boot, including evicted
-    const RequestRecord &requestAt(size_t i);  // 0 = oldest held
+    size_t requestCount();                    // records held, up to capacity
+    uint32_t totalRequests();                 // seen since boot, including evicted
+    const RequestRecord& requestAt(size_t i); // 0 = oldest held
     void clearRequests();
 
     /** Comma-free textual form of the stage bits, for the API. */
-    void describeStages(uint16_t stages, char *out, size_t outSize);
+    void describeStages(uint16_t stages, char* out, size_t outSize);
 
 }
 

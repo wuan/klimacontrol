@@ -56,8 +56,8 @@ namespace {
     // *some* point during the run. The writer only ever commits whole pairs,
     // so any snapshot that picks up fields from two different committed
     // pairs is by construction torn.
-    bool isAnyKnownPair(const Config::DeviceConfig &cfg) {
-        for (const auto &p : kPairs) {
+    bool isAnyKnownPair(const Config::DeviceConfig& cfg) {
+        for (const auto& p : kPairs) {
             if (cfg.safety_max_c == p.maxC && cfg.safety_hyst_c == p.hystC) {
                 return true;
             }
@@ -69,7 +69,7 @@ namespace {
 // Sanity check the validator does not silently rewrite the pairs above into
 // the default; a torn read could otherwise look like a validator quirk.
 void test_validator_preserves_chosen_pairs() {
-    for (const auto &p : kPairs) {
+    for (const auto& p : kPairs) {
         Config::DeviceConfig candidate;
         candidate.tpo_cycle_s = CYCLE_S;
         candidate.tpo_travel_s = TRAVEL_S;
@@ -101,7 +101,7 @@ void test_snapshot_is_a_known_pair_under_concurrent_writes() {
         }
         size_t i = 0;
         while (!stop.load(std::memory_order_acquire)) {
-            const Pair &p = kPairs[i % (sizeof(kPairs) / sizeof(kPairs[0]))];
+            const Pair& p = kPairs[i % (sizeof(kPairs) / sizeof(kPairs[0]))];
             cfg.updateActuatorTiming(CYCLE_S, TRAVEL_S, p.maxC, p.hystC);
             ++i;
             // Yield to give the reader a chance to interleave between the
@@ -140,8 +140,8 @@ void test_snapshot_is_a_known_pair_under_concurrent_writes() {
 
     TEST_ASSERT_GREATER_THAN(0, snapshots.load());
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, tornObservations.load(),
-        "Snapshot observed a safety pair that was never committed by the "
-        "writer — a torn cross-task read.");
+                                  "Snapshot observed a safety pair that was never committed by the "
+                                  "writer — a torn cross-task read.");
     // If we did see a torn pair, the diagnostics below carry enough
     // information to identify which intermediate state slipped through.
     (void)tornMaxC.load();
@@ -164,7 +164,7 @@ void test_snapshot_remains_consistent_with_two_writers_two_readers() {
         size_t i = offset;
         const size_t n = sizeof(kPairs) / sizeof(kPairs[0]);
         while (!stop.load(std::memory_order_acquire)) {
-            const Pair &p = kPairs[i % n];
+            const Pair& p = kPairs[i % n];
             cfg.updateActuatorTiming(CYCLE_S, TRAVEL_S, p.maxC, p.hystC);
             ++i;
             std::this_thread::yield();
@@ -200,8 +200,8 @@ void test_snapshot_remains_consistent_with_two_writers_two_readers() {
 
     TEST_ASSERT_GREATER_THAN(0, snapshots.load());
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, tornObservations.load(),
-        "Snapshot observed a safety pair that no writer ever committed "
-        "even with two concurrent writers and two readers.");
+                                  "Snapshot observed a safety pair that no writer ever committed "
+                                  "even with two concurrent writers and two readers.");
 }
 
 // The const-reference accessor still has to work for same-task readers —
@@ -210,7 +210,7 @@ void test_snapshot_remains_consistent_with_two_writers_two_readers() {
 void test_get_device_config_still_returns_a_reference() {
     Config::ConfigManager cfg;
 
-    const Config::DeviceConfig &ref = cfg.getDeviceConfig();
+    const Config::DeviceConfig& ref = cfg.getDeviceConfig();
     cfg.updateTargetTemperature(23.5f);
     // The reference observes the new value because the writer and reader
     // are on the same task.
@@ -279,8 +279,8 @@ void test_single_field_writes_do_not_disturb_adjacent_fields() {
     r.join();
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, inconsistent.load(),
-        "A single-field writer disturbed fields it was not supposed to "
-        "touch, indicating a missed lock acquisition.");
+                                  "A single-field writer disturbed fields it was not supposed to "
+                                  "touch, indicating a missed lock acquisition.");
 }
 
 int runUnityTests() {

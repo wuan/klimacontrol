@@ -1,15 +1,11 @@
 #!/bin/bash
 set -e
 
-if ! command -v openspec &> /dev/null; then
-    echo "Installing OpenSpec CLI..."
-    if ! npm install -g @fission-ai/openspec; then
-        echo "ERROR: Failed to install OpenSpec CLI"
-        echo "Please install it manually with: npm install -g @fission-ai/openspec"
-        exit 1
-    fi
-fi
+# Pinned to match .github/workflows/openspec.yml — a different major can
+# silently validate or invalidate specs in ways CI and local disagree on.
+OPENSPEC_VERSION="${OPENSPEC_VERSION:-1.10.0}"
 
 # openspec/ lives at the repository root; run from there so the CLI finds it.
 cd "$(dirname "$0")/.."
-openspec validate --all --strict --no-interactive
+
+npx -y "@fission-ai/openspec@${OPENSPEC_VERSION}" validate --all --strict --no-interactive

@@ -39,8 +39,7 @@ namespace DeviceId {
         memcpy(mac_bytes, &mac, 6);
 
         char mac_str[18];
-        snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
-                 mac_bytes[0], mac_bytes[1], mac_bytes[2],
+        snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X", mac_bytes[0], mac_bytes[1], mac_bytes[2],
                  mac_bytes[3], mac_bytes[4], mac_bytes[5]);
         return String(mac_str);
     }
@@ -51,10 +50,14 @@ namespace DeviceId {
 using String = std::string;
 
 namespace DeviceId {
-    inline String getDeviceId() { return "000000"; }
-    inline String getMacAddress() { return "00:00:00:00:00:00"; }
+    inline String getDeviceId() {
+        return "000000";
+    }
+    inline String getMacAddress() {
+        return "00:00:00:00:00:00";
+    }
 } // namespace DeviceId
 
 #endif // ARDUINO
 
-#endif //KLIMACONTROL_DEVICEID_H
+#endif // KLIMACONTROL_DEVICEID_H

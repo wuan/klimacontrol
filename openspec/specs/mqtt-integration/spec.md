@@ -138,4 +138,3 @@ The firmware MUST log an `ESP_LOGE` line identifying the publish as a likely buf
 
 - **WHEN** a client GETs `/api/mqtt`
 - **THEN** the response SHALL include `buffer_size` (integer), `buffer_degraded` (boolean), and `truncated_publishes` (integer ≥ 0) alongside the existing `stats` block
-

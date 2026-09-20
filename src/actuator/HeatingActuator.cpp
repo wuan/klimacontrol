@@ -30,7 +30,7 @@ namespace Actuator {
         // long, generous enough for a busy Shelly on a congested 2.4 GHz link.
         constexpr uint16_t HTTP_TIMEOUT_MS = 3000;
 
-        bool httpGet(const char *host, const char *path, String &body) {
+        bool httpGet(const char* host, const char* path, String& body) {
             if (WiFiClass::status() != WL_CONNECTED) {
                 return false;
             }
@@ -56,19 +56,23 @@ namespace Actuator {
 #endif
     }
 
-    const char *agreementName(Agreement a) {
+    const char* agreementName(Agreement a) {
         switch (a) {
-            case Agreement::Unknown: return "unknown";
-            case Agreement::ClosedOk: return "closed";
-            case Agreement::HeatingOk: return "heating";
-            case Agreement::NoActuator: return "no_actuator";
-            case Agreement::RelayRefused: return "relay_refused";
+            case Agreement::Unknown:
+                return "unknown";
+            case Agreement::ClosedOk:
+                return "closed";
+            case Agreement::HeatingOk:
+                return "heating";
+            case Agreement::NoActuator:
+                return "no_actuator";
+            case Agreement::RelayRefused:
+                return "relay_refused";
         }
         return "unknown";
     }
 
-    ReportedState reportedState(bool controlEnabled, bool assigned, Agreement agreement,
-                                float demand) {
+    ReportedState reportedState(bool controlEnabled, bool assigned, Agreement agreement, float demand) {
         if (!controlEnabled) {
             return ReportedState::Disabled;
         }
@@ -79,22 +83,32 @@ namespace Actuator {
             return (demand > 0.0f) ? ReportedState::Heating : ReportedState::Idle;
         }
         switch (agreement) {
-            case Agreement::HeatingOk: return ReportedState::Heating;
-            case Agreement::ClosedOk: return ReportedState::Idle;
-            case Agreement::NoActuator: return ReportedState::Fault;
-            case Agreement::RelayRefused: return ReportedState::Fault;
-            case Agreement::Unknown: return ReportedState::Unknown;
+            case Agreement::HeatingOk:
+                return ReportedState::Heating;
+            case Agreement::ClosedOk:
+                return ReportedState::Idle;
+            case Agreement::NoActuator:
+                return ReportedState::Fault;
+            case Agreement::RelayRefused:
+                return ReportedState::Fault;
+            case Agreement::Unknown:
+                return ReportedState::Unknown;
         }
         return ReportedState::Unknown;
     }
 
-    const char *reportedStateName(ReportedState s) {
+    const char* reportedStateName(ReportedState s) {
         switch (s) {
-            case ReportedState::Disabled: return "disabled";
-            case ReportedState::Idle: return "idle";
-            case ReportedState::Heating: return "heating";
-            case ReportedState::Unknown: return "unknown";
-            case ReportedState::Fault: return "fault";
+            case ReportedState::Disabled:
+                return "disabled";
+            case ReportedState::Idle:
+                return "idle";
+            case ReportedState::Heating:
+                return "heating";
+            case ReportedState::Unknown:
+                return "unknown";
+            case ReportedState::Fault:
+                return "fault";
         }
         return "unknown";
     }
@@ -102,7 +116,7 @@ namespace Actuator {
     HeatingActuator::HeatingActuator()
         : tpo(Config::DEFAULT_TPO_CYCLE_S * 1000u, Config::DEFAULT_TPO_TRAVEL_S * 1000u) {}
 
-    bool HeatingActuator::configure(const Config::DeviceConfig &config) {
+    bool HeatingActuator::configure(const Config::DeviceConfig& config) {
         const bool hostChanged = std::strcmp(host, config.actuator_host) != 0;
         const bool channelChanged = channel != config.actuator_channel;
 
@@ -127,8 +141,7 @@ namespace Actuator {
     bool HeatingActuator::sendSet([[maybe_unused]] bool on) {
 #ifdef ARDUINO
         char path[64];
-        snprintf(path, sizeof(path), "/rpc/Switch.Set?id=%d&on=%s", static_cast<int>(channel),
-                 on ? "true" : "false");
+        snprintf(path, sizeof(path), "/rpc/Switch.Set?id=%d&on=%s", static_cast<int>(channel), on ? "true" : "false");
         String body;
         if (!httpGet(host, path, body)) {
             ++failures;
@@ -265,8 +278,7 @@ namespace Actuator {
                 commanded = wantOpen;
                 lastCommandMs = nowMs;
             } else if (transition) {
-                ESP_LOGW(TAG, "Failed to command channel %d %s", static_cast<int>(channel),
-                         wantOpen ? "on" : "off");
+                ESP_LOGW(TAG, "Failed to command channel %d %s", static_cast<int>(channel), wantOpen ? "on" : "off");
             }
         }
 

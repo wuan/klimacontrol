@@ -17,7 +17,7 @@ mkdir -p docs/api
 redoc-cli bundle docs/api/klimacontrol-api.yaml -o docs/api/index.html
 
 # List generated files
-echo "\nGenerated documentation files:"
+printf '\nGenerated documentation files:\n'
 ls -lah docs/api/*.html
 
-echo "\nAPI documentation generated successfully!"
+printf '\nAPI documentation generated successfully!\n'

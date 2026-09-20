@@ -25,9 +25,7 @@ namespace Display {
         }
     } // namespace
 
-    RefreshPolicy::RefreshPolicy(uint16_t minIntervalSec)
-        : minIntervalSec(minIntervalSec) {
-    }
+    RefreshPolicy::RefreshPolicy(uint16_t minIntervalSec) : minIntervalSec(minIntervalSec) {}
 
     uint8_t nextDemandBucket(float fraction, uint8_t previous) {
         if (std::isnan(fraction) || fraction <= 0.0f) {
@@ -47,12 +45,10 @@ namespace Display {
         // bottom by the same. Between those it holds, so a demand hovering on
         // an edge does not repaint the panel every tick.
         uint8_t bucket = previous;
-        while (bucket < DEMAND_BUCKETS &&
-               fraction > static_cast<float>(bucket) * width + DEMAND_BUCKET_HYSTERESIS) {
+        while (bucket < DEMAND_BUCKETS && fraction > static_cast<float>(bucket) * width + DEMAND_BUCKET_HYSTERESIS) {
             ++bucket;
         }
-        while (bucket > 0 &&
-               fraction < static_cast<float>(bucket - 1) * width - DEMAND_BUCKET_HYSTERESIS) {
+        while (bucket > 0 && fraction < static_cast<float>(bucket - 1) * width - DEMAND_BUCKET_HYSTERESIS) {
             --bucket;
         }
         return bucket;
@@ -71,9 +67,8 @@ namespace Display {
         partialsSinceFull = 0;
     }
 
-    RefreshKind RefreshPolicy::commit(RefreshKind kind, float temperature, float humidity,
-                                      bool valid, uint32_t nowMs, uint32_t clockMinute,
-                                      float setpoint, ControlState controlState,
+    RefreshKind RefreshPolicy::commit(RefreshKind kind, float temperature, float humidity, bool valid, uint32_t nowMs,
+                                      uint32_t clockMinute, float setpoint, ControlState controlState,
                                       uint8_t demandBucket) {
         everPainted = true;
         lastValid = valid;
@@ -94,17 +89,17 @@ namespace Display {
         return kind;
     }
 
-    RefreshKind RefreshPolicy::evaluate(float temperature, float humidity, bool valid,
-                                        uint32_t nowMs, uint32_t clockMinute, float setpoint,
-                                        ControlState controlState, uint8_t demandBucket) {
+    RefreshKind RefreshPolicy::evaluate(float temperature, float humidity, bool valid, uint32_t nowMs,
+                                        uint32_t clockMinute, float setpoint, ControlState controlState,
+                                        uint8_t demandBucket) {
         const bool available = readingAvailable(temperature, humidity, valid);
 
         // 1. First paint after boot is always a full refresh: the panel may be
         //    holding an arbitrary image from a previous run, since e-paper
         //    retains its contents unpowered.
         if (!everPainted) {
-            return commit(RefreshKind::Full, temperature, humidity, available, nowMs, clockMinute,
-                          setpoint, controlState, demandBucket);
+            return commit(RefreshKind::Full, temperature, humidity, available, nowMs, clockMinute, setpoint,
+                          controlState, demandBucket);
         }
 
         // 2. Hysteresis. A validity transition in either direction bypasses the
@@ -163,15 +158,13 @@ namespace Display {
         }
 
         // 4. Ghosting. Promote every Nth consecutive partial to a full refresh.
-        const RefreshKind kind = (partialsSinceFull >= FULL_REFRESH_EVERY_N_PARTIALS)
-                                     ? RefreshKind::Full
-                                     : RefreshKind::Partial;
+        const RefreshKind kind =
+            (partialsSinceFull >= FULL_REFRESH_EVERY_N_PARTIALS) ? RefreshKind::Full : RefreshKind::Partial;
 
-        return commit(kind, temperature, humidity, available, nowMs, clockMinute, setpoint,
-                      controlState, demandBucket);
+        return commit(kind, temperature, humidity, available, nowMs, clockMinute, setpoint, controlState, demandBucket);
     }
 
-    size_t formatTemperature(char *out, size_t n, float value, bool valid) {
+    size_t formatTemperature(char* out, size_t n, float value, bool valid) {
         if (out == nullptr || n == 0) {
             return 0;
         }
@@ -183,7 +176,7 @@ namespace Display {
         return written < 0 ? 0 : static_cast<size_t>(written);
     }
 
-    size_t formatHumidity(char *out, size_t n, float value, bool valid) {
+    size_t formatHumidity(char* out, size_t n, float value, bool valid) {
         if (out == nullptr || n == 0) {
             return 0;
         }

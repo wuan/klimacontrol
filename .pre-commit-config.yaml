@@ -1,0 +1,67 @@
+---
+# Deterministic harness for humans and coding agents. Run `pre-commit install`
+# once after cloning; `git commit` then enforces everything below. Bypass with
+# `git commit --no-verify` only when you really mean it.
+#
+# Tooling assumed on PATH:
+#   - clang-format (brew install clang-format)
+#   - shellcheck       (brew install shellcheck)
+#   - openspec CLI     (auto-installed by scripts/validate-openspec.sh)
+#
+# The clang-format hook runs `clang-format --dry-run --Werror` on staged C/C++
+# files. Format with `clang-format -i <file>` (or have your editor do it on
+# save) before staging.
+#
+# Static analysis deeper than formatting (clang-tidy, cppcheck, SonarQube)
+# stays in CI; this file is intentionally the cheap/fast gate.
+
+exclude: |
+  (?x)^(
+    src/generated/.*|
+    \.pio/.*|
+    coverage/.*|
+    data/.*|
+    \.idea/.*|
+    \.cache/.*
+  )$
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: check-case-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+
+  - repo: local
+    hooks:
+      - id: clang-format
+        name: clang-format (src/, test/, include/)
+        description: Fails if any staged C/C++ file is not clang-format clean.
+        entry: clang-format
+        args: [--dry-run, --Werror]
+        language: system
+        types_or: [c, c++]
+        files: ^(src|test|include)/.*\.(cpp|h|cc|hpp|cxx)$
+
+      - id: openspec-validate
+        name: openspec validate
+        description: Runs scripts/validate-openspec.sh on changes under openspec/.
+        entry: scripts/validate-openspec.sh
+        language: script
+        pass_filenames: false
+        files: ^openspec/

@@ -33,8 +33,8 @@ namespace Net {
 
         NtpSync();
 
-        NtpSync(const NtpSync &) = delete;
-        NtpSync &operator=(const NtpSync &) = delete;
+        NtpSync(const NtpSync&) = delete;
+        NtpSync& operator=(const NtpSync&) = delete;
 
         /** Start the UDP client and try one sync. Call once WiFi is connected. */
         void begin();
@@ -48,7 +48,7 @@ namespace Net {
          * the link is merely saturated by the download. The clock tolerates
          * the delay; the interval check re-fires as soon as OTA is done.
          */
-        void tick(uint32_t nowMs, InternetHealth &health);
+        void tick(uint32_t nowMs, InternetHealth& health);
 
         /** Current epoch seconds, or 0 before the first successful sync. */
         uint32_t currentEpoch() const;
@@ -76,8 +76,8 @@ namespace Net {
          * the new time; an implausible result is counted and logged with
          * `what` naming the call site.
          */
-        Result attempt(const char *what, uint32_t &epoch);
-        void logTime(const char *what) const;
+        Result attempt(const char* what, uint32_t& epoch);
+        void logTime(const char* what) const;
 
 #ifdef ARDUINO
         WiFiUDP udp;

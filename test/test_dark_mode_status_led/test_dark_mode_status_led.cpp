@@ -45,7 +45,7 @@ void test_dark_inner_is_off_while_logical_is_on() {
 static constexpr uint32_t DARK_S = 300;
 static constexpr uint32_t DARK_MS = DARK_S * 1000u;
 static constexpr uint32_t BLACK = 0x000000;
-static constexpr uint32_t GREEN = 0x000F00;   // progress 0.0
+static constexpr uint32_t GREEN = 0x000F00; // progress 0.0
 static constexpr uint32_t RED_ERR = 0x0F0000;
 static constexpr uint32_t BLUE_STARTUP = 0x00000F;
 static constexpr uint32_t FLASH = 0x020202;
@@ -113,8 +113,10 @@ void test_dark_publish_flash_does_not_reset_anchor() {
     testLed->update(0);
     testLed->setState(LedState::ON);
     for (uint32_t t = 1000; t < DARK_MS; t += 1000) {
-        if (t % 15000 == 0) testLed->setState(LedState::TRANSMIT_DATA);
-        else testLed->setState(LedState::ON);
+        if (t % 15000 == 0)
+            testLed->setState(LedState::TRANSMIT_DATA);
+        else
+            testLed->setState(LedState::ON);
         testLed->update(t);
         TEST_ASSERT_NOT_EQUAL(BLACK, testLed->inner().lastColor());
     }
@@ -214,17 +216,17 @@ void test_dark_survives_uint32_wraparound() {
     const uint32_t start = 0xFFFFFFFFu - 10000u; // 10 s before millis() wraps
     testLed->update(start);
     testLed->setState(LedState::ON);
-    testLed->update(start + 5000u);            // still before wrap
+    testLed->update(start + 5000u); // still before wrap
     TEST_ASSERT_EQUAL_HEX32(GREEN, testLed->inner().lastColor());
-    testLed->update(start + DARK_MS - 1);      // wrapped, just under threshold
+    testLed->update(start + DARK_MS - 1); // wrapped, just under threshold
     TEST_ASSERT_EQUAL_HEX32(GREEN, testLed->inner().lastColor());
-    testLed->update(start + DARK_MS);          // wrapped, at threshold
+    testLed->update(start + DARK_MS); // wrapped, at threshold
     TEST_ASSERT_EQUAL_HEX32(BLACK, testLed->inner().lastColor());
 }
 
 void test_dark_set_state_before_first_update_anchors_at_zero() {
     testLed->setDarkAfterSeconds(DARK_S);
-    testLed->setState(LedState::ON);           // no update() yet: anchor = 0
+    testLed->setState(LedState::ON); // no update() yet: anchor = 0
     testLed->update(DARK_MS - 1);
     TEST_ASSERT_EQUAL_HEX32(GREEN, testLed->inner().lastColor());
     testLed->update(DARK_MS);

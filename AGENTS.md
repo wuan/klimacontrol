@@ -44,6 +44,17 @@ must do; the code is the implementation.
   is freed at handler return. The document object itself MUST NOT be
   heap-allocated (`make_unique<JsonDocument>` / `new JsonDocument` are
   forbidden in route handlers).
+- **Formatting:** a `.clang-format` config matches the existing style (4-space
+  indent, K&R-ish braces, pointer/reference left). Run `pre-commit install`
+  once after cloning; `git commit` then fails if staged C/C++ under
+  `src/`, `test/`, or `include/` is not clang-format clean, if
+  `scripts/*.sh` is not shellcheck clean, or if `openspec/**` doesn't pass
+  `openspec validate --all --strict`. Format manually with
+  `clang-format -i <file>`; bypass with `git commit --no-verify` only when
+  you really mean it. **Pinned to clang-format 19.1.7** — newer majors
+  (23+) reformat macro line-continuations differently, so locally install
+  via `pip install clang-format==19.1.7` (or `brew install llvm@19`); the
+  CI workflow installs the same wheel.
 
 ## Sensors
 

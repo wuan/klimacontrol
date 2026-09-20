@@ -34,7 +34,7 @@ jobs:
           SPECS=$(find docs/api -type f \( -name "*.yaml" -o -name "*.yml" \) | \
                  xargs grep -l "openapi:\|swagger:" | \
                  tr '\n' ' ')
-          
+
           echo "Found specs: $SPECS"
           echo "specs=$SPECS" >> $GITHUB_OUTPUT
 

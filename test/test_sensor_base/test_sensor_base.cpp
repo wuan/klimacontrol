@@ -25,8 +25,7 @@ namespace {
             SensorReading r;
             r.valid = readValid;
             if (readValid) {
-                r.measurements.push_back(
-                    {MeasurementType::Temperature, 22.0f, "Mock", false});
+                r.measurements.push_back({MeasurementType::Temperature, 22.0f, "Mock", false});
             }
             return r;
         }
@@ -34,9 +33,7 @@ namespace {
         const char* getType() const override { return "Mock"; }
 
         [[nodiscard]] TypeSpan providesMeasurements() const override {
-            static constexpr MeasurementType types[] = {
-                MeasurementType::Temperature
-            };
+            static constexpr MeasurementType types[] = {MeasurementType::Temperature};
             return {types, 1};
         }
     };
@@ -167,23 +164,19 @@ void test_trybegin_recovers_from_init_failed() {
 // --- sensorStatusLabel ---
 
 void test_status_label_online() {
-    TEST_ASSERT_EQUAL_STRING("online",
-        ::Sensor::sensorStatusLabel(SensorStatus::Online));
+    TEST_ASSERT_EQUAL_STRING("online", ::Sensor::sensorStatusLabel(SensorStatus::Online));
 }
 
 void test_status_label_uninitialized() {
-    TEST_ASSERT_EQUAL_STRING("uninitialized",
-        ::Sensor::sensorStatusLabel(SensorStatus::Uninitialized));
+    TEST_ASSERT_EQUAL_STRING("uninitialized", ::Sensor::sensorStatusLabel(SensorStatus::Uninitialized));
 }
 
 void test_status_label_init_failed() {
-    TEST_ASSERT_EQUAL_STRING("init_failed",
-        ::Sensor::sensorStatusLabel(SensorStatus::InitFailed));
+    TEST_ASSERT_EQUAL_STRING("init_failed", ::Sensor::sensorStatusLabel(SensorStatus::InitFailed));
 }
 
 void test_status_label_read_failing() {
-    TEST_ASSERT_EQUAL_STRING("read_failing",
-        ::Sensor::sensorStatusLabel(SensorStatus::ReadFailing));
+    TEST_ASSERT_EQUAL_STRING("read_failing", ::Sensor::sensorStatusLabel(SensorStatus::ReadFailing));
 }
 
 // --- Default provides/requires ---

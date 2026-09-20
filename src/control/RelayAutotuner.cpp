@@ -157,8 +157,7 @@ namespace Control {
         // derivative term amplifies sensor noise and contributes nothing.
         const float ki = (ti > 0.0f) ? (kp / ti) : 0.0f;
 
-        if (!std::isfinite(ku) || !std::isfinite(kp) || !std::isfinite(ki) || !(kp > 0.0f) ||
-            !(ki > 0.0f)) {
+        if (!std::isfinite(ku) || !std::isfinite(kp) || !std::isfinite(ki) || !(kp > 0.0f) || !(ki > 0.0f)) {
             abortWith(AutotuneAbort::DerivedGainsInvalid);
             return;
         }
@@ -205,8 +204,7 @@ namespace Control {
             const uint32_t deltaMs = since(nowMs, lastSettlingMs);
             if (deltaMs > 0) {
                 const float ratePerMin =
-                    std::fabs(temperature - lastSettlingTemp) * MS_PER_MINUTE /
-                    static_cast<float>(deltaMs);
+                    std::fabs(temperature - lastSettlingTemp) * MS_PER_MINUTE / static_cast<float>(deltaMs);
                 lastSettlingTemp = temperature;
                 lastSettlingMs = nowMs;
 

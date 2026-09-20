@@ -14,12 +14,12 @@ namespace Sensor {
         bool initialized;
         uint8_t i2cAddress;
 #ifdef ARDUINO
-        TwoWire &wire;
+        TwoWire& wire;
 #endif
 
     public:
 #ifdef ARDUINO
-        explicit I2CSensor(uint8_t address = 0x77, TwoWire &wire = Wire1);
+        explicit I2CSensor(uint8_t address = 0x77, TwoWire& wire = Wire1);
 #else
         explicit I2CSensor(uint8_t address = 0x77);
 #endif

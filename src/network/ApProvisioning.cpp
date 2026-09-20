@@ -27,7 +27,7 @@ namespace Net {
         char password[AP_PASSWORD_BUF_SIZE] = "";
 
         if (display.has_value()) {
-            Display::DisplayManager &displayManager = display->get();
+            Display::DisplayManager& displayManager = display->get();
             if (const Config::DisplayConfig apConfig{}; displayManager.tryBeginForApInfo(apConfig)) {
                 Support::computeApPassword(deviceId.c_str(), password, sizeof(password));
                 useWpa2 = true;
@@ -97,7 +97,7 @@ namespace Net {
         vTaskDelay(delayMs / portTICK_PERIOD_MS);
         ESP.restart();
 #else
-        (void) delayMs;
+        (void)delayMs;
 #endif
         for (;;) {}
     }
@@ -139,8 +139,8 @@ namespace Net {
     }
 
     void ApProvisioning::runFallbackWindow(const uint8_t failures) {
-        ESP_LOGW(TAG, "Multiple connection failures (%u) - opening AP for %lu s for reconfiguration",
-                 failures, static_cast<unsigned long>(FALLBACK_TIMEOUT_MS / 1000));
+        ESP_LOGW(TAG, "Multiple connection failures (%u) - opening AP for %lu s for reconfiguration", failures,
+                 static_cast<unsigned long>(FALLBACK_TIMEOUT_MS / 1000));
 
         enterConfigMode();
 
@@ -181,8 +181,7 @@ namespace Net {
         // so the device enters AP mode again on a later boot, giving the user
         // another opportunity to reconfigure.
         const uint8_t newFailures = config.incrementConnectionFailures();
-        ESP_LOGW(TAG, "AP fallback timed out (total failures: %u) - restarting to retry AP mode...",
-                 newFailures);
+        ESP_LOGW(TAG, "AP fallback timed out (total failures: %u) - restarting to retry AP mode...", newFailures);
         restart(1000);
     }
 

@@ -430,7 +430,7 @@ void test_validate_device_config_interval_out_of_range_falls_back() {
 void test_update_tuning_round_trip() {
     Config::ConfigManager manager;
     manager.updateTuning(1.5f, 0.003f, 20.0f, 30);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, 1.5f, stored.kp);
     TEST_ASSERT_FLOAT_WITHIN(0.00001f, 0.003f, stored.ki);
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, 20.0f, stored.kd);
@@ -440,7 +440,7 @@ void test_update_tuning_round_trip() {
 void test_update_tuning_validates_before_storing() {
     Config::ConfigManager manager;
     manager.updateTuning(0.0f, 0.001f, 0.0f, 45);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     // kp was refused and fell back; the other three were trustworthy and kept.
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, Config::DEFAULT_PID_KP, stored.kp);
     TEST_ASSERT_FLOAT_WITHIN(0.00001f, 0.001f, stored.ki);
@@ -454,7 +454,7 @@ void test_update_tuning_leaves_other_fields_alone() {
     Config::ConfigManager manager;
     manager.updateTargetTemperature(24.0f);
     manager.updateTuning(3.0f, 0.004f, 1.0f, 15);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 24.0f, stored.target_temperature);
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, 3.0f, stored.kp);
 }
@@ -466,7 +466,7 @@ void test_update_actuator_assignment_empty_clears() {
     Config::ConfigManager manager;
     manager.updateActuatorAssignment("192.168.1.1", 2);
     manager.updateActuatorAssignment("", 2);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
     TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
 }
@@ -476,7 +476,7 @@ void test_update_actuator_assignment_null_clears() {
     Config::ConfigManager manager;
     manager.updateActuatorAssignment("192.168.1.1", 2);
     manager.updateActuatorAssignment(nullptr, 2);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
     TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
 }
@@ -485,7 +485,7 @@ void test_update_actuator_assignment_null_clears() {
 void test_update_actuator_assignment_valid_ipv4_stored() {
     Config::ConfigManager manager;
     manager.updateActuatorAssignment("192.168.1.1", 2);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_EQUAL_STRING("192.168.1.1", stored.actuator_host);
     TEST_ASSERT_EQUAL(2, stored.actuator_channel);
 }
@@ -494,7 +494,7 @@ void test_update_actuator_assignment_valid_ipv4_stored() {
 void test_update_actuator_assignment_valid_hostname_stored() {
     Config::ConfigManager manager;
     manager.updateActuatorAssignment("shellypro4pm-aabbccddeeff.local", 0);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_EQUAL_STRING("shellypro4pm-aabbccddeeff.local", stored.actuator_host);
     TEST_ASSERT_EQUAL(0, stored.actuator_channel);
 }
@@ -507,7 +507,7 @@ void test_update_actuator_assignment_valid_hostname_stored() {
 void test_update_actuator_assignment_slash_rejected() {
     Config::ConfigManager manager;
     manager.updateActuatorAssignment("192.168.1.42/admin", 0);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
     TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
 }
@@ -515,7 +515,7 @@ void test_update_actuator_assignment_slash_rejected() {
 void test_update_actuator_assignment_userinfo_rejected() {
     Config::ConfigManager manager;
     manager.updateActuatorAssignment("192.168.1.42@evil.example.com", 0);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
     TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
 }
@@ -523,7 +523,7 @@ void test_update_actuator_assignment_userinfo_rejected() {
 void test_update_actuator_assignment_ipv6_rejected() {
     Config::ConfigManager manager;
     manager.updateActuatorAssignment("fe80::1", 0);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
     TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
 }
@@ -536,7 +536,7 @@ void test_update_actuator_assignment_bad_clears_previous_good() {
     Config::ConfigManager manager;
     manager.updateActuatorAssignment("192.168.1.1", 2);
     manager.updateActuatorAssignment("evil/../path", 3);
-    const Config::DeviceConfig &stored = manager.getDeviceConfig();
+    const Config::DeviceConfig& stored = manager.getDeviceConfig();
     TEST_ASSERT_EQUAL_STRING("", stored.actuator_host);
     TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, stored.actuator_channel);
 }
