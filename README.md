@@ -35,7 +35,7 @@ ESP32-based temperature and humidity controller with web interface for monitorin
 | Internal RAM | ~320 KB (task stacks, FreeRTOS, WiFi, mbedTLS, DMA — all internal-only) |
 | PSRAM | ~2 MB on board (verified on-device as `psram_size 2094735`; available for non-real-time allocations) |
 | Flash | 4MB |
-| Sensors | Multiple I2C sensors (auto-detected) |
+| Sensors | Multiple I2C sensors (per-address assignment in settings) |
 | I2C pins | SDA: GPIO 8, SCL: GPIO 9 |
 | Optional display | Waveshare 1.54" e-paper (200×200, SSD1681) over SPI |
 
@@ -43,9 +43,36 @@ An optional e-paper display can show the current temperature and humidity. It is
 disabled by default; see [E-Paper Display Wiring](docs/EINK_DISPLAY_WIRING.md)
 for the module to buy, the pin-by-pin wiring, and troubleshooting.
 
+## Use Cases
+
+Klima-Control ships as a single ESP32-S2 board that talks to a configurable
+chain of I2C sensors, which lets the same firmware cover a range of
+deployments by changing only the housing and the sensor chain.
+
+### Flush-Mounted Room Thermostat
+
+Mounted in a standard 55 mm wall box with an optional e-paper display, the
+device reads the room's current climate and drives a temperature setpoint that
+is published over MQTT and exposed in the web UI.
+
+![Klima-Control flush-mounted as a room thermostat, with e-paper display showing the current temperature, humidity and setpoint](docs/images/usecase_thermostat.JPG)
+
+### Modular Sensor Measurement Device
+
+A bare module with a STEMMA QT / Qwiic port can be paired with a chain of
+plug-and-play sensors via Qwiic / STEMMA QT cables — temperature, humidity,
+CO2, air quality, light, pressure — without rewiring. Attach the sensors that
+match the location, then map each response from the I2C scan to a sensor type
+in the Sensors settings page (see "Sensor configuration" below).
+
+![Bare Klima-Control module wired to a STEMMA QT sensor breakout, with the Qwiic/STEMMA QT cable chain visible](docs/images/usecase_modular.JPG)
+
 ## Supported Sensors
 
-All sensors connect via the Stemma QT / I2C port and are automatically detected at startup. Multiple sensors can be connected simultaneously.
+All sensors connect via the Stemma QT / I2C port. Multiple sensors can be
+connected simultaneously. The same address can carry several sensor modules —
+how the firmware picks which one is the topic of the next section, "Sensor
+Configuration".
 
 | Sensor | Category | Measurements | Calculated Values | I2C Address(es) |
 |--------|----------|-----------|---------|-----------------|
@@ -61,6 +88,26 @@ All sensors connect via the Stemma QT / I2C port and are automatically detected 
 | **PM25 AQI** | Air Quality | PM1.0 / PM2.5 / PM10 concentration (µg/m³), particle counts | — | 0x12 |
 
 > **Note**: The SGP40 VOC sensor requires temperature and relative humidity readings from another sensor (e.g. SHT4x) to compute a calibrated VOC index.
+
+## Sensor Configuration
+
+Sensors are not auto-assigned at startup. The firmware holds a per-address
+*assignment string* in NVS (`44=SHT4x,77=BME680`); at boot each entry is
+instantiated as a driver of the given type at the given address.
+
+The **Sensors** settings page is the place to manage this list:
+
+- **Discover addresses:** an I2C scan reports which addresses currently respond.
+- **Pick a type per address:** the same address can carry several sensor
+  modules (e.g. `0x76` / `0x77` is shared by `BME680`, `BMP3xx` and
+  `DPS310`). The scan only knows an address responded — it cannot tell which
+  module is on the other end, so the user picks the type in settings.
+- **Deactivate a module:** simply omit its address from the assignment list
+  (or leave the type blank). The module stays wired, but no driver is
+  instantiated for it and it produces no measurements.
+
+Changes are persisted to NVS and take effect on the next boot (the API triggers
+a restart).
 
 ## Getting Started
 
