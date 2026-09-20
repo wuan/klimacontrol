@@ -25,7 +25,7 @@
 #include "control/TemperatureController.h"
 #include "DarkModeStatusLed.h"
 #include "task/SensorMonitor.h"
-#include "OTAUpdater.h"
+#include "ota/OTAUpdater.h"
 #include "support/LocalTime.h"
 #ifdef ARDUINO
 #include "display/DisplayManager.h"

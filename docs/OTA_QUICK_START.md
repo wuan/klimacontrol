@@ -23,7 +23,7 @@ src/
 ### Step 3: One-Line Firmware Check and Update
 
 ```cpp
-#include "OTAUpdater.h"
+#include "ota/OTAUpdater.h"
 
 void setup() {
   // ... your setup code ...

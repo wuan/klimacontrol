@@ -2,9 +2,9 @@
 #include "routes/RouteHelpers.h"
 
 #include "Config.h"
-#include "OTAUpdater.h"
+#include "ota/OTAUpdater.h"
 #include "Constants.h"
-#include "OTAConfig.h"
+#include "ota/OTAConfig.h"
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>

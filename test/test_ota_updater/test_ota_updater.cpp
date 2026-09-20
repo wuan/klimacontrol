@@ -8,7 +8,7 @@
 // so the native test can link against the real code.
 
 #include "unity.h"
-#include "support/VersionCompare.h"
+#include "ota/VersionCompare.h"
 
 using Support::compareVersions;
 using Support::isNewerVersion;

@@ -3,7 +3,7 @@
 #include "Config.h"
 #include "Constants.h"
 #include "Log.h"
-#include "OTAUpdater.h"
+#include "ota/OTAUpdater.h"
 #include "SensorController.h"
 #include "SyslogOutput.h"
 #include "WebServerManager.h"

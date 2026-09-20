@@ -98,7 +98,7 @@ state, and no `setMeasuring()` / `setNormal()` shortcuts. Don't invent them.
   pass `esp_ota_set_boot_partition()`'s verification (it is a valid image, just
   not one this board can run) and boot-loop the device into USB recovery.
 - **Tags must be `vMAJOR.MINOR.PATCH`.** Versions are compared by semver
-  ordering (`src/support/VersionCompare.h`); unparseable tags are ignored, and
+  ordering (`src/ota/VersionCompare.h`); unparseable tags are ignored, and
   only a *strictly newer* release is offered, so a `git describe` dev build is
   never handed a downgrade.
 - **No client-supplied URL:** `POST /api/ota/update` carries no URL; the device

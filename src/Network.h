@@ -77,8 +77,8 @@ class Network {
     uint32_t lastElapsedMs = 0;
     NetworkMode mode = NetworkMode::NONE;
 
-    std::optional<std::reference_wrapper<WebServerManager>> webServer;
-    std::optional<std::reference_wrapper<Display::DisplayManager>> display;
+    std::optional<std::reference_wrapper<WebServerManager> > webServer;
+    std::optional<std::reference_wrapper<Display::DisplayManager> > display;
 #ifdef ARDUINO
     TaskHandle_t taskHandle = nullptr;
 #endif
@@ -120,7 +120,7 @@ public:
      */
     Network(Config::ConfigManager &config, SensorController &sensorController,
             Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
-            DarkModeStatusLed &statusLed, std::optional<std::reference_wrapper<WebServerManager>> webServer);
+            DarkModeStatusLed &statusLed, std::optional<std::reference_wrapper<WebServerManager> > webServer);
 
     // disable copy constructor
     Network(const Network &) = delete;
@@ -147,18 +147,18 @@ public:
      * non-owning — main.cpp keeps the WebServerManager alive for the lifetime
      * of the firmware.
      */
-    void setWebServer(WebServerManager& webServer);
+    void setWebServer(WebServerManager &webServer);
 
     /**
      * Wire in the e-paper display, if one is enabled. Non-owning; pass nullptr
      * (or never call this) to leave the display unused.
      */
-    void setDisplay(Display::DisplayManager& display);
+    void setDisplay(Display::DisplayManager &display);
 
     /**
      * The wired-in display, or nullptr when none is enabled. Non-owning.
      */
-    std::optional<std::reference_wrapper<Display::DisplayManager>> getDisplay() const { return display; }
+    std::optional<std::reference_wrapper<Display::DisplayManager> > getDisplay() const { return display; }
 
     /**
      * One-time initialization of long-lived singletons that the network task

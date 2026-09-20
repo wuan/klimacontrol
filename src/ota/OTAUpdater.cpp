@@ -6,7 +6,8 @@
 #include "OTAUpdater.h"
 #include "Config.h"
 #include "OTAConfig.h"
-#include "support/VersionCompare.h"
+#include "RedirectScheme.h"
+#include "VersionCompare.h"
 
 #ifdef ARDUINO
 #include <esp_http_client.h>
@@ -139,15 +140,26 @@ struct HttpClient {
                 // cleartext, silently dropping both confidentiality and the
                 // CA-bundle check for the hop that actually carries the
                 // firmware image.
-                if (!redirectTargetIsSecure()) {
+                if (!Support::isSecureRedirectTarget(redirectLocation)) {
                     ESP_LOGE(TAG, "Redirect refused: target is not HTTPS");
                     return -1;
                 }
+                // Snapshot the URL we just fetched so the post-redirect log line
+                // can name both endpoints. esp_http_client_get_url() takes a
+                // caller buffer; we capture before set_redirection() because
+                // that call rewrites the handle's URL to the redirect target.
+                char currentHost[256] = "?";
+                esp_http_client_get_url(handle, currentHost, sizeof(currentHost));
                 esp_http_client_close(handle);
                 if (esp_http_client_set_redirection(handle) != ESP_OK) {
                     ESP_LOGE(TAG, "Redirect failed: no Location header");
                     return -1;
                 }
+                // Diagnostic only: when a hop later fails to connect, this
+                // names the URL we were navigating to instead of leaving the
+                // log to describe "Redirect refused: target is not HTTPS" with
+                // no host. Compiled out under CORE_DEBUG_LEVEL=0.
+                ESP_LOGD(TAG, "OTA hop %d: %s -> %s", i, currentHost, redirectLocation);
                 ESP_LOGI(TAG, "Following redirect (%d)...", status);
                 continue;
             }
@@ -158,18 +170,6 @@ struct HttpClient {
     }
 
 private:
-    // Classify the captured Location header. A relative Location ("/path") is
-    // accepted because it inherits the current request's scheme, which is
-    // already HTTPS; an absolute one must say https explicitly.
-    static bool redirectTargetIsSecure() {
-        if (strncasecmp(redirectLocation, "https://", 8) == 0) {
-            return true;
-        }
-        // No scheme delimiter in the prefix we captured => relative URL. Real
-        // schemes are far shorter than the buffer, so this cannot misclassify a
-        // truncated absolute URL as relative.
-        return strstr(redirectLocation, "://") == nullptr;
-    }
 };
 
 // ============================================================================
@@ -203,7 +203,7 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
         ~ActivityGuard() { if (owned) releaseActivity(); }
     } guard{claimed};
 
-    String apiUrl = String("https://api.github.com/repos/") + owner + "/" + repo + "/releases/latest";
+    String apiUrl = String(OTA_GITHUB_API_HOST) + "repos/" + owner + "/" + repo + "/releases/latest";
     ESP_LOGI(TAG, "Checking: %s", apiUrl.c_str());
 
     esp_http_client_config_t config{};
@@ -274,7 +274,7 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     // device into needing USB recovery.
     for (JsonObject asset : doc["assets"].as<JsonArray>()) {
         auto assetName = asset["name"].as<String>();
-        if (assetName == OTA_FIRMWARE_ASSET) {
+        if (Support::isExpectedFirmwareAsset(assetName.c_str())) {
             info.downloadUrl = asset["browser_download_url"].as<String>();
             info.size = asset["size"].as<size_t>();
             info.isValid = true;
@@ -642,7 +642,7 @@ bool OTAUpdater::startBackgroundUpdateFromLatestCheck(Config::ConfigManager &con
     // anything that isn't a github.com release download before flashing it.
     // GitHub serves release assets from github.com (which then 302-redirects to
     // its CDN); openWithRedirects() enforces HTTPS on those later hops.
-    if (!info.downloadUrl.startsWith("https://github.com/")) {
+    if (!info.downloadUrl.startsWith(OTA_GITHUB_RELEASE_HOST)) {
         ESP_LOGE(TAG, "Update refused: unexpected download host in %s", info.downloadUrl.c_str());
         return false;
     }

@@ -14,7 +14,7 @@
 #include <Fonts/FreeSansBold24pt7b.h>
 
 #include "Log.h"
-#include "OTAConfig.h" // FIRMWARE_VERSION
+#include "ota/OTAConfig.h" // FIRMWARE_VERSION
 #include "display/DisplayPins.h"
 
 static constexpr const char* const TAG = "display";
