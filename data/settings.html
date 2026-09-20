@@ -393,7 +393,8 @@
             <div class="info-box" id="otaCurrentVersion">
                 <strong>Current Version: </strong><span id="currentVersion">Loading...</span><br>
                 <strong>Partition: </strong><span id="currentPartition">Loading...</span><br>
-                <strong>Build Date: </strong><span id="buildDate">Loading...</span>
+                <strong>Build Date: </strong><span id="buildDate">Loading...</span><br>
+                <strong>Status: </strong><span id="otaStateBadge">check=idle update=idle 0%</span>
             </div>
 
             <button class="btn btn-primary" onclick="checkForUpdates()" id="checkUpdateBtn">Check for Updates</button>
@@ -423,7 +424,9 @@
 
             <div id="updateProgress" style="display: none; margin-top: 15px;">
                 <div class="info-box">
-                    <strong>Installing update...</strong> <span id="updatePercent"></span><br>
+                    <strong id="progressLabel">Downloading firmware&hellip;</strong>
+                    <div class="progress-bar" style="margin-top: 10px;"><div id="progressBar"></div></div>
+                    <div id="progressBytes" style="margin-top: 8px; font-family: monospace; font-size: 0.9em;"></div>
                     <div style="margin-top: 10px;">Please wait. The device will restart automatically after the update
                         completes.
                     </div>
@@ -431,6 +434,22 @@
             </div>
 
             <div id="updateResult" style="display: none; margin-top: 15px;"></div>
+
+            <style>
+                #updateProgress .progress-bar {
+                    width: 100%;
+                    height: 18px;
+                    background: #e0e0e0;
+                    border-radius: 4px;
+                    overflow: hidden;
+                }
+                #updateProgress .progress-bar > div {
+                    height: 100%;
+                    width: 0%;
+                    background: #4caf50;
+                    transition: width 0.3s ease;
+                }
+            </style>
 
             <div id="installWarning" class="warning-box" style="display: none;">
                 <strong>Note:</strong> The device will restart after installing an update. Make sure you have a stable
@@ -850,35 +869,119 @@
     }
 
     // OTA Update Functions
+    //
+    // One persistent poller (pollOtaStatus) drives both the status badge in the
+    // firmware-version info box and the progress UI during an update. Cadence
+    // is 1 s while a check is running or an update is downloading/pending
+    // (smooth bar; visible feedback); 5 s otherwise. checkForUpdates() and
+    // performUpdate() await terminal-state changes on the shared otaState
+    // object instead of running their own poll loops.
     let updateInfo = null;
+    const otaState = {
+        firmware_version: '',
+        partition: '',
+        build_date: '',
+        check: {
+            state: 'idle', version: '', size_bytes: 0,
+            update_available: false, can_reinstall: false, is_dev_build_promotion: false,
+            error: ''
+        },
+        update: { state: 'idle', percent: 0, bytes: 0, expected_bytes: 0, error: '' }
+    };
+    // Resolvers awaiting "the next poll happened". The poller drains this list
+    // on every successful fetch, so an awaiter wakes up once per poll and can
+    // then re-check otaState for the transition it actually cares about.
+    let otaWaiters = [];
+    function awaitOtaPoll() {
+        return new Promise(resolve => otaWaiters.push(resolve));
+    }
+    function notifyOtaPoll() {
+        const waiters = otaWaiters;
+        otaWaiters = [];
+        for (const resolve of waiters) resolve();
+    }
 
-    async function loadOTAStatus() {
-        try {
-            const response = await fetch('/api/ota/status');
-            const data = await response.json();
-            document.getElementById('currentVersion').textContent = data.firmware_version || 'Unknown';
-            document.getElementById('currentPartition').textContent = data.partition || 'Unknown';
-            document.getElementById('buildDate').textContent = data.build_date || 'Unknown';
-        } catch (error) {
-            console.error('Failed to load OTA status:', error);
-            document.getElementById('currentVersion').textContent = 'Error loading';
+    function renderOtaBadge() {
+        const badge = document.getElementById('otaStateBadge');
+        if (badge) {
+            const u = otaState.update;
+            badge.textContent = 'check=' + otaState.check.state +
+                ' update=' + u.state + ' ' + (u.percent || 0) + '%';
         }
     }
 
-    // Poll GET /api/ota/check until the background check finishes. The check
-    // runs on a worker task on the device so it doesn't block the web server.
-    async function pollOtaCheck() {
-        const maxAttempts = 30;   // ~45s at 1.5s spacing (device caps the check at 30s)
-        for (let i = 0; i < maxAttempts; i++) {
-            const response = await fetch('/api/ota/check');
-            const data = await response.json();
-            if (data.status === 'done' || data.status === 'error') {
-                return data;
+    function renderOtaProgress() {
+        const labelEl = document.getElementById('progressLabel');
+        const barEl = document.getElementById('progressBar');
+        const bytesEl = document.getElementById('progressBytes');
+        const u = otaState.update;
+
+        if (barEl) {
+            if (u.state === 'downloading') {
+                barEl.style.width = (u.percent || 0) + '%';
+            } else if (u.state === 'pending' || u.state === 'success') {
+                barEl.style.width = '100%';
+            } else {
+                barEl.style.width = '0%';
             }
-            await new Promise(resolve => setTimeout(resolve, 1500));
         }
-        throw new Error('Update check timed out');
+
+        if (bytesEl) {
+            // Hide the byte counter on idle and error: idle has no numbers,
+            // and the failed-update branch renders only the error string.
+            if (u.state === 'downloading' || u.state === 'pending' || u.state === 'success') {
+                bytesEl.textContent = (u.bytes || 0) + ' / ' + (u.expected_bytes || 0) + ' bytes';
+                bytesEl.style.display = '';
+            } else {
+                bytesEl.textContent = '';
+                bytesEl.style.display = 'none';
+            }
+        }
+
+        if (labelEl) {
+            if (u.state === 'downloading') {
+                labelEl.textContent = 'Downloading firmware\u2026';
+            } else if (u.state === 'pending') {
+                labelEl.textContent = 'Update installed, rebooting\u2026';
+            } else if (u.state === 'success') {
+                labelEl.textContent = 'Update complete';
+            } else if (u.state === 'error') {
+                labelEl.textContent = 'Update failed: ' + (u.error || 'Unknown error');
+            } else {
+                labelEl.textContent = '';
+            }
+        }
     }
+
+    async function pollOtaStatus() {
+        while (true) {
+            try {
+                const response = await fetch('/api/ota/status');
+                const data = await response.json();
+                otaState.firmware_version = data.firmware_version || '';
+                otaState.partition = data.partition || '';
+                otaState.build_date = data.build_date || '';
+                if (data.check) otaState.check = Object.assign(otaState.check, data.check);
+                if (data.update) otaState.update = Object.assign(otaState.update, data.update);
+                // First poll also populates the static fields of the info box;
+                // loadAll() used to do this once on page load.
+                document.getElementById('currentVersion').textContent = otaState.firmware_version || 'Unknown';
+                document.getElementById('currentPartition').textContent = otaState.partition || 'Unknown';
+                document.getElementById('buildDate').textContent = otaState.build_date || 'Unknown';
+            } catch (error) {
+                console.error('Failed to load OTA status:', error);
+                document.getElementById('currentVersion').textContent = 'Error loading';
+            }
+            renderOtaBadge();
+            renderOtaProgress();
+            notifyOtaPoll();
+            const active = otaState.update.state === 'downloading'
+                        || otaState.update.state === 'pending'
+                        || otaState.check.state === 'in_progress';
+            await new Promise(resolve => setTimeout(resolve, active ? 1000 : 5000));
+        }
+    }
+    pollOtaStatus();
 
     async function checkForUpdates() {
         const btn = document.getElementById('checkUpdateBtn');
@@ -900,13 +1003,30 @@
         if (reinstallBox) reinstallBox.checked = false;
 
         try {
-            // Start the background check, then poll for the result.
+            // Snapshot the state before POSTing so we can detect when the
+            // consolidated poller has observed the new check. Without this, a
+            // previous successful check (state='done') or failed check
+            // (state='failed') would make the terminal-state check below
+            // match immediately on stale data — the new check hasn't yet
+            // been observed, so the UI keeps showing the old result.
+            const initialCheckState = otaState.check.state;
             await fetch('/api/ota/check', {method: 'POST', headers: {'X-Requested-With': 'KlimaControl'}});
-            const data = await pollOtaCheck();
+            // Wait for at least one state transition (so we know the new
+            // check has been observed by the poller), then for the terminal
+            // state. The device caps the check at ~30s, so this loop is
+            // bounded by that.
+            const maxAttempts = 60;   // ~60s at 1s polling, well over the 30s device cap
+            let seenTransition = false;
+            for (let i = 0; i < maxAttempts; i++) {
+                if (otaState.check.state !== initialCheckState) seenTransition = true;
+                if (seenTransition && (otaState.check.state === 'done' || otaState.check.state === 'failed')) break;
+                await awaitOtaPoll();
+            }
+            const data = otaState.check;
 
             if (data.update_available) {
                 updateInfo = data;
-                document.getElementById('latestVersion').textContent = data.latest_version;
+                document.getElementById('latestVersion').textContent = data.version;
                 document.getElementById('updateSize').textContent = formatBytes(data.size_bytes);
                 document.getElementById('updateAvailableTitle').textContent = 'Update Available!';
                 document.getElementById('updateAvailable').style.display = 'block';
@@ -920,13 +1040,13 @@
                 // reinstall path is open. Show the checkbox rather than an
                 // "Up to date" message — the user explicitly wanted this.
                 updateInfo = data;
-                document.getElementById('latestVersion').textContent = data.latest_version;
+                document.getElementById('latestVersion').textContent = data.version;
                 document.getElementById('updateSize').textContent = formatBytes(data.size_bytes);
                 document.getElementById('updateAvailableTitle').textContent =
                     data.is_dev_build_promotion ? 'Promote dev build' : 'Already up to date';
                 document.getElementById('reinstallLabel').textContent = data.is_dev_build_promotion
-                    ? 'Promote dev build to ' + data.latest_version + ' (replace ' + data.current_version + ')'
-                    : 'Reinstall firmware ' + data.latest_version;
+                    ? 'Promote dev build to ' + data.version + ' (replace ' + otaState.firmware_version + ')'
+                    : 'Reinstall firmware ' + data.version;
                 document.getElementById('reinstallSection').style.display = 'block';
                 document.getElementById('updateAvailable').style.display = 'block';
                 resultDiv.style.display = 'none';
@@ -935,7 +1055,7 @@
                 // Install button + restart warning only appear when the user
                 // has opted in to the reinstall action.
                 updateInstallButtonVisibility();
-            } else if (data.status === 'error' || data.error) {
+            } else if (data.state === 'failed' || data.error) {
                 resultDiv.className = 'warning-box';
                 resultDiv.innerHTML = '<strong>Update check failed</strong><br>' + esc(data.error || 'Unknown error');
                 resultDiv.style.display = 'block';
@@ -943,7 +1063,7 @@
                 btn.disabled = false;
             } else {
                 resultDiv.className = 'info-box';
-                resultDiv.innerHTML = 'Up to date &mdash; latest release is <strong>' + esc(data.latest_version) + '</strong>';
+                resultDiv.innerHTML = 'Up to date &mdash; latest release is <strong>' + esc(data.version) + '</strong>';
                 resultDiv.style.display = 'block';
                 btn.textContent = 'Check for Updates';
                 btn.disabled = false;
@@ -1068,9 +1188,9 @@
 
         const confirmMsg = options.allowReinstall
             ? (updateInfo.is_dev_build_promotion
-                ? 'Promote dev build ' + (updateInfo.current_version || '') + ' to ' + updateInfo.latest_version + '?\n\nThis overwrites the other slot — no rollback target until the next release.'
-                : 'Reinstall firmware ' + updateInfo.latest_version + '?\n\nThis overwrites the other slot — no rollback target until the next release.')
-            : 'Install firmware update ' + updateInfo.latest_version + '?\n\nThe device will restart after the update completes.';
+                ? 'Promote dev build ' + (otaState.firmware_version || '') + ' to ' + updateInfo.version + '?\n\nThis overwrites the other slot — no rollback target until the next release.'
+                : 'Reinstall firmware ' + updateInfo.version + '?\n\nThis overwrites the other slot — no rollback target until the next release.')
+            : 'Install firmware update ' + updateInfo.version + '?\n\nThe device will restart after the update completes.';
         if (!confirm(confirmMsg)) {
             return;
         }
@@ -1080,7 +1200,6 @@
         document.getElementById('updateAvailable').style.display = 'none';
         progressDiv.style.display = 'block';
         resultDiv.style.display = 'none';
-        document.getElementById('updatePercent').textContent = '';
         document.getElementById('checkUpdateBtn').disabled = true;
 
         const showFailure = (message) => {
@@ -1111,76 +1230,46 @@
                 return;
             }
 
-            await pollOtaUpdate();
-        } catch (error) {
-            console.error('Failed to perform update:', error);
-            showFailure('Could not reach the device.');
-        }
-    }
-
-    // Poll GET /api/ota/update until the device reports success or failure.
-    // The download runs on a worker task and takes minutes, so this is the only
-    // way to see progress or learn that it failed — the POST above returns as
-    // soon as the worker is spawned.
-    async function pollOtaUpdate() {
-        const progressDiv = document.getElementById('updateProgress');
-        const percentSpan = document.getElementById('updatePercent');
-        const resultDiv = document.getElementById('updateResult');
-
-        // Generous cap: a ~1.3 MB image over TLS on this hardware takes a few
-        // minutes. 10 minutes at 2s spacing.
-        const maxAttempts = 300;
-        let missedPolls = 0;
-
-        for (let i = 0; i < maxAttempts; i++) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            let data;
-            try {
-                const response = await fetch('/api/ota/update');
-                data = await response.json();
-                missedPolls = 0;
-            } catch (error) {
-                // The device restarts itself right after a successful flash, so
-                // losing the connection late in the process is expected rather
-                // than an error. Tolerate a few misses before giving up.
-                if (++missedPolls > 5) {
-                    progressDiv.style.display = 'none';
-                    resultDiv.className = 'info-box';
-                    resultDiv.innerHTML = '<strong>Device is no longer responding.</strong><br>' +
-                        'If the update had finished it is now restarting — wait a moment and reload this page.';
-                    resultDiv.style.display = 'block';
-                    return;
-                }
-                continue;
+            // Wait for the consolidated poller to observe a terminal state.
+            // success means the device is about to drop off the network;
+            // pending is the in-between "rebooting" window that the poller
+            // also drives through (renderOtaProgress flips the label and bar).
+            // error is the failure path; we don't treat polling failures as
+            // failures here — the user can refresh and the poller will keep
+            // trying for them.
+            const maxAttempts = 600;  // ~10 minutes at 1s polling
+            for (let i = 0; i < maxAttempts; i++) {
+                const u = otaState.update;
+                if (u.state === 'success' || u.state === 'error') break;
+                await awaitOtaPoll();
             }
 
-            if (data.status === 'downloading') {
-                percentSpan.textContent = (data.percent || 0) + '%';
-            } else if (data.status === 'success') {
+            const u = otaState.update;
+            if (u.state === 'success') {
                 progressDiv.style.display = 'none';
                 resultDiv.className = 'success-box';
                 resultDiv.innerHTML = '<strong>Update installed.</strong><br>' +
                     'The device is restarting. Reload this page in a few seconds.';
                 resultDiv.style.display = 'block';
-                return;
-            } else if (data.status === 'error') {
+            } else if (u.state === 'error') {
                 progressDiv.style.display = 'none';
                 resultDiv.className = 'warning-box';
                 resultDiv.innerHTML = '<strong>Update failed</strong><br>' +
-                    esc(data.error || 'Unknown error') +
+                    esc(u.error || 'Unknown error') +
                     '<br>The device is still running the previous firmware.';
                 resultDiv.style.display = 'block';
                 document.getElementById('checkUpdateBtn').disabled = false;
-                return;
+            } else {
+                progressDiv.style.display = 'none';
+                resultDiv.className = 'warning-box';
+                resultDiv.innerHTML = '<strong>Update timed out</strong><br>Check the device log for details.';
+                resultDiv.style.display = 'block';
+                document.getElementById('checkUpdateBtn').disabled = false;
             }
+        } catch (error) {
+            console.error('Failed to perform update:', error);
+            showFailure('Could not reach the device.');
         }
-
-        progressDiv.style.display = 'none';
-        resultDiv.className = 'warning-box';
-        resultDiv.innerHTML = '<strong>Update timed out</strong><br>Check the device log for details.';
-        resultDiv.style.display = 'block';
-        document.getElementById('checkUpdateBtn').disabled = false;
     }
 
     function formatBytes(bytes) {
@@ -1761,10 +1850,10 @@
 
     // Load device info on page load — run sequentially to avoid exhausting
     // the ESP's limited TCP socket pool (default ~10), which would block
-    // later user-triggered requests like OTA check.
+    // later user-triggered requests like OTA check. The OTA status fields
+    // are now driven by pollOtaStatus() which runs on its own loop.
     async function loadAll() {
         await loadStatus();
-        await loadOTAStatus();
         await loadRollbackInfo();
         await loadSensorConfig();
         await loadMqttConfig();

@@ -63,7 +63,12 @@ public:
     enum class UpdateState : uint8_t {
         Idle,        // no update has been attempted
         Downloading, // download/flash in progress; percent/bytes are valid
-        Success,     // flash completed; a restart has been scheduled
+        // ~1 s window between Update.end() returning success and the scheduled
+        // restart taking effect. Distinct from Success so the UI can label the
+        // post-flash state as "Update installed, rebooting…" rather than
+        // collapsing it into Success (which reads as "done, nothing more").
+        Pending,     // flash complete; restart scheduled but not yet fired
+        Success,     // restart has been requested; device is about to drop off
         Failed       // last attempt failed; errorMessage is set
     };
 
@@ -244,34 +249,25 @@ private:
     // total and the largest contiguous internal block; hasEnoughMemory() logs
     // both numbers, so these can be re-tuned from a real device.
     //
-    // The values must describe what OTA *actually* allocates internally, not a
-    // round-number safety margin: the earlier 32 KB / 8 KB pair sat above the
-    // then-current steady-state internal free (~24 KB free, ~7.6 KB largest
-    // block), so every update was refused with "Insufficient internal heap"
-    // before a single byte was fetched. Note Network's own low-heap watchdog
-    // only restarts below 16 KB — a gate above that describes a device state
-    // that never occurs in normal operation.
+    // The floor is set empirically: the download loop on a representative
+    // device runs at ~13 KB internal free (TLS session ~5-10 KB, esp_http_client
+    // + lwIP ~3 KB more, etc.). 12 KB lets the loop proceed with a small
+    // safety margin; values above ~14 KB produce false-positive "Insufficient
+    // internal heap" warnings during the download from the /api/ota/status
+    // polling loop.
     //
-    // Nothing on the OTA path needs a large contiguous *internal* block any
-    // more:
-    //   - both task stacks are reserved in BSS at link time (see below), so
-    //     they are not heap allocations at all;
-    //   - CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096 sends every allocation
-    //     larger than 4 KB to PSRAM first, which covers the 8 KB
-    //     OTA::Http::kHttpRxBuffer and mbedTLS's 16 KB record buffers (see
-    //     esp_mbedtls_mem_calloc in TlsAllocator.cpp);
-    //   - what is left is the 2 KB TX buffer plus small lwIP/socket structures.
-    // Hence a 4 KB largest-block requirement, and a total that keeps ~4 KB of
-    // slack above Network's 16 KB restart threshold for WiFi RX during the
-    // download.
+    // Network's low-heap restart guard is suppressed while
+    // isUpdateInProgress() is true (see src/Network.cpp), so the floor does
+    // not need to keep any margin above Network's 16 KB threshold — Network
+    // cannot restart mid-OTA. The largest-block requirement is 4 KB: what is
+    // left on the OTA path is the TX buffer plus small lwIP/socket
+    // structures. Larger allocations (the 8 KB OTA::Http::kHttpRxBuffer,
+    // mbedTLS's 16 KB record buffers) land in PSRAM via
+    // CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096 and esp_mbedtls_mem_calloc.
     //
-    // The ~24 KB steady state quoted above no longer holds: the Network and
-    // SensorMonitor task stacks were later cut to their measured high-water
-    // marks (20480 -> 8192 and 16000 -> 6144), returning ~22 KB to the internal
-    // pool. These two constants are a floor rather than a target, so they were
-    // left as they are; re-measure from the "Internal heap with TLS session up"
-    // line in performUpdate() before tightening them again.
-    static constexpr uint32_t MIN_FREE_INTERNAL = 20480;
+    // Re-measure from the "Internal heap with TLS session up" line in
+    // performUpdate() before tightening these constants again.
+    static constexpr uint32_t MIN_FREE_INTERNAL = 12288;
     static constexpr uint32_t MIN_LARGEST_INTERNAL_BLOCK = 4096;
 
     // Worker stack must hold the 4 KB chunk buffer plus the mbedTLS handshake

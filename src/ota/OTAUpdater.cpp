@@ -203,9 +203,13 @@ bool OTAUpdater::performUpdate(
     // github.com 302-redirects release downloads to a signed CDN URL
     // (release-assets.githubusercontent.com) whose path+query carries the full
     // AWS/JWT signature (~860 bytes). esp_http_client builds the entire redirect
-    // request line into this TX buffer in one shot; 2048 leaves comfortable
-    // headroom over the default 512.
-    config.buffer_size_tx = 2048;
+    // request line into this TX buffer in one shot; 1024 fits the current
+    // ~860-byte URL with headroom for future signature growth, and lives in
+    // internal SRAM (the 4 KB CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL threshold
+    // routes anything larger than that to PSRAM, so 2048 also cost internal).
+    // Halving it gives the OTA download loop an extra ~1 KB of headroom on
+    // the devices that were already tight.
+    config.buffer_size_tx = 1024;
 
     OTA::Http::HttpClient client(config);
     if (!client) {
@@ -251,8 +255,18 @@ bool OTAUpdater::performUpdate(
                                               std::min(static_cast<size_t>(CHUNK_SIZE), expectedSize - totalRead));
 
         if (bytesRead <= 0) {
-            ESP_LOGE(TAG, "Download failed at %zu/%zu bytes (read returned %d)",
-                     totalRead, expectedSize, bytesRead);
+            // Include the live heap state and the esp_http_client errno in
+            // the error so the next device flash can tell a heap-driven
+            // failure (ESP_ERR_NO_MEM / -1 with heap near zero) from a
+            // network-driven one (timeout / connection drop with heap
+            // healthy). The string is what /api/ota/update surfaces as
+            // `error`, so it has to stay human-readable; the diagnostic
+            // detail goes in the log.
+            const uint32_t heapFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+            const uint32_t heapLargest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+            const int httpErrno = esp_http_client_get_errno(client.raw());
+            ESP_LOGE(TAG, "Download failed at %zu/%zu bytes (read=%d, errno=%d, heap free=%u largest=%u)",
+                     totalRead, expectedSize, bytesRead, httpErrno, heapFree, heapLargest);
             Update.abort();
             setUpdateState(UpdateState::Failed, (int)((totalRead * 100) / expectedSize), totalRead,
                            "Connection lost during download");
@@ -288,7 +302,10 @@ bool OTAUpdater::performUpdate(
     }
 
     ESP_LOGI(TAG, "Complete: %zu bytes flashed", totalRead);
-    setUpdateState(UpdateState::Success, 100, totalRead, nullptr);
+    // Pending until otaWorkerTask actually fires the restart, so a polling
+    // client can label the brief post-flash window as "rebooting…" rather than
+    // collapsing it into Success.
+    setUpdateState(UpdateState::Pending, 100, totalRead, nullptr);
     return true;
 }
 
@@ -362,6 +379,11 @@ void OTAUpdater::otaWorkerTask(void *) {
             if (pendingConfig) {
                 pendingConfig->requestRestart(1000);
             }
+            // Pending was set by performUpdate() right after Update.end();
+            // promote to Success only after the restart has actually been
+            // requested, so a poll arriving in the gap between the two sees
+            // Pending (the spec's "Update installed, rebooting…" window).
+            setUpdateState(UpdateState::Success, 100, 0, nullptr);
         } else {
             ESP_LOGE(TAG, "OTA update failed");
         }

@@ -154,28 +154,49 @@ void WebServerManager::setupOTARoutes() {
     server.on("/api/ota/update", HTTP_GET, [](AsyncWebServerRequest *request) {
         JsonDocument doc;
 
+        // expected_bytes is the size carried by the last successful check; the
+        // UI uses it to render a bytes-written / bytes-total counter alongside
+        // the percent. Reported during Downloading, Pending, and Success; 0 on
+        // Idle and Failed (the byte counter is hidden in those branches).
+        FirmwareInfo checkInfo;
+        size_t expectedBytes = 0;
+        if (OTAUpdater::getCheckResult(checkInfo) == OTAUpdater::CheckState::Done
+            && checkInfo.isValid) {
+            expectedBytes = checkInfo.size;
+        }
+
         int percent = 0;
         size_t bytes = 0;
         String error;
         switch (OTAUpdater::getUpdateProgress(percent, bytes, error)) {
             case OTAUpdater::UpdateState::Idle:
                 doc["status"] = "idle";
+                doc["expected_bytes"] = 0;
                 break;
             case OTAUpdater::UpdateState::Downloading:
                 doc["status"] = "downloading";
                 doc["percent"] = percent;
                 doc["bytes"] = bytes;
+                doc["expected_bytes"] = expectedBytes;
+                break;
+            case OTAUpdater::UpdateState::Pending:
+                doc["status"] = "pending";
+                doc["percent"] = 100;
+                doc["bytes"] = bytes;
+                doc["expected_bytes"] = expectedBytes;
                 break;
             case OTAUpdater::UpdateState::Success:
                 doc["status"] = "success";
                 doc["percent"] = 100;
                 doc["bytes"] = bytes;
+                doc["expected_bytes"] = expectedBytes;
                 doc["message"] = "Update installed, device is restarting";
                 break;
             case OTAUpdater::UpdateState::Failed:
                 doc["status"] = "error";
                 doc["percent"] = percent;
                 doc["bytes"] = bytes;
+                doc["expected_bytes"] = 0;
                 doc["error"] = error.isEmpty() ? "Update failed" : error;
                 break;
         }
@@ -210,6 +231,86 @@ void WebServerManager::setupOTARoutes() {
         doc["free_heap"] = freeHeap;
         doc["min_free_heap"] = minFreeHeap;
         doc["ota_safe"] = OTAUpdater::hasEnoughMemory();
+
+        // Consolidated check block — mirrors the standalone /api/ota/check
+        // response but on the shorter names the consolidated poller needs.
+        // The standalone endpoint remains available for callers that want the
+        // full shape (current_version, latest_version, etc.).
+        {
+            JsonObject check = doc["check"].to<JsonObject>();
+            FirmwareInfo checkInfo;
+            switch (OTAUpdater::getCheckResult(checkInfo)) {
+                case OTAUpdater::CheckState::Idle:
+                    check["state"] = "idle";
+                    break;
+                case OTAUpdater::CheckState::InProgress:
+                    check["state"] = "in_progress";
+                    break;
+                case OTAUpdater::CheckState::Done:
+                    check["state"] = "done";
+                    check["version"] = checkInfo.version;
+                    check["size_bytes"] = checkInfo.size;
+                    check["update_available"] = OTAUpdater::isUpdateAvailable(checkInfo);
+                    {
+                        int cmp = Support::compareVersions(FIRMWARE_VERSION, checkInfo.version.c_str());
+                        bool semverEqual = (cmp == 0);
+                        check["can_reinstall"] = semverEqual;
+                        check["is_dev_build_promotion"] =
+                            semverEqual && strcmp(FIRMWARE_VERSION, checkInfo.version.c_str()) != 0;
+                    }
+                    break;
+                case OTAUpdater::CheckState::Failed:
+                    check["state"] = "failed";
+                    check["error"] = checkInfo.errorMessage.isEmpty()
+                        ? "Failed to check for updates"
+                        : checkInfo.errorMessage;
+                    break;
+            }
+        }
+
+        // Consolidated update block — mirrors the standalone /api/ota/update
+        // response (including the new Pending state and expected_bytes field).
+        {
+            JsonObject update = doc["update"].to<JsonObject>();
+
+            FirmwareInfo checkInfo;
+            size_t expectedBytes = 0;
+            if (OTAUpdater::getCheckResult(checkInfo) == OTAUpdater::CheckState::Done
+                && checkInfo.isValid) {
+                expectedBytes = checkInfo.size;
+            }
+
+            int percent = 0;
+            size_t bytes = 0;
+            String error;
+            switch (OTAUpdater::getUpdateProgress(percent, bytes, error)) {
+                case OTAUpdater::UpdateState::Idle:
+                    update["state"] = "idle";
+                    break;
+                case OTAUpdater::UpdateState::Downloading:
+                    update["state"] = "downloading";
+                    update["percent"] = percent;
+                    update["bytes"] = bytes;
+                    update["expected_bytes"] = expectedBytes;
+                    break;
+                case OTAUpdater::UpdateState::Pending:
+                    update["state"] = "pending";
+                    update["percent"] = 100;
+                    update["bytes"] = bytes;
+                    update["expected_bytes"] = expectedBytes;
+                    break;
+                case OTAUpdater::UpdateState::Success:
+                    update["state"] = "success";
+                    update["percent"] = 100;
+                    update["bytes"] = bytes;
+                    update["expected_bytes"] = expectedBytes;
+                    break;
+                case OTAUpdater::UpdateState::Failed:
+                    update["state"] = "error";
+                    update["error"] = error.isEmpty() ? "Update failed" : error;
+                    break;
+            }
+        }
 
         String response;
         serializeJson(doc, response);
