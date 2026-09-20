@@ -2,8 +2,7 @@
 
 namespace Sensor {
 
-    DPS310::DPS310(uint8_t address) : I2CSensor(address) {
-    }
+    DPS310::DPS310(uint8_t address) : I2CSensor(address) {}
 
     bool DPS310::begin() {
 #ifdef ARDUINO
@@ -23,7 +22,7 @@ namespace Sensor {
     }
 
     SensorReading DPS310::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
-        (void) prior;
+        (void)prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();

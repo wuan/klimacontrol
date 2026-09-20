@@ -48,4 +48,4 @@ public:
     bool isRunning() const { return running; }
 };
 
-#endif //KLIMACONTROL_CAPTIVEPORTAL_H
+#endif // KLIMACONTROL_CAPTIVEPORTAL_H

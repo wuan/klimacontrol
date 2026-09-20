@@ -30,11 +30,10 @@ namespace {
     constexpr size_t MAX_MEASUREMENTS_PER_SENSOR = 8;
 }
 
-SensorController::SensorController(Config::ConfigManager &config, [[maybe_unused]] DarkModeStatusLed *statusLed)
+SensorController::SensorController(Config::ConfigManager& config, [[maybe_unused]] DarkModeStatusLed* statusLed)
     : config(config), lastReadingTimestamp(0), dataValid(false),
 #ifdef ARDUINO
-      dataMutex(xSemaphoreCreateMutex()),
-      statusLed(statusLed),
+      dataMutex(xSemaphoreCreateMutex()), statusLed(statusLed),
 #endif
       lastReadingTime(0) {
 #ifdef ARDUINO
@@ -76,7 +75,7 @@ void SensorController::begin() {
     sensors.push_back(std::make_unique<Sensor::DeviceSensor>());
 
     // Initialize all sensors
-    for (auto &sensor : sensors) {
+    for (auto& sensor : sensors) {
         if (sensor) {
             ESP_LOGI(TAG, "Initializing sensor %s...", sensor->getType());
             if (sensor->tryBegin()) {
@@ -110,8 +109,8 @@ void SensorController::reserveSensorSlots(size_t n) {
     slots.reserve(n + 1);
 }
 
-void SensorController::collectValidSlots(std::vector<Sensor::Measurement> &out) const {
-    for (const auto &slot : slots) {
+void SensorController::collectValidSlots(std::vector<Sensor::Measurement>& out) const {
+    for (const auto& slot : slots) {
         if (!slot.valid) continue;
         out.insert(out.end(), slot.measurements.begin(), slot.measurements.end());
     }
@@ -142,8 +141,7 @@ void SensorController::sortSensors() {
             }
 
             if (satisfied) {
-                ESP_LOGD(TAG, "Read order [%u] %s",
-                         sorted.size(), sensors[i]->getType());
+                ESP_LOGD(TAG, "Read order [%u] %s", sorted.size(), sensors[i]->getType());
                 sorted.push_back(std::move(sensors[i]));
                 placed[i] = true;
                 progress = true;
@@ -155,8 +153,7 @@ void SensorController::sortSensors() {
     // Append any sensors with unmet dependencies (with warning)
     for (size_t i = 0; i < sensors.size(); ++i) {
         if (!placed[i]) {
-            ESP_LOGW(TAG, "%s has unmet dependencies, appending last",
-                     sensors[i]->getType());
+            ESP_LOGW(TAG, "%s has unmet dependencies, appending last", sensors[i]->getType());
             sorted.push_back(std::move(sensors[i]));
         }
     }
@@ -170,7 +167,7 @@ void SensorController::readSensors() {
 
 uint32_t SensorController::minReadIntervalMs() const {
     uint32_t shortest = MEASUREMENT_INTERVAL_MS;
-    for (const auto &sensor : sensors) {
+    for (const auto& sensor : sensors) {
         if (!sensor) continue;
         const uint32_t interval = effectiveIntervalMs(*sensor);
         if (interval < shortest) shortest = interval;
@@ -181,7 +178,7 @@ uint32_t SensorController::minReadIntervalMs() const {
 void SensorController::readSensors(uint32_t nowMs) {
     const uint32_t timestamp = nowMs;
     std::vector<Sensor::Measurement> allMeasurements;
-    bool anyValid = false;       // at least one sensor read valid *this* tick
+    bool anyValid = false; // at least one sensor read valid *this* tick
 #ifdef ARDUINO
     bool anyI2CAttempted = false; // at least one I2C sensor was due and read this cycle
     bool anyI2CValid = false;     // at least one I2C sensor read valid this cycle
@@ -198,8 +195,7 @@ void SensorController::readSensors(uint32_t nowMs) {
     // The shared phase for default-interval sensors: first tick ever, then
     // every MEASUREMENT_INTERVAL_MS. Rebased to `now` rather than advanced by
     // the interval, so a late tick shifts the phase instead of double-reading.
-    const bool defaultDue = !defaultCycleRun ||
-                            (nowMs - lastDefaultCycleMs >= MEASUREMENT_INTERVAL_MS);
+    const bool defaultDue = !defaultCycleRun || (nowMs - lastDefaultCycleMs >= MEASUREMENT_INTERVAL_MS);
     bool anyDefaultSensor = false;
 
     // ===== PHASE 1: Sensor I2C reads (I2C bus locked) =====
@@ -217,11 +213,10 @@ void SensorController::readSensors(uint32_t nowMs) {
 
         // Retry failed sensors periodically
         static constexpr uint32_t RETRY_INTERVAL_MS = 30000;
-        for (auto &sensor : sensors) {
+        for (auto& sensor : sensors) {
             if (!sensor) continue;
             auto status = sensor->getStatus();
-            if (status == Sensor::SensorStatus::InitFailed ||
-                status == Sensor::SensorStatus::ReadFailing) {
+            if (status == Sensor::SensorStatus::InitFailed || status == Sensor::SensorStatus::ReadFailing) {
                 if (timestamp - sensor->getLastInitAttempt() >= RETRY_INTERVAL_MS) {
                     ESP_LOGI(TAG, "Retrying init for %s...", sensor->getType());
                     if (sensor->tryBegin()) {
@@ -242,9 +237,9 @@ void SensorController::readSensors(uint32_t nowMs) {
         collectValidSlots(prior);
 
         for (size_t i = 0; i < sensors.size(); ++i) {
-            auto &sensor = sensors[i];
+            auto& sensor = sensors[i];
             if (!sensor) continue;
-            SensorSlot &slot = slots[i];
+            SensorSlot& slot = slots[i];
 
             const uint32_t required = sensor->requiredIntervalMs();
             const bool isDefault = required == 0;
@@ -255,9 +250,7 @@ void SensorController::readSensors(uint32_t nowMs) {
                 continue;
             }
 
-            const bool due = isDefault
-                ? defaultDue
-                : (!slot.everRead || nowMs - slot.lastReadMs >= required);
+            const bool due = isDefault ? defaultDue : (!slot.everRead || nowMs - slot.lastReadMs >= required);
             if (!due) continue;
 
             slot.lastReadMs = nowMs;
@@ -274,10 +267,11 @@ void SensorController::readSensors(uint32_t nowMs) {
 
             if (reading.valid) {
                 slot.measurements.clear();
-                for (const auto &m : reading.measurements) {
+                for (const auto& m : reading.measurements) {
                     slot.measurements.push_back(m);
                 }
-                slot.measurements.push_back({Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
+                slot.measurements.push_back(
+                    {Sensor::MeasurementType::Time, (int32_t)readTime, sensor->getType(), false});
                 slot.lastValidMs = nowMs;
                 slot.valid = true;
                 anyValid = true;
@@ -318,7 +312,7 @@ void SensorController::readSensors(uint32_t nowMs) {
             consecutiveI2CFailures = 0;
         }
 #endif
-    }  // I2C bus lock released here
+    } // I2C bus lock released here
 
     // ===== PHASE 2: Expire stale slots, build the union =====
     //
@@ -328,15 +322,14 @@ void SensorController::readSensors(uint32_t nowMs) {
     // failure counter reaches ReadFailing.
     bool anySlotValid = false;
     for (size_t i = 0; i < sensors.size(); ++i) {
-        SensorSlot &slot = slots[i];
+        SensorSlot& slot = slots[i];
         if (!slot.valid) continue;
-        const auto &sensor = sensors[i];
+        const auto& sensor = sensors[i];
         const bool online = sensor && sensor->getStatus() == Sensor::SensorStatus::Online;
-        const bool expired = online &&
-            nowMs - slot.lastValidMs > SLOT_EXPIRY_INTERVALS * effectiveIntervalMs(*sensor);
+        const bool expired = online && nowMs - slot.lastValidMs > SLOT_EXPIRY_INTERVALS * effectiveIntervalMs(*sensor);
         if (!online || expired) {
-            ESP_LOGW(TAG, "Sensor %s - dropping cached reading (%s)",
-                     sensor ? sensor->getType() : "?", expired ? "expired" : "offline");
+            ESP_LOGW(TAG, "Sensor %s - dropping cached reading (%s)", sensor ? sensor->getType() : "?",
+                     expired ? "expired" : "offline");
             slot.valid = false;
             slot.measurements.clear();
             continue;
@@ -355,8 +348,7 @@ void SensorController::readSensors(uint32_t nowMs) {
         // currentMeasurements (see reserveSensorSlots) stays with the buffer
         // that readers copy from, and the outgoing one is freed here.
         currentMeasurements.clear();
-        currentMeasurements.insert(currentMeasurements.end(),
-                                   allMeasurements.begin(), allMeasurements.end());
+        currentMeasurements.insert(currentMeasurements.end(), allMeasurements.begin(), allMeasurements.end());
         dataValid = anySlotValid;
         if (anyValid) {
             lastReadingTimestamp = timestamp;
@@ -366,7 +358,6 @@ void SensorController::readSensors(uint32_t nowMs) {
         xSemaphoreGive(dataMutex);
     }
 #endif
-
 }
 
 std::vector<Sensor::Measurement> SensorController::getMeasurements() const {
@@ -406,10 +397,9 @@ SensorController::ProcessValue SensorController::getProcessValue() const {
     auto capture = [&]() {
         pv.valid = dataValid;
         pv.timestamp = lastReadingTimestamp;
-        const auto *m = Sensor::findMeasurement(currentMeasurements,
-                                                Sensor::MeasurementType::Temperature);
+        const auto* m = Sensor::findMeasurement(currentMeasurements, Sensor::MeasurementType::Temperature);
         if (m) {
-            const float *f = std::get_if<float>(&m->value);
+            const float* f = std::get_if<float>(&m->value);
             if (f) pv.temperature = *f;
         }
     };
@@ -522,7 +512,7 @@ bool SensorController::isDataValid() const {
 #endif
 }
 
-Sensor::Sensor *SensorController::getSensor(size_t index) {
+Sensor::Sensor* SensorController::getSensor(size_t index) {
     if (index < sensors.size()) {
         return sensors[index].get();
     }
@@ -548,9 +538,7 @@ uint32_t SensorController::getTimeSinceLastReading() const {
 }
 
 bool SensorController::hasConnectedSensors() const {
-    return std::any_of(sensors.begin(), sensors.end(),
-        [](const auto &sensor) {
-            return sensor && sensor->getStatus() == Sensor::SensorStatus::Online;
-        });
+    return std::any_of(sensors.begin(), sensors.end(), [](const auto& sensor) {
+        return sensor && sensor->getStatus() == Sensor::SensorStatus::Online;
+    });
 }
-

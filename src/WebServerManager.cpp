@@ -23,12 +23,12 @@ static constexpr const char* const TAG = "http";
 // Web source files are in data/ directory
 // Run: python3 scripts/compress_web.py to regenerate compressed headers
 
-void AccessLogger::run(AsyncWebServerRequest *request, ArMiddlewareNext next) {
+void AccessLogger::run(AsyncWebServerRequest* request, ArMiddlewareNext next) {
     uint32_t elapsed = millis();
     next();
     elapsed = millis() - elapsed;
 
-    AsyncWebServerResponse *response = request->getResponse();
+    AsyncWebServerResponse* response = request->getResponse();
 
     // Also recorded into a RAM ring readable over GET /api/diag/requests.
     // Serial cannot see the fault being hunted: reading the log means attaching
@@ -39,21 +39,15 @@ void AccessLogger::run(AsyncWebServerRequest *request, ArMiddlewareNext next) {
     // A response of -1 here is the signature: the middleware runs immediately
     // before _send(), which is where the framework substitutes the 501, so a
     // request that produced nothing shows as "no response" rather than as 501.
-    Support::recordRequest(request->methodToString(), request->url().c_str(),
-                           response ? response->code() : -1,
-                           static_cast<uint32_t>(request->contentLength()),
-                           static_cast<uint16_t>(elapsed), ESP.getFreeHeap(),
-                           heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), millis(),
-                           request->contentType().c_str(),
-                           static_cast<uint16_t>(request->params()));
+    Support::recordRequest(request->methodToString(), request->url().c_str(), response ? response->code() : -1,
+                           static_cast<uint32_t>(request->contentLength()), static_cast<uint16_t>(elapsed),
+                           ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), millis(),
+                           request->contentType().c_str(), static_cast<uint16_t>(request->params()));
     if (response) {
-        ESP_LOGI(TAG, "%s %s %s (%u ms) %u",
-                 request->client()->remoteIP().toString().c_str(),
-                 request->url().c_str(), request->methodToString(),
-                 elapsed, response->code());
+        ESP_LOGI(TAG, "%s %s %s (%u ms) %u", request->client()->remoteIP().toString().c_str(), request->url().c_str(),
+                 request->methodToString(), elapsed, response->code());
     } else {
-        ESP_LOGI(TAG, "%s %s %s (%u ms) (no response)",
-                 request->client()->remoteIP().toString().c_str(),
+        ESP_LOGI(TAG, "%s %s %s (%u ms) (no response)", request->client()->remoteIP().toString().c_str(),
                  request->url().c_str(), request->methodToString(), elapsed);
     }
 }
@@ -61,12 +55,12 @@ void AccessLogger::run(AsyncWebServerRequest *request, ArMiddlewareNext next) {
 void WebServerManager::setupCommonRoutes() {
 #ifdef ARDUINO
     // Serve common CSS (gzip compressed)
-    server.on("/common.css", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/common.css", HTTP_GET, [](AsyncWebServerRequest* request) {
         sendGzippedResponse(request, CONTENT_TYPE_CSS, COMMON_GZ, COMMON_GZ_LEN);
     });
 
     // Serve favicon (gzip compressed)
-    server.on("/favicon.svg", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/favicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
         sendGzippedResponse(request, CONTENT_TYPE_SVG, FAVICON_GZ, FAVICON_GZ_LEN);
     });
 #endif
@@ -79,20 +73,20 @@ void WebServerManager::setupConfigRoutes() {
     setupCommonRoutes();
 
     // Serve WiFi config page (gzip compressed)
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
         sendGzippedResponse(request, CONTENT_TYPE_HTML, CONFIG_GZ, CONFIG_GZ_LEN);
     });
 
     // Handle WiFi configuration POST
-    server.on("/api/wifi", HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-                  // This callback is called after body processing
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-                  this->handleWiFiConfig(request, data, len, index, total);
-              }
-    );
+    server.on(
+        "/api/wifi", HTTP_POST,
+        []([[maybe_unused]] AsyncWebServerRequest* request) {
+            // This callback is called after body processing
+        },
+        nullptr,
+        [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total) {
+            this->handleWiFiConfig(request, data, len, index, total);
+        });
 #endif
 }
 
@@ -114,12 +108,14 @@ void WebServerManager::setupAPIRoutes() {
 #endif
 }
 
-WebServerManager::WebServerManager(Config::ConfigManager &config, Network &network, SensorController &sensor_controller,
-                                   Control::TemperatureController &temperature_controller, Task::SensorMonitor &sensor_monitor)
+WebServerManager::WebServerManager(Config::ConfigManager& config, Network& network, SensorController& sensor_controller,
+                                   Control::TemperatureController& temperature_controller,
+                                   Task::SensorMonitor& sensor_monitor)
     : config(config), network(network), sensorController(sensor_controller),
       temperatureController(temperature_controller), sensorMonitor(sensor_monitor)
 #ifdef ARDUINO
-      , server(80)
+      ,
+      server(80)
 #endif
 {
 #ifdef ARDUINO
@@ -139,7 +135,7 @@ WebServerManager::WebServerManager(Config::ConfigManager &config, Network &netwo
 }
 
 #ifdef ARDUINO
-void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+void WebServerManager::handleWiFiConfig(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index,
                                         [[maybe_unused]] size_t total) {
     // Only process the first chunk (index == 0)
     if (index == 0) {
@@ -159,8 +155,8 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest *request, uint8_t 
         }
 
         // Extract SSID and password
-        const char *ssid = doc["ssid"];
-        const char *password = doc["password"];
+        const char* ssid = doc["ssid"];
+        const char* password = doc["password"];
 
         if (ssid == nullptr || strlen(ssid) == 0) {
             request->send(400, CONTENT_TYPE_JSON, R"({"success":false,"error":"SSID required"})");
@@ -238,13 +234,11 @@ void WebServerManager::setMode(WebServerMode mode) {
         setupConfigRoutes();
         // Captive portal: redirect all unknown requests to root so phones/tablets
         // detect the configuration portal.
-        server.onNotFound([](AsyncWebServerRequest *request) {
-            request->redirect("/");
-        });
+        server.onNotFound([](AsyncWebServerRequest* request) { request->redirect("/"); });
     } else if (mode == WebServerMode::OPERATIONAL) {
         ESP_LOGI(TAG, "Switching webserver to OPERATIONAL mode");
         setupAPIRoutes();
-        server.onNotFound([](AsyncWebServerRequest *request) {
+        server.onNotFound([](AsyncWebServerRequest* request) {
             ESP_LOGD(TAG, "404 Not Found: %s", request->url().c_str());
             request->send(404, "text/plain", "Not found");
         });

@@ -150,4 +150,3 @@ The controller SHALL attempt I2C bus recovery after `I2C_RECOVERY_FAILURE_STREAK
 
 - **WHEN** every sensor's slot has been invalidated by status change or age
 - **THEN** `isDataValid()` SHALL return false and `getValidMeasurements()` SHALL return an empty vector
-

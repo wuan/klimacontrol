@@ -22,9 +22,9 @@ namespace Actuator {
      * confirms it.
      */
     struct Observation {
-        bool valid = false;   // false when the manifold has not answered recently
-        bool output = false;  // the relay's own view of its contact
-        float apower = 0.0f;  // watts; a wax head draws roughly 2-3
+        bool valid = false;  // false when the manifold has not answered recently
+        bool output = false; // the relay's own view of its contact
+        float apower = 0.0f; // watts; a wax head draws roughly 2-3
         uint32_t atMs = 0;
     };
 
@@ -44,7 +44,7 @@ namespace Actuator {
     };
 
     /** Stable machine-readable name for the API. */
-    const char *agreementName(Agreement a);
+    const char* agreementName(Agreement a);
 
     /**
      * What a display should say the controller is doing.
@@ -70,10 +70,9 @@ namespace Actuator {
      * state governs, so a manifold outage shows as Unknown rather than as a
      * confident "heating" the device cannot actually vouch for.
      */
-    ReportedState reportedState(bool controlEnabled, bool assigned, Agreement agreement,
-                                float demand);
+    ReportedState reportedState(bool controlEnabled, bool assigned, Agreement agreement, float demand);
 
-    const char *reportedStateName(ReportedState s);
+    const char* reportedStateName(ReportedState s);
 
     class HeatingActuator {
     public:
@@ -84,7 +83,7 @@ namespace Actuator {
          * assignment, in which case the actuator stays inert and control must
          * not be enabled.
          */
-        bool configure(const Config::DeviceConfig &config);
+        bool configure(const Config::DeviceConfig& config);
 
         /**
          * One tick, called from the Network task at roughly ACTUATOR_TICK_MS.
@@ -111,7 +110,7 @@ namespace Actuator {
         Conformance conformance() const { return lastConformance; }
         bool isConforming() const { return lastConformance == Conformance::Ok; }
         bool commandedOpen() const { return commanded; }
-        const Observation &observation() const { return observed; }
+        const Observation& observation() const { return observed; }
         Agreement agreement(uint32_t nowMs) const;
         float latchedDuty() const { return tpo.latchedDuty(); }
         uint32_t failedRequests() const { return failures; }
@@ -126,9 +125,7 @@ namespace Actuator {
          * working re-check and a dead button look identical.
          */
         uint32_t conformanceChecks() const { return checks; }
-        uint32_t conformanceAgeMs(uint32_t nowMs) const {
-            return everChecked ? (nowMs - lastConformanceMs) : 0;
-        }
+        uint32_t conformanceAgeMs(uint32_t nowMs) const { return everChecked ? (nowMs - lastConformanceMs) : 0; }
         bool everConformanceChecked() const { return everChecked; }
 
         // Renewal must be frequent enough that the relay's lease cannot expire

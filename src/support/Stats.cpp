@@ -4,10 +4,8 @@
 
 #include "Stats.h"
 
-namespace Support
-{
-    void Stats::add(uint64_t value)
-    {
+namespace Support {
+    void Stats::add(uint64_t value) {
         lockStats();
         total += value;
         count++;
@@ -16,8 +14,7 @@ namespace Support
         unlockStats();
     }
 
-    StatsSnapshot Stats::snapshot() const
-    {
+    StatsSnapshot Stats::snapshot() const {
         lockStats();
         StatsSnapshot snap{};
         snap.count = count;
@@ -36,32 +33,28 @@ namespace Support
         return snap;
     }
 
-    uint64_t Stats::get_average() const
-    {
+    uint64_t Stats::get_average() const {
         lockStats();
         uint64_t result = (count == 0) ? 0 : total / count;
         unlockStats();
         return result;
     }
 
-    uint64_t Stats::get_min() const
-    {
+    uint64_t Stats::get_min() const {
         lockStats();
         uint64_t result = (count == 0) ? 0 : min_value;
         unlockStats();
         return result;
     }
 
-    uint64_t Stats::get_max() const
-    {
+    uint64_t Stats::get_max() const {
         lockStats();
         uint64_t result = max_value;
         unlockStats();
         return result;
     }
 
-    uint64_t Stats::get_count() const
-    {
+    uint64_t Stats::get_count() const {
         lockStats();
         uint64_t result = count;
         unlockStats();

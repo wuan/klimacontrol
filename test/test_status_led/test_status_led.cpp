@@ -52,7 +52,7 @@ void test_toggle_method() {
     testLed->off();
     testLed->toggle();
     TEST_ASSERT_EQUAL(LedState::ON, testLed->getState());
-    
+
     testLed->toggle();
     TEST_ASSERT_EQUAL(LedState::OFF, testLed->getState());
 }

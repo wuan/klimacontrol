@@ -102,4 +102,3 @@ The existing AP-fallback threshold (`failures % 3 == 0`, opening AP mode for 5 m
 
 - **WHEN** the device successfully associates with the AP after a streak of failed boots
 - **THEN** the next failure uses the 2000 ms base (the counter has been reset to 0)
-

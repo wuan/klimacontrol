@@ -13,7 +13,7 @@ namespace Control {
 }
 
 namespace Task {
-    
+
     /**
      * Sensor Monitoring Task
      * Reads sensors and drives the temperature control loop with the result.
@@ -23,8 +23,8 @@ namespace Task {
      */
     class SensorMonitor {
     private:
-        SensorController &controller;
-        Control::TemperatureController &control;
+        SensorController& controller;
+        Control::TemperatureController& control;
         TaskHandle_t taskHandle = nullptr;
         Support::Stats stats;
 
@@ -54,13 +54,13 @@ namespace Task {
          * @param controller Sensor controller reference
          * @param control    Control loop, fed from the controller each tick
          */
-        SensorMonitor(SensorController &controller, Control::TemperatureController &control);
-        
+        SensorMonitor(SensorController& controller, Control::TemperatureController& control);
+
         /**
          * Start the sensor monitoring task
          */
         void startTask();
-        
+
         /**
          * Get task handle
          * @return Task handle
@@ -81,19 +81,19 @@ namespace Task {
          * openspec/specs/system-architecture/spec.md.
          */
         Support::StatsSnapshot getStatsSnapshot() const { return stats.snapshot(); }
-        
+
     private:
         /**
          * Main sensor monitoring task
          */
         [[noreturn]] void task();
-        
+
         /**
          * Static trampoline function for FreeRTOS
          */
-        static void taskWrapper(void *pvParameters);
+        static void taskWrapper(void* pvParameters);
     };
-    
+
 } // namespace Task
 
 #endif // SENSOR_MONITOR_H

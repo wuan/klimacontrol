@@ -30,8 +30,7 @@ void test_reserve_sensor_slots_reserves_capacity() {
     SensorController controller(config, nullptr);
     controller.reserveSensorSlots(RESERVE_N);
 
-    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(RESERVE_N,
-        static_cast<uint32_t>(controller.getSensorsCapacity()));
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(RESERVE_N, static_cast<uint32_t>(controller.getSensorsCapacity()));
 }
 
 void test_add_n_sensors_does_not_reallocate() {
@@ -47,11 +46,10 @@ void test_add_n_sensors_does_not_reallocate() {
     for (size_t i = 0; i < RESERVE_N; ++i) {
         controller.addSensor(std::make_unique<Sensor::DeviceSensor>());
         TEST_ASSERT_EQUAL_UINT32(static_cast<uint32_t>(capacityBefore),
-            static_cast<uint32_t>(controller.getSensorsCapacity()));
+                                 static_cast<uint32_t>(controller.getSensorsCapacity()));
     }
 
-    TEST_ASSERT_EQUAL_UINT32(RESERVE_N,
-        static_cast<uint32_t>(controller.getSensorCount()));
+    TEST_ASSERT_EQUAL_UINT32(RESERVE_N, static_cast<uint32_t>(controller.getSensorCount()));
 }
 
 void test_measurements_capacity_matches_reserve_contract() {
@@ -64,8 +62,7 @@ void test_measurements_capacity_matches_reserve_contract() {
     // (currently 8). We assert the lower bound (>= RESERVE_N) so the test
     // does not need to know the exact multiplier — only that adding the
     // worst-case number of measurements does not need to reallocate.
-    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(RESERVE_N,
-        static_cast<uint32_t>(controller.getMeasurementsCapacity()));
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(RESERVE_N, static_cast<uint32_t>(controller.getMeasurementsCapacity()));
 }
 
 int runUnityTests() {

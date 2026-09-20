@@ -19,9 +19,9 @@ namespace Actuator {
     // build to read four flat fields would trade a small amount of parsing code
     // for the ability to test any of this off-device. The payloads are flat,
     // fixed-shape and machine-generated.
-    bool extractBool(const char *json, const char *key, bool &out);
-    bool extractNumber(const char *json, const char *key, float &out);
-    bool extractString(const char *json, const char *key, char *out, size_t outSize);
+    bool extractBool(const char* json, const char* key, bool& out);
+    bool extractNumber(const char* json, const char* key, float& out);
+    bool extractString(const char* json, const char* key, char* out, size_t outSize);
 
     /**
      * The subset of `Switch.GetConfig` this firmware cares about — the fields
@@ -34,7 +34,7 @@ namespace Actuator {
         char initialState[20] = "";
         char inMode[20] = "";
 
-        bool parse(const char *json);
+        bool parse(const char* json);
     };
 
     /**
@@ -43,11 +43,11 @@ namespace Actuator {
      */
     enum class Conformance : uint8_t {
         Ok,
-        NotRead,             // no answer from the manifold
-        AutoOffDisabled,     // no lease: nothing closes the valve if we die
-        AutoOffTooShort,     // a single failed renewal would move the valve
-        InitialStateUnsafe,  // a relay reboot would restore the previous output
-        InputNotDetached     // a physical input could fight the controller
+        NotRead,            // no answer from the manifold
+        AutoOffDisabled,    // no lease: nothing closes the valve if we die
+        AutoOffTooShort,    // a single failed renewal would move the valve
+        InitialStateUnsafe, // a relay reboot would restore the previous output
+        InputNotDetached    // a physical input could fight the controller
     };
 
     /**
@@ -58,13 +58,13 @@ namespace Actuator {
      *                         renewal interval, so one failed request cannot
      *                         move a valve that needs minutes per stroke.
      */
-    Conformance checkConformance(const ChannelConfig &config, float minAutoOffDelayS);
+    Conformance checkConformance(const ChannelConfig& config, float minAutoOffDelayS);
 
     /** Stable machine-readable name, for the API and the logs. */
-    const char *conformanceName(Conformance c);
+    const char* conformanceName(Conformance c);
 
     /** One line a human can act on. */
-    const char *conformanceDetail(Conformance c);
+    const char* conformanceDetail(Conformance c);
 
 }
 

@@ -21,4 +21,4 @@ namespace Support {
     };
 } // Support
 
-#endif //KLIMACONTROL_TIMER_H
+#endif // KLIMACONTROL_TIMER_H

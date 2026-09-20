@@ -222,4 +222,3 @@ Validation SHALL be understood as a guard against a mistyped order of magnitude 
 
 - **WHEN** NVS holds `energy_wifi_pw = 68` from a previous firmware version
 - **THEN** `loadEnergyConfig()` SHALL return `68` unchanged
-

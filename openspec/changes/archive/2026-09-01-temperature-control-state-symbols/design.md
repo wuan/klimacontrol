@@ -100,7 +100,7 @@ float SensorController::updateControl() {
     // ... existing calculation ...
     float output = proportional + integral + derivative;
     output = std::max(MinOutput, std::min(MaxOutput, output));
-    
+
     lastControlOutput = output;  // NEW: Store for later query
     return output;
 }

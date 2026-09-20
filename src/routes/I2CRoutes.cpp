@@ -10,7 +10,7 @@
 void WebServerManager::setupI2CRoutes() {
 #ifdef ARDUINO
     // GET /api/i2c/scan - Scan I2C bus for devices (addresses only, types come from registry)
-    server.on("/api/i2c/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/api/i2c/scan", HTTP_GET, [](AsyncWebServerRequest* request) {
         auto devices = I2CScanner::scan();
 
         JsonDocument doc;

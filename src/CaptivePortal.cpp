@@ -7,7 +7,6 @@
 
 static constexpr const char* TAG = "portal";
 
-
 void CaptivePortal::begin() {
 #ifdef ARDUINO
     // DNS server redirects all requests to the AP IP (192.168.4.1)

@@ -35,8 +35,7 @@ void test_wifi_reconnect_failure_reset_on_success() {
 // --- NTP epoch guard logic ---
 
 static bool shouldUpdateNtp(uint32_t currentEpoch, uint32_t lastNtpUpdate) {
-    return currentEpoch > 0 && lastNtpUpdate > 0
-           && currentEpoch - lastNtpUpdate > 3600;
+    return currentEpoch > 0 && lastNtpUpdate > 0 && currentEpoch - lastNtpUpdate > 3600;
 }
 
 void test_ntp_epoch_guard_both_zero_no_update() {

@@ -18,16 +18,17 @@ namespace Sensor {
         explicit VEML7700(uint8_t address = 0x10);
 
         static const char* type() { return "VEML7700"; }
-        static const uint8_t* addresses() { static const uint8_t a[] = {0x10}; return a; }
+        static const uint8_t* addresses() {
+            static const uint8_t a[] = {0x10};
+            return a;
+        }
         static uint8_t addressCount() { return 1; }
 
         bool begin() override;
         SensorReading read(const ReadConfig& config, const std::vector<Measurement>& prior) override;
         [[nodiscard]] const char* getType() const override { return type(); }
         [[nodiscard]] TypeSpan providesMeasurements() const override {
-            static constexpr MeasurementType types[] = {
-                MeasurementType::Illuminance
-            };
+            static constexpr MeasurementType types[] = {MeasurementType::Illuminance};
             return {types, 1};
         }
     };

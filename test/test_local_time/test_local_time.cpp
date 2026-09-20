@@ -11,19 +11,19 @@ using Support::formatLocalHhMm;
 using Support::isPlausibleTimezone;
 
 // POSIX TZ strings under test.
-static const char *TZ_UTC = "UTC0";
-static const char *TZ_BERLIN = "CET-1CEST,M3.5.0,M10.5.0/3";        // EU rules
-static const char *TZ_NEW_YORK = "EST5EDT,M3.2.0,M11.1.0";          // US rules
-static const char *TZ_SYDNEY = "AEST-10AEDT,M10.1.0,M4.1.0/3";      // southern hemisphere
-static const char *TZ_KOLKATA = "IST-5:30";                         // fractional offset
-static const char *TZ_DUBAI = "<+04>-4";                            // quoted designation
-static const char *TZ_PHOENIX = "MST7";                             // no DST at all
+static const char* TZ_UTC = "UTC0";
+static const char* TZ_BERLIN = "CET-1CEST,M3.5.0,M10.5.0/3";   // EU rules
+static const char* TZ_NEW_YORK = "EST5EDT,M3.2.0,M11.1.0";     // US rules
+static const char* TZ_SYDNEY = "AEST-10AEDT,M10.1.0,M4.1.0/3"; // southern hemisphere
+static const char* TZ_KOLKATA = "IST-5:30";                    // fractional offset
+static const char* TZ_DUBAI = "<+04>-4";                       // quoted designation
+static const char* TZ_PHOENIX = "MST7";                        // no DST at all
 
 // Epochs (verified against Python's datetime, all UTC).
-static constexpr uint32_t E_2026_01_15_1200Z = 1768478400; // winter
-static constexpr uint32_t E_2026_07_15_1200Z = 1784116800; // summer
-static constexpr uint32_t E_EU_DST_BEFORE = 1774745940;    // 2026-03-29T00:59Z
-static constexpr uint32_t E_EU_DST_AT = 1774746000;        // 2026-03-29T01:00Z
+static constexpr uint32_t E_2026_01_15_1200Z = 1768478400;  // winter
+static constexpr uint32_t E_2026_07_15_1200Z = 1784116800;  // summer
+static constexpr uint32_t E_EU_DST_BEFORE = 1774745940;     // 2026-03-29T00:59Z
+static constexpr uint32_t E_EU_DST_AT = 1774746000;         // 2026-03-29T01:00Z
 static constexpr uint32_t E_EU_DST_END_BEFORE = 1792889940; // 2026-10-25T00:59Z
 static constexpr uint32_t E_EU_DST_END_AT = 1792890000;     // 2026-10-25T01:00Z
 static constexpr uint32_t E_US_DST_BEFORE = 1772953140;     // 2026-03-08T06:59Z
@@ -33,7 +33,7 @@ void setUp() {}
 void tearDown() {}
 
 // Convenience: apply a zone, format, and compare.
-static void assertHhMm(const char *tz, uint32_t epoch, const char *expected) {
+static void assertHhMm(const char* tz, uint32_t epoch, const char* expected) {
     applyTimezone(tz);
     char buf[8];
     formatLocalHhMm(buf, sizeof(buf), epoch);

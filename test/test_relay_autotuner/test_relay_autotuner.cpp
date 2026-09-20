@@ -78,8 +78,8 @@ namespace {
 
     // Drive tuner and plant together until the run ends or the tick budget runs
     // out. Returns where it got to.
-    RunOutcome runToCompletion(RelayAutotuner &tuner, Plant &plant, uint32_t startMs,
-                               uint32_t maxTicks, bool dataValid = true) {
+    RunOutcome runToCompletion(RelayAutotuner& tuner, Plant& plant, uint32_t startMs, uint32_t maxTicks,
+                               bool dataValid = true) {
         uint32_t now = startMs;
         for (uint32_t i = 0; i < maxTicks; ++i) {
             const float out = tuner.update(plant.value(), dataValid, now);
@@ -231,8 +231,7 @@ void test_proceeds_once_temperature_is_steady() {
     now += TICK_MS;
     tuner.update(20.5f, true, now); // no change at all -> steady
 
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Oscillating),
-                      static_cast<int>(tuner.state()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Oscillating), static_cast<int>(tuner.state()));
 }
 
 void test_settling_timeout_aborts() {
@@ -250,8 +249,7 @@ void test_settling_timeout_aborts() {
     }
 
     TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Aborted), static_cast<int>(tuner.state()));
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::SettlingTimeout),
-                      static_cast<int>(tuner.abortReason()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::SettlingTimeout), static_cast<int>(tuner.abortReason()));
 }
 
 // --- Abort paths ---
@@ -263,8 +261,7 @@ void test_ceiling_breach_aborts_and_output_is_zero() {
     const float out = tuner.update(21.0f + 3.5f, true, 2000);
 
     TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Aborted), static_cast<int>(tuner.state()));
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::CeilingBreached),
-                      static_cast<int>(tuner.abortReason()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::CeilingBreached), static_cast<int>(tuner.abortReason()));
     TEST_ASSERT_FLOAT_WITHIN(0.0f, 0.0f, out);
 }
 
@@ -275,8 +272,7 @@ void test_floor_breach_aborts_and_output_is_zero() {
     const float out = tuner.update(21.0f - 3.5f, true, 2000);
 
     TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Aborted), static_cast<int>(tuner.state()));
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::FloorBreached),
-                      static_cast<int>(tuner.abortReason()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::FloorBreached), static_cast<int>(tuner.abortReason()));
     TEST_ASSERT_FLOAT_WITHIN(0.0f, 0.0f, out);
 }
 
@@ -289,8 +285,7 @@ void test_sensor_loss_aborts_immediately() {
     const float out = tuner.update(20.9f, false, 3000);
 
     TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Aborted), static_cast<int>(tuner.state()));
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::SensorLost),
-                      static_cast<int>(tuner.abortReason()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::SensorLost), static_cast<int>(tuner.abortReason()));
     TEST_ASSERT_FLOAT_WITHIN(0.0f, 0.0f, out);
 }
 
@@ -301,8 +296,7 @@ void test_nan_reading_aborts() {
     tuner.update(NAN, true, 2000);
 
     TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Aborted), static_cast<int>(tuner.state()));
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::SensorLost),
-                      static_cast<int>(tuner.abortReason()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::SensorLost), static_cast<int>(tuner.abortReason()));
 }
 
 void test_run_timeout_aborts_without_converging() {
@@ -315,8 +309,7 @@ void test_run_timeout_aborts_without_converging() {
     runToCompletion(tuner, plant, 1000, 5000);
 
     TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Aborted), static_cast<int>(tuner.state()));
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::RunTimeout),
-                      static_cast<int>(tuner.abortReason()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::RunTimeout), static_cast<int>(tuner.abortReason()));
 }
 
 void test_user_cancel_aborts_and_output_is_zero() {
@@ -328,8 +321,7 @@ void test_user_cancel_aborts_and_output_is_zero() {
     const float out = tuner.update(20.9f, true, 3000);
 
     TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Aborted), static_cast<int>(tuner.state()));
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::UserRequested),
-                      static_cast<int>(tuner.abortReason()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::UserRequested), static_cast<int>(tuner.abortReason()));
     TEST_ASSERT_FLOAT_WITHIN(0.0f, 0.0f, out);
 }
 
@@ -348,8 +340,7 @@ void test_amplitude_barely_clearing_hysteresis_aborts() {
     float temp = 21.0f;
     for (int i = 0; i < 400; ++i) {
         const float out = tuner.update(temp, true, now);
-        if (tuner.state() != AutotuneState::Settling &&
-            tuner.state() != AutotuneState::Oscillating) {
+        if (tuner.state() != AutotuneState::Settling && tuner.state() != AutotuneState::Oscillating) {
             break;
         }
         // Move a hair past the band in whichever direction the relay asks for,
@@ -360,8 +351,7 @@ void test_amplitude_barely_clearing_hysteresis_aborts() {
     }
 
     TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Aborted), static_cast<int>(tuner.state()));
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::AmplitudeTooSmall),
-                      static_cast<int>(tuner.abortReason()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::AmplitudeTooSmall), static_cast<int>(tuner.abortReason()));
 }
 
 void test_aborts_are_terminal() {
@@ -380,8 +370,7 @@ void test_aborts_are_terminal() {
         now += TICK_MS;
     }
     TEST_ASSERT_EQUAL(static_cast<int>(AutotuneState::Aborted), static_cast<int>(tuner.state()));
-    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::UserRequested),
-                      static_cast<int>(tuner.abortReason()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AutotuneAbort::UserRequested), static_cast<int>(tuner.abortReason()));
 }
 
 // --- Edge cases ---

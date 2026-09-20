@@ -54,55 +54,46 @@ void test_sea_level_pressure_known_value() {
 // --- measurementTypeLabel ---
 
 void test_label_temperature() {
-    TEST_ASSERT_EQUAL_STRING("temperature",
-        Sensor::measurementTypeLabel(Sensor::MeasurementType::Temperature));
+    TEST_ASSERT_EQUAL_STRING("temperature", Sensor::measurementTypeLabel(Sensor::MeasurementType::Temperature));
 }
 
 void test_label_relative_humidity() {
     TEST_ASSERT_EQUAL_STRING("relative humidity",
-        Sensor::measurementTypeLabel(Sensor::MeasurementType::RelativeHumidity));
+                             Sensor::measurementTypeLabel(Sensor::MeasurementType::RelativeHumidity));
 }
 
 void test_label_co2() {
-    TEST_ASSERT_EQUAL_STRING("CO2",
-        Sensor::measurementTypeLabel(Sensor::MeasurementType::CO2));
+    TEST_ASSERT_EQUAL_STRING("CO2", Sensor::measurementTypeLabel(Sensor::MeasurementType::CO2));
 }
 
 void test_label_voc_index() {
-    TEST_ASSERT_EQUAL_STRING("VOC index",
-        Sensor::measurementTypeLabel(Sensor::MeasurementType::VocIndex));
+    TEST_ASSERT_EQUAL_STRING("VOC index", Sensor::measurementTypeLabel(Sensor::MeasurementType::VocIndex));
 }
 
 void test_label_pressure() {
-    TEST_ASSERT_EQUAL_STRING("pressure",
-        Sensor::measurementTypeLabel(Sensor::MeasurementType::Pressure));
+    TEST_ASSERT_EQUAL_STRING("pressure", Sensor::measurementTypeLabel(Sensor::MeasurementType::Pressure));
 }
 
 // --- measurementTypeUnit ---
 
 void test_unit_temperature() {
-    TEST_ASSERT_EQUAL_STRING("°C",
-        Sensor::measurementTypeUnit(Sensor::MeasurementType::Temperature));
+    TEST_ASSERT_EQUAL_STRING("°C", Sensor::measurementTypeUnit(Sensor::MeasurementType::Temperature));
 }
 
 void test_unit_relative_humidity() {
-    TEST_ASSERT_EQUAL_STRING("%",
-        Sensor::measurementTypeUnit(Sensor::MeasurementType::RelativeHumidity));
+    TEST_ASSERT_EQUAL_STRING("%", Sensor::measurementTypeUnit(Sensor::MeasurementType::RelativeHumidity));
 }
 
 void test_unit_pressure() {
-    TEST_ASSERT_EQUAL_STRING("hPa",
-        Sensor::measurementTypeUnit(Sensor::MeasurementType::Pressure));
+    TEST_ASSERT_EQUAL_STRING("hPa", Sensor::measurementTypeUnit(Sensor::MeasurementType::Pressure));
 }
 
 void test_unit_co2() {
-    TEST_ASSERT_EQUAL_STRING("ppm",
-        Sensor::measurementTypeUnit(Sensor::MeasurementType::CO2));
+    TEST_ASSERT_EQUAL_STRING("ppm", Sensor::measurementTypeUnit(Sensor::MeasurementType::CO2));
 }
 
 void test_unit_illuminance() {
-    TEST_ASSERT_EQUAL_STRING("lux",
-        Sensor::measurementTypeUnit(Sensor::MeasurementType::Illuminance));
+    TEST_ASSERT_EQUAL_STRING("lux", Sensor::measurementTypeUnit(Sensor::MeasurementType::Illuminance));
 }
 
 // --- findMeasurement ---
@@ -112,8 +103,7 @@ void test_find_measurement_found() {
         {Sensor::MeasurementType::Temperature, 22.5f, "SHT4x", false},
         {Sensor::MeasurementType::RelativeHumidity, 65.0f, "SHT4x", false},
     };
-    const Sensor::Measurement *m =
-        Sensor::findMeasurement(measurements, Sensor::MeasurementType::Temperature);
+    const Sensor::Measurement* m = Sensor::findMeasurement(measurements, Sensor::MeasurementType::Temperature);
     TEST_ASSERT_NOT_NULL(m);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 22.5f, std::get<float>(m->value));
 }
@@ -123,8 +113,7 @@ void test_find_measurement_second_entry() {
         {Sensor::MeasurementType::Temperature, 22.5f, "SHT4x", false},
         {Sensor::MeasurementType::RelativeHumidity, 65.0f, "SHT4x", false},
     };
-    const Sensor::Measurement *m =
-        Sensor::findMeasurement(measurements, Sensor::MeasurementType::RelativeHumidity);
+    const Sensor::Measurement* m = Sensor::findMeasurement(measurements, Sensor::MeasurementType::RelativeHumidity);
     TEST_ASSERT_NOT_NULL(m);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 65.0f, std::get<float>(m->value));
 }
@@ -133,15 +122,13 @@ void test_find_measurement_not_found() {
     std::vector<Sensor::Measurement> measurements = {
         {Sensor::MeasurementType::Temperature, 22.5f, "SHT4x", false},
     };
-    const Sensor::Measurement *m =
-        Sensor::findMeasurement(measurements, Sensor::MeasurementType::CO2);
+    const Sensor::Measurement* m = Sensor::findMeasurement(measurements, Sensor::MeasurementType::CO2);
     TEST_ASSERT_NULL(m);
 }
 
 void test_find_measurement_empty_vector() {
     std::vector<Sensor::Measurement> measurements;
-    const Sensor::Measurement *m =
-        Sensor::findMeasurement(measurements, Sensor::MeasurementType::Temperature);
+    const Sensor::Measurement* m = Sensor::findMeasurement(measurements, Sensor::MeasurementType::Temperature);
     TEST_ASSERT_NULL(m);
 }
 
@@ -149,8 +136,7 @@ void test_find_measurement_int_value() {
     std::vector<Sensor::Measurement> measurements = {
         {Sensor::MeasurementType::VocIndex, (int32_t)150, "SGP40", false},
     };
-    const Sensor::Measurement *m =
-        Sensor::findMeasurement(measurements, Sensor::MeasurementType::VocIndex);
+    const Sensor::Measurement* m = Sensor::findMeasurement(measurements, Sensor::MeasurementType::VocIndex);
     TEST_ASSERT_NOT_NULL(m);
     TEST_ASSERT_EQUAL(150, std::get<int32_t>(m->value));
 }
@@ -161,46 +147,43 @@ void test_find_measurement_int_value() {
 namespace {
     struct ThreeMeasurementSensor : public Sensor::Sensor {
         bool begin() override { return true; }
-        ::Sensor::SensorReading read(const ::Sensor::ReadConfig&, const std::vector<::Sensor::Measurement>&) override { return {}; }
+        ::Sensor::SensorReading read(const ::Sensor::ReadConfig&, const std::vector<::Sensor::Measurement>&) override {
+            return {};
+        }
         const char* getType() const override { return "Test3"; }
         [[nodiscard]] ::Sensor::TypeSpan providesMeasurements() const override {
-            static constexpr ::Sensor::MeasurementType types[] = {
-                ::Sensor::MeasurementType::Temperature,
-                ::Sensor::MeasurementType::RelativeHumidity,
-                ::Sensor::MeasurementType::DewPoint
-            };
+            static constexpr ::Sensor::MeasurementType types[] = {::Sensor::MeasurementType::Temperature,
+                                                                  ::Sensor::MeasurementType::RelativeHumidity,
+                                                                  ::Sensor::MeasurementType::DewPoint};
             return {types, 3};
         }
     };
 
     struct OneMeasurementSensor : public Sensor::Sensor {
         bool begin() override { return true; }
-        ::Sensor::SensorReading read(const ::Sensor::ReadConfig&, const std::vector<::Sensor::Measurement>&) override { return {}; }
+        ::Sensor::SensorReading read(const ::Sensor::ReadConfig&, const std::vector<::Sensor::Measurement>&) override {
+            return {};
+        }
         const char* getType() const override { return "Test1"; }
         [[nodiscard]] ::Sensor::TypeSpan providesMeasurements() const override {
-            static constexpr ::Sensor::MeasurementType types[] = {
-                ::Sensor::MeasurementType::Illuminance
-            };
+            static constexpr ::Sensor::MeasurementType types[] = {::Sensor::MeasurementType::Illuminance};
             return {types, 1};
         }
     };
 
     struct NineMeasurementSensor : public Sensor::Sensor {
         bool begin() override { return true; }
-        ::Sensor::SensorReading read(const ::Sensor::ReadConfig&, const std::vector<::Sensor::Measurement>&) override { return {}; }
+        ::Sensor::SensorReading read(const ::Sensor::ReadConfig&, const std::vector<::Sensor::Measurement>&) override {
+            return {};
+        }
         const char* getType() const override { return "Test9"; }
         [[nodiscard]] ::Sensor::TypeSpan providesMeasurements() const override {
             static constexpr ::Sensor::MeasurementType types[] = {
-                ::Sensor::MeasurementType::Particles03,
-                ::Sensor::MeasurementType::Particles05,
-                ::Sensor::MeasurementType::Particles10,
-                ::Sensor::MeasurementType::Particles25,
-                ::Sensor::MeasurementType::Particles50,
-                ::Sensor::MeasurementType::Particles100,
-                ::Sensor::MeasurementType::PM10Concentration,
-                ::Sensor::MeasurementType::PM25Concentration,
-                ::Sensor::MeasurementType::PM100Concentration
-            };
+                ::Sensor::MeasurementType::Particles03,       ::Sensor::MeasurementType::Particles05,
+                ::Sensor::MeasurementType::Particles10,       ::Sensor::MeasurementType::Particles25,
+                ::Sensor::MeasurementType::Particles50,       ::Sensor::MeasurementType::Particles100,
+                ::Sensor::MeasurementType::PM10Concentration, ::Sensor::MeasurementType::PM25Concentration,
+                ::Sensor::MeasurementType::PM100Concentration};
             return {types, 9};
         }
     };

@@ -10,7 +10,7 @@ namespace Support {
     namespace {
         // Shared by both formatters: resolve an epoch to broken-down local time.
         // Returns false for the unsynced sentinel or an unconvertible value.
-        bool localBrokenDown(uint32_t epoch, struct tm &out) {
+        bool localBrokenDown(uint32_t epoch, struct tm& out) {
             if (epoch == 0) {
                 return false; // NTP not yet synced
             }
@@ -20,7 +20,7 @@ namespace Support {
 
         // Common guard for the formatters. Returns false when there is nowhere
         // to write; otherwise leaves `out` as an empty string.
-        bool prepareBuffer(char *out, size_t n) {
+        bool prepareBuffer(char* out, size_t n) {
             if (out == nullptr || n == 0) {
                 return false;
             }
@@ -29,7 +29,7 @@ namespace Support {
         }
     } // namespace
 
-    bool isPlausibleTimezone(const char *tz) {
+    bool isPlausibleTimezone(const char* tz) {
         if (tz == nullptr) {
             return false;
         }
@@ -46,13 +46,13 @@ namespace Support {
         return true;
     }
 
-    void applyTimezone(const char *tz) {
-        const char *value = isPlausibleTimezone(tz) ? tz : DEFAULT_TIMEZONE;
+    void applyTimezone(const char* tz) {
+        const char* value = isPlausibleTimezone(tz) ? tz : DEFAULT_TIMEZONE;
         setenv("TZ", value, 1);
         tzset();
     }
 
-    size_t formatLocalHhMm(char *out, size_t n, uint32_t epoch) {
+    size_t formatLocalHhMm(char* out, size_t n, uint32_t epoch) {
         if (!prepareBuffer(out, n)) {
             return 0;
         }
@@ -64,7 +64,7 @@ namespace Support {
         return written < 0 ? 0 : static_cast<size_t>(written);
     }
 
-    size_t formatLocalDate(char *out, size_t n, uint32_t epoch) {
+    size_t formatLocalDate(char* out, size_t n, uint32_t epoch) {
         if (!prepareBuffer(out, n)) {
             return 0;
         }
@@ -72,12 +72,11 @@ namespace Support {
         if (!localBrokenDown(epoch, lt)) {
             return 0;
         }
-        const int written = snprintf(out, n, "%04d-%02d-%02d",
-                                     lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday);
+        const int written = snprintf(out, n, "%04d-%02d-%02d", lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday);
         return written < 0 ? 0 : static_cast<size_t>(written);
     }
 
-    size_t formatLocalDateHhMm(char *out, size_t n, uint32_t epoch) {
+    size_t formatLocalDateHhMm(char* out, size_t n, uint32_t epoch) {
         if (!prepareBuffer(out, n)) {
             return 0;
         }
@@ -87,9 +86,8 @@ namespace Support {
         }
         // Two-digit year: the panel's footer line has to hold the date, the
         // time and still leave the device name room beside it.
-        const int written = snprintf(out, n, "%02d-%02d-%02d %02d:%02d",
-                                     (lt.tm_year + 1900) % 100, lt.tm_mon + 1, lt.tm_mday,
-                                     lt.tm_hour, lt.tm_min);
+        const int written = snprintf(out, n, "%02d-%02d-%02d %02d:%02d", (lt.tm_year + 1900) % 100, lt.tm_mon + 1,
+                                     lt.tm_mday, lt.tm_hour, lt.tm_min);
         return written < 0 ? 0 : static_cast<size_t>(written);
     }
 

@@ -7,12 +7,12 @@ namespace Support {
 
     namespace {
         RequestRecord ring[REQUEST_DIAG_CAPACITY];
-        size_t head = 0;   // next slot to write
-        size_t held = 0;   // records currently valid, <= capacity
+        size_t head = 0; // next slot to write
+        size_t held = 0; // records currently valid, <= capacity
         uint32_t total = 0;
         uint16_t pending = StageNone;
 
-        void copyField(char *dst, size_t dstSize, const char *src) {
+        void copyField(char* dst, size_t dstSize, const char* src) {
             if (src == nullptr) {
                 dst[0] = '\0';
                 return;
@@ -30,10 +30,10 @@ namespace Support {
         return pending;
     }
 
-    void recordRequest(const char *method, const char *url, int code, uint32_t contentLength,
-                       uint16_t elapsedMs, uint32_t freeHeap, uint32_t largestBlock, uint32_t atMs,
-                       const char *contentType, uint16_t params) {
-        RequestRecord &r = ring[head];
+    void recordRequest(const char* method, const char* url, int code, uint32_t contentLength, uint16_t elapsedMs,
+                       uint32_t freeHeap, uint32_t largestBlock, uint32_t atMs, const char* contentType,
+                       uint16_t params) {
+        RequestRecord& r = ring[head];
         r.atMs = atMs;
         r.stages = pending;
         r.code = static_cast<int16_t>(code);
@@ -65,7 +65,7 @@ namespace Support {
         return total;
     }
 
-    const RequestRecord &requestAt(size_t i) {
+    const RequestRecord& requestAt(size_t i) {
         // Oldest first. When the ring has wrapped, the oldest lives at head.
         const size_t base = held == REQUEST_DIAG_CAPACITY ? head : 0;
         return ring[(base + i) % REQUEST_DIAG_CAPACITY];
@@ -78,7 +78,7 @@ namespace Support {
         pending = StageNone;
     }
 
-    void describeStages(uint16_t stages, char *out, size_t outSize) {
+    void describeStages(uint16_t stages, char* out, size_t outSize) {
         if (out == nullptr || outSize == 0) {
             return;
         }
@@ -90,15 +90,14 @@ namespace Support {
         }
         struct Entry {
             uint16_t bit;
-            const char *name;
+            const char* name;
         };
         static const Entry entries[] = {
-            {StageBodyEntered, "body"},   {StageCsrfPassed, "csrf"},
-            {StageJsonParsed, "json"},    {StageValidated, "valid"},
-            {StageResponded, "sent"},
+            {StageBodyEntered, "body"}, {StageCsrfPassed, "csrf"}, {StageJsonParsed, "json"},
+            {StageValidated, "valid"},  {StageResponded, "sent"},
         };
         size_t used = 0;
-        for (const Entry &e : entries) {
+        for (const Entry& e : entries) {
             if ((stages & e.bit) == 0) {
                 continue;
             }

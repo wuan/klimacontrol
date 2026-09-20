@@ -18,16 +18,17 @@ namespace Sensor {
         explicit SCD4x(uint8_t address = 0x62);
 
         static const char* type() { return "SCD4x"; }
-        static const uint8_t* addresses() { static const uint8_t a[] = {0x62}; return a; }
+        static const uint8_t* addresses() {
+            static const uint8_t a[] = {0x62};
+            return a;
+        }
         static uint8_t addressCount() { return 1; }
 
         bool begin() override;
         SensorReading read(const ReadConfig& config, const std::vector<Measurement>& prior) override;
         const char* getType() const override { return type(); }
         TypeSpan providesMeasurements() const override {
-            static constexpr MeasurementType types[] = {
-                MeasurementType::CO2
-            };
+            static constexpr MeasurementType types[] = {MeasurementType::CO2};
             return {types, 1};
         }
     };

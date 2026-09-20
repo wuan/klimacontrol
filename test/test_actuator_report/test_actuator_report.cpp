@@ -57,9 +57,8 @@ void test_disagreement_is_a_fault() {
 }
 
 void test_every_state_has_a_name() {
-    const ReportedState all[] = {ReportedState::Disabled, ReportedState::Idle,
-                                 ReportedState::Heating, ReportedState::Unknown,
-                                 ReportedState::Fault};
+    const ReportedState all[] = {ReportedState::Disabled, ReportedState::Idle, ReportedState::Heating,
+                                 ReportedState::Unknown, ReportedState::Fault};
     for (ReportedState s : all) {
         TEST_ASSERT_NOT_NULL(Actuator::reportedStateName(s));
     }
@@ -102,8 +101,7 @@ void test_reassignment_discards_stale_conformance() {
     a.configure(cfg);
     cfg.actuator_channel = 2;
     a.configure(cfg);
-    TEST_ASSERT_EQUAL(static_cast<int>(Actuator::Conformance::NotRead),
-                      static_cast<int>(a.conformance()));
+    TEST_ASSERT_EQUAL(static_cast<int>(Actuator::Conformance::NotRead), static_cast<int>(a.conformance()));
     TEST_ASSERT_FALSE(a.commandedOpen());
 }
 

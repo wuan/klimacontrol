@@ -19,7 +19,7 @@ void WebServerManager::setupOTARoutes() {
     // POST /api/ota/check - Start a background check for firmware updates.
     // The TLS round-trip to GitHub blocks, so it runs on a worker task to keep
     // the AsyncTCP event task free; clients poll GET /api/ota/check for the result.
-    server.on("/api/ota/check", HTTP_POST, [](AsyncWebServerRequest *request) {
+    server.on("/api/ota/check", HTTP_POST, [](AsyncWebServerRequest* request) {
         if (!verifyCsrfHeader(request)) {
             return;
         }
@@ -34,7 +34,7 @@ void WebServerManager::setupOTARoutes() {
     });
 
     // GET /api/ota/check - Poll the state of the background check.
-    server.on("/api/ota/check", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/api/ota/check", HTTP_GET, [](AsyncWebServerRequest* request) {
         JsonDocument doc;
         doc["current_version"] = FIRMWARE_VERSION;
 
@@ -66,8 +66,7 @@ void WebServerManager::setupOTARoutes() {
                     // a git-describe dev build and the latest is the matching
                     // tagged release. The UI uses this to label the action
                     // honestly (Promote dev build, not Reinstall).
-                    doc["is_dev_build_promotion"] =
-                        semverEqual && strcmp(FIRMWARE_VERSION, info.version.c_str()) != 0;
+                    doc["is_dev_build_promotion"] = semverEqual && strcmp(FIRMWARE_VERSION, info.version.c_str()) != 0;
                 }
                 // The download URL is deliberately NOT exposed: the device
                 // updates only from its own checked result, so clients never
@@ -106,43 +105,41 @@ void WebServerManager::setupOTARoutes() {
     // body: onBody is invoked as the body chunks arrive, and only when there
     // is a body — so the empty-body case keeps the default allow_reinstall=
     // false and matches today's behaviour.
-    server.on("/api/ota/update", HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {},
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
-        if (!verifyCsrfHeader(request)) {
-            return;
-        }
-        // Only parse the first chunk — the body is small and we just need
-        // the allow_reinstall flag.
-        if (index != 0) {
-            return;
-        }
-
-        bool allowReinstall = false;
-        if (len > 0) {
-            JsonDocument doc;
-            DeserializationError err = deserializeJson(doc, data, len);
-            if (err) {
-                request->send(400, CONTENT_TYPE_JSON,
-                              R"({"status":"error","message":"Invalid JSON body"})");
+    server.on(
+        "/api/ota/update", HTTP_POST, []([[maybe_unused]] AsyncWebServerRequest* request) {}, nullptr,
+        [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, [[maybe_unused]] size_t total) {
+            if (!verifyCsrfHeader(request)) {
                 return;
             }
-            allowReinstall = doc["allow_reinstall"].as<bool>();
-        }
+            // Only parse the first chunk — the body is small and we just need
+            // the allow_reinstall flag.
+            if (index != 0) {
+                return;
+            }
 
-        ESP_LOGI(TAG, "OTA update requested (allow_reinstall=%s)",
-                 allowReinstall ? "true" : "false");
+            bool allowReinstall = false;
+            if (len > 0) {
+                JsonDocument doc;
+                DeserializationError err = deserializeJson(doc, data, len);
+                if (err) {
+                    request->send(400, CONTENT_TYPE_JSON, R"({"status":"error","message":"Invalid JSON body"})");
+                    return;
+                }
+                allowReinstall = doc["allow_reinstall"].as<bool>();
+            }
 
-        if (OTAUpdater::startBackgroundUpdateFromLatestCheck(this->config, allowReinstall)) {
-            request->send(200, CONTENT_TYPE_JSON,
-                          R"({"status":"starting","message":"OTA update started"})");
-        } else {
-            ESP_LOGW(TAG, "OTA update not started (no verified update, busy, pending verify, or task creation failed)");
-            request->send(409, CONTENT_TYPE_JSON,
-                          R"({"status":"error","message":"No verified update available, or update already in progress"})");
-        }
-    });
+            ESP_LOGI(TAG, "OTA update requested (allow_reinstall=%s)", allowReinstall ? "true" : "false");
+
+            if (OTAUpdater::startBackgroundUpdateFromLatestCheck(this->config, allowReinstall)) {
+                request->send(200, CONTENT_TYPE_JSON, R"({"status":"starting","message":"OTA update started"})");
+            } else {
+                ESP_LOGW(TAG,
+                         "OTA update not started (no verified update, busy, pending verify, or task creation failed)");
+                request->send(
+                    409, CONTENT_TYPE_JSON,
+                    R"({"status":"error","message":"No verified update available, or update already in progress"})");
+            }
+        });
 
     // GET /api/ota/update - Poll the state of a running/finished update.
     //
@@ -151,7 +148,7 @@ void WebServerManager::setupOTARoutes() {
     // progress or the outcome. Without it a failed update was invisible to the
     // UI: the browser was told "starting" and then simply waited for a device
     // that was never going to restart.
-    server.on("/api/ota/update", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/api/ota/update", HTTP_GET, [](AsyncWebServerRequest* request) {
         JsonDocument doc;
 
         // expected_bytes is the size carried by the last successful check; the
@@ -160,8 +157,7 @@ void WebServerManager::setupOTARoutes() {
         // Idle and Failed (the byte counter is hidden in those branches).
         FirmwareInfo checkInfo;
         size_t expectedBytes = 0;
-        if (OTAUpdater::getCheckResult(checkInfo) == OTAUpdater::CheckState::Done
-            && checkInfo.isValid) {
+        if (OTAUpdater::getCheckResult(checkInfo) == OTAUpdater::CheckState::Done && checkInfo.isValid) {
             expectedBytes = checkInfo.size;
         }
 
@@ -207,7 +203,7 @@ void WebServerManager::setupOTARoutes() {
     });
 
     // GET /api/ota/status - Get OTA status
-    server.on("/api/ota/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/api/ota/status", HTTP_GET, [](AsyncWebServerRequest* request) {
         JsonDocument doc;
 
         doc["firmware_version"] = FIRMWARE_VERSION;
@@ -261,9 +257,8 @@ void WebServerManager::setupOTARoutes() {
                     break;
                 case OTAUpdater::CheckState::Failed:
                     check["state"] = "failed";
-                    check["error"] = checkInfo.errorMessage.isEmpty()
-                        ? "Failed to check for updates"
-                        : checkInfo.errorMessage;
+                    check["error"] =
+                        checkInfo.errorMessage.isEmpty() ? "Failed to check for updates" : checkInfo.errorMessage;
                     break;
             }
         }
@@ -275,8 +270,7 @@ void WebServerManager::setupOTARoutes() {
 
             FirmwareInfo checkInfo;
             size_t expectedBytes = 0;
-            if (OTAUpdater::getCheckResult(checkInfo) == OTAUpdater::CheckState::Done
-                && checkInfo.isValid) {
+            if (OTAUpdater::getCheckResult(checkInfo) == OTAUpdater::CheckState::Done && checkInfo.isValid) {
                 expectedBytes = checkInfo.size;
             }
 
@@ -323,7 +317,7 @@ void WebServerManager::setupOTARoutes() {
     // end of setup(), so by the time this endpoint is reachable the image is
     // confirmed and GET /api/ota/status reports unconfirmed_update: false. Kept
     // as a manual escape hatch (and because the ota-updates spec requires it).
-    server.on("/api/ota/confirm", HTTP_POST, [](AsyncWebServerRequest *request) {
+    server.on("/api/ota/confirm", HTTP_POST, [](AsyncWebServerRequest* request) {
         if (!verifyCsrfHeader(request)) {
             return;
         }
@@ -342,7 +336,7 @@ void WebServerManager::setupOTARoutes() {
     // rollback to the other partition. Reads the image header without booting
     // from it; returns available: false when the header cannot be read
     // (factory-fresh device, failed prior flash, or invalid header).
-    server.on("/api/ota/rollback", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/api/ota/rollback", HTTP_GET, [](AsyncWebServerRequest* request) {
         JsonDocument doc;
         String version;
         if (OTAUpdater::getOtherPartitionVersion(version)) {
@@ -360,7 +354,7 @@ void WebServerManager::setupOTARoutes() {
     // No download, no flash: the image on the other partition was already
     // verified when it was originally flashed. Refused while isUpdateInProgress()
     // or hasUnconfirmedUpdate() is true.
-    server.on("/api/ota/rollback", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    server.on("/api/ota/rollback", HTTP_POST, [this](AsyncWebServerRequest* request) {
         if (!verifyCsrfHeader(request)) {
             return;
         }
@@ -368,8 +362,9 @@ void WebServerManager::setupOTARoutes() {
             request->send(200, CONTENT_TYPE_JSON,
                           R"json({"status":"starting","message":"Rolling back, device is restarting"})json");
         } else {
-            request->send(409, CONTENT_TYPE_JSON,
-                          R"json({"status":"error","message":"Rollback refused (update in progress, unconfirmed update, or other slot empty)"})json");
+            request->send(
+                409, CONTENT_TYPE_JSON,
+                R"json({"status":"error","message":"Rollback refused (update in progress, unconfirmed update, or other slot empty)"})json");
         }
     });
 #endif

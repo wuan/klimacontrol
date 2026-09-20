@@ -43,7 +43,7 @@ void DarkModeStatusLed::applyEffectiveState(uint32_t nowMs) {
             led.setPowerRail(false); // black is latched, now cut the rail
         }
     } else {
-        if (suppressed) led.setPowerRail(true);   // re-power before rendering
+        if (suppressed) led.setPowerRail(true); // re-power before rendering
         led.setState(logicalState);
     }
     suppressed = suppress;

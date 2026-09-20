@@ -34,7 +34,7 @@ bool OTAUpdater::claimActivity(Activity want) {
 // Public Methods
 // ============================================================================
 
-bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInfo &info) {
+bool OTAUpdater::checkForUpdate(const char* owner, const char* repo, FirmwareInfo& info) {
     info.isValid = false;
 
     // Mark OTA busy for the duration of the check: the TLS connection to
@@ -49,7 +49,9 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     const bool claimed = claimActivity(Activity::Checking);
     struct ActivityGuard {
         bool owned;
-        ~ActivityGuard() { if (owned) releaseActivity(); }
+        ~ActivityGuard() {
+            if (owned) releaseActivity();
+        }
     } guard{claimed};
 
     String apiUrl = String(OTA_GITHUB_API_HOST) + "repos/" + owner + "/" + repo + "/releases/latest";
@@ -91,8 +93,7 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     // Skip "body" (release notes) to save heap - can be hundreds of KB
 
     JsonDocument doc;
-    DeserializationError jsonErr = deserializeJson(doc, reader,
-                                                   DeserializationOption::Filter(filter));
+    DeserializationError jsonErr = deserializeJson(doc, reader, DeserializationOption::Filter(filter));
     if (jsonErr) {
         info.errorMessage = String("JSON parse error: ") + jsonErr.c_str();
         return false;
@@ -127,13 +128,11 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
             info.downloadUrl = asset["browser_download_url"].as<String>();
             info.size = asset["size"].as<size_t>();
             info.isValid = true;
-            ESP_LOGI(TAG, "Release %s: %s (%zu bytes)",
-                     info.version.c_str(), assetName.c_str(), info.size);
+            ESP_LOGI(TAG, "Release %s: %s (%zu bytes)", info.version.c_str(), assetName.c_str(), info.size);
             break;
         }
         if (assetName.endsWith(".bin")) {
-            ESP_LOGD(TAG, "Ignoring asset %s (expecting %s)",
-                     assetName.c_str(), OTA_FIRMWARE_ASSET);
+            ESP_LOGD(TAG, "Ignoring asset %s (expecting %s)", assetName.c_str(), OTA_FIRMWARE_ASSET);
         }
     }
 
@@ -151,15 +150,12 @@ bool OTAUpdater::checkForUpdate(const char *owner, const char *repo, FirmwareInf
     return true;
 }
 
-bool OTAUpdater::isUpdateAvailable(const FirmwareInfo &info) {
+bool OTAUpdater::isUpdateAvailable(const FirmwareInfo& info) {
     return info.isValid && Support::isNewerVersion(FIRMWARE_VERSION, info.version.c_str());
 }
 
-bool OTAUpdater::performUpdate(
-    const String &downloadUrl,
-    size_t expectedSize,
-    const std::function<void(int, size_t)> &onProgress
-) {
+bool OTAUpdater::performUpdate(const String& downloadUrl, size_t expectedSize,
+                               const std::function<void(int, size_t)>& onProgress) {
     ESP_LOGI(TAG, "Downloading %zu bytes from %s", expectedSize, downloadUrl.c_str());
 
     setUpdateState(UpdateState::Downloading, 0, 0, nullptr);
@@ -167,7 +163,7 @@ bool OTAUpdater::performUpdate(
     // Report the failure to the client as well as the log. Without this a
     // failed update is invisible to the UI: the POST has already returned
     // "starting" and there is nothing else the client can poll.
-    auto fail = [](const char *message) {
+    auto fail = [](const char* message) {
         ESP_LOGE(TAG, "%s", message);
         setUpdateState(UpdateState::Failed, 0, 0, message);
         return false;
@@ -182,7 +178,7 @@ bool OTAUpdater::performUpdate(
         return fail("Not enough free internal memory for OTA");
     }
 
-    const esp_partition_t *nextPartition = esp_ota_get_next_update_partition(nullptr);
+    const esp_partition_t* nextPartition = esp_ota_get_next_update_partition(nullptr);
     if (nextPartition == nullptr) {
         return fail("No OTA partition available");
     }
@@ -219,8 +215,7 @@ bool OTAUpdater::performUpdate(
     int statusCode = client.openWithRedirects();
     if (statusCode != 200) {
         ESP_LOGE(TAG, "HTTP status: %d", statusCode);
-        setUpdateState(UpdateState::Failed, 0, 0,
-                       String("Download failed (HTTP " + String(statusCode) + ")").c_str());
+        setUpdateState(UpdateState::Failed, 0, 0, String("Download failed (HTTP " + String(statusCode) + ")").c_str());
         return false;
     }
 
@@ -240,8 +235,7 @@ bool OTAUpdater::performUpdate(
     // allocations, i.e. the trough of the whole download. This is the number to
     // tune MIN_FREE_INTERNAL / MIN_LARGEST_INTERNAL_BLOCK against: the pre-flight
     // gate can only guess how much the session will cost, this measures it.
-    ESP_LOGI(TAG, "Internal heap with TLS session up: free=%u largest=%u",
-             heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+    ESP_LOGI(TAG, "Internal heap with TLS session up: free=%u largest=%u", heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
     ESP_LOGI(TAG, "Flashing to %s...", nextPartition->label);
@@ -251,8 +245,8 @@ bool OTAUpdater::performUpdate(
     unsigned long lastProgressLog = millis();
 
     while (totalRead < expectedSize) {
-        int bytesRead = esp_http_client_read(client.raw(), reinterpret_cast<char *>(buffer),
-                                              std::min(static_cast<size_t>(CHUNK_SIZE), expectedSize - totalRead));
+        int bytesRead = esp_http_client_read(client.raw(), reinterpret_cast<char*>(buffer),
+                                             std::min(static_cast<size_t>(CHUNK_SIZE), expectedSize - totalRead));
 
         if (bytesRead <= 0) {
             // Include the live heap state and the esp_http_client errno in
@@ -265,8 +259,8 @@ bool OTAUpdater::performUpdate(
             const uint32_t heapFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
             const uint32_t heapLargest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
             const int httpErrno = esp_http_client_get_errno(client.raw());
-            ESP_LOGE(TAG, "Download failed at %zu/%zu bytes (read=%d, errno=%d, heap free=%u largest=%u)",
-                     totalRead, expectedSize, bytesRead, httpErrno, heapFree, heapLargest);
+            ESP_LOGE(TAG, "Download failed at %zu/%zu bytes (read=%d, errno=%d, heap free=%u largest=%u)", totalRead,
+                     expectedSize, bytesRead, httpErrno, heapFree, heapLargest);
             Update.abort();
             setUpdateState(UpdateState::Failed, (int)((totalRead * 100) / expectedSize), totalRead,
                            "Connection lost during download");
@@ -314,7 +308,7 @@ SemaphoreHandle_t OTAUpdater::stateMutex() {
     return m;
 }
 
-void OTAUpdater::setUpdateState(UpdateState state, int percent, size_t bytes, const char *error) {
+void OTAUpdater::setUpdateState(UpdateState state, int percent, size_t bytes, const char* error) {
     SemaphoreHandle_t m = stateMutex();
     if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
         updateState = state;
@@ -339,7 +333,7 @@ void OTAUpdater::setUpdateState(UpdateState state, int percent, size_t bytes, co
 // exactly that window.
 // ============================================================================
 
-void OTAUpdater::otaCheckTask(void *) {
+void OTAUpdater::otaCheckTask(void*) {
     while (true) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
@@ -355,8 +349,7 @@ void OTAUpdater::otaCheckTask(void *) {
 
         // High-water mark = smallest free stack (in bytes) seen on this task. If
         // this ever approaches 0, CHECK_TASK_STACK is too small and must be raised.
-        ESP_LOGI(TAG, "ota_check stack high-water mark: %u bytes free",
-                 (unsigned)uxTaskGetStackHighWaterMark(nullptr));
+        ESP_LOGI(TAG, "ota_check stack high-water mark: %u bytes free", (unsigned)uxTaskGetStackHighWaterMark(nullptr));
 
         // Release last: the slot is the gate that lets the next request in, so
         // it must not open until this iteration has fully finished touching
@@ -365,14 +358,13 @@ void OTAUpdater::otaCheckTask(void *) {
     }
 }
 
-void OTAUpdater::otaWorkerTask(void *) {
+void OTAUpdater::otaWorkerTask(void*) {
     while (true) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        bool success = performUpdate(pendingUpdate.downloadUrl, pendingUpdate.size,
-            [](int percent, size_t bytes) {
-                ESP_LOGI(TAG, "Progress: %d%% (%zu bytes)", percent, bytes);
-            });
+        bool success = performUpdate(pendingUpdate.downloadUrl, pendingUpdate.size, [](int percent, size_t bytes) {
+            ESP_LOGI(TAG, "Progress: %d%% (%zu bytes)", percent, bytes);
+        });
 
         if (success) {
             ESP_LOGI(TAG, "OTA update successful, scheduling restart...");
@@ -415,12 +407,12 @@ void OTAUpdater::confirmRunningImage() {
 
 void OTAUpdater::begin() {
     if (checkTaskHandle == nullptr) {
-        checkTaskHandle = xTaskCreateStatic(otaCheckTask, "ota_check", CHECK_TASK_STACK,
-                                            nullptr, 1, otaCheckStack, &otaCheckTCB);
+        checkTaskHandle =
+            xTaskCreateStatic(otaCheckTask, "ota_check", CHECK_TASK_STACK, nullptr, 1, otaCheckStack, &otaCheckTCB);
     }
     if (updateTaskHandle == nullptr) {
-        updateTaskHandle = xTaskCreateStatic(otaWorkerTask, "ota_update", UPDATE_TASK_STACK,
-                                             nullptr, 1, otaUpdateStack, &otaUpdateTCB);
+        updateTaskHandle = xTaskCreateStatic(otaWorkerTask, "ota_update", UPDATE_TASK_STACK, nullptr, 1, otaUpdateStack,
+                                             &otaUpdateTCB);
     }
 
     if (checkTaskHandle == nullptr || updateTaskHandle == nullptr) {
@@ -429,12 +421,12 @@ void OTAUpdater::begin() {
         // endpoints would silently do nothing, so say so loudly.
         ESP_LOGE(TAG, "OTA worker tasks could not be created - OTA is unavailable");
     } else {
-        ESP_LOGI(TAG, "OTA workers ready (check %u B, update %u B static stacks)",
-                 (unsigned)CHECK_TASK_STACK, (unsigned)UPDATE_TASK_STACK);
+        ESP_LOGI(TAG, "OTA workers ready (check %u B, update %u B static stacks)", (unsigned)CHECK_TASK_STACK,
+                 (unsigned)UPDATE_TASK_STACK);
     }
 }
 
-bool OTAUpdater::startBackgroundCheck(const char *owner, const char *repo) {
+bool OTAUpdater::startBackgroundCheck(const char* owner, const char* repo) {
     if (checkTaskHandle == nullptr) {
         ESP_LOGE(TAG, "Check not started: OTAUpdater::begin() has not run");
         return false;
@@ -464,7 +456,7 @@ bool OTAUpdater::startBackgroundCheck(const char *owner, const char *repo) {
     return true;
 }
 
-OTAUpdater::CheckState OTAUpdater::getCheckResult(FirmwareInfo &infoOut) {
+OTAUpdater::CheckState OTAUpdater::getCheckResult(FirmwareInfo& infoOut) {
     SemaphoreHandle_t m = stateMutex();
     if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
         CheckState state = checkState;
@@ -475,8 +467,7 @@ OTAUpdater::CheckState OTAUpdater::getCheckResult(FirmwareInfo &infoOut) {
     return CheckState::Idle;
 }
 
-OTAUpdater::UpdateState OTAUpdater::getUpdateProgress(int &percentOut, size_t &bytesOut,
-                                                      String &errorOut) {
+OTAUpdater::UpdateState OTAUpdater::getUpdateProgress(int& percentOut, size_t& bytesOut, String& errorOut) {
     SemaphoreHandle_t m = stateMutex();
     if (m && xSemaphoreTake(m, portMAX_DELAY) == pdTRUE) {
         UpdateState state = updateState;
@@ -489,15 +480,11 @@ OTAUpdater::UpdateState OTAUpdater::getUpdateProgress(int &percentOut, size_t &b
     return UpdateState::Idle;
 }
 
-bool OTAUpdater::startBackgroundUpdateFromLatestCheck(
-    Config::ConfigManager &config,
-    bool allowReinstall
-) {
+bool OTAUpdater::startBackgroundUpdateFromLatestCheck(Config::ConfigManager& config, bool allowReinstall) {
     FirmwareInfo info;
     CheckState state = getCheckResult(info);
 
-    if (state != CheckState::Done || !info.isValid ||
-        info.downloadUrl.isEmpty() || info.size == 0) {
+    if (state != CheckState::Done || !info.isValid || info.downloadUrl.isEmpty() || info.size == 0) {
         ESP_LOGW(TAG, "Update refused: no verified update available (run a check first)");
         return false;
     }
@@ -508,8 +495,7 @@ bool OTAUpdater::startBackgroundUpdateFromLatestCheck(
     // release by default — otherwise the device would have offered, and
     // installed, a downgrade while calling it an update.
     if (!Support::isReinstallOrNewer(FIRMWARE_VERSION, info.version.c_str(), allowReinstall)) {
-        ESP_LOGW(TAG, "Update refused: %s is not newer than running %s",
-                 info.version.c_str(), FIRMWARE_VERSION);
+        ESP_LOGW(TAG, "Update refused: %s is not newer than running %s", info.version.c_str(), FIRMWARE_VERSION);
         return false;
     }
 
@@ -534,7 +520,7 @@ bool OTAUpdater::startBackgroundUpdateFromLatestCheck(
     return startBackgroundUpdate(info, config);
 }
 
-bool OTAUpdater::startBackgroundUpdate(const FirmwareInfo &info, Config::ConfigManager &config) {
+bool OTAUpdater::startBackgroundUpdate(const FirmwareInfo& info, Config::ConfigManager& config) {
     if (updateTaskHandle == nullptr) {
         ESP_LOGE(TAG, "Update not started: OTAUpdater::begin() has not run");
         return false;
@@ -568,7 +554,7 @@ bool OTAUpdater::confirmBoot() {
 }
 
 bool OTAUpdater::hasUnconfirmedUpdate() {
-    const esp_partition_t *partition = esp_ota_get_running_partition();
+    const esp_partition_t* partition = esp_ota_get_running_partition();
     esp_ota_img_states_t state;
     if (esp_ota_get_state_partition(partition, &state) != ESP_OK) {
         return false;
@@ -581,8 +567,8 @@ bool OTAUpdater::hasUnconfirmedUpdate() {
     return state == ESP_OTA_IMG_PENDING_VERIFY;
 }
 
-bool OTAUpdater::getRunningPartitionInfo(String &label, uint32_t &address) {
-    const esp_partition_t *partition = esp_ota_get_running_partition();
+bool OTAUpdater::getRunningPartitionInfo(String& label, uint32_t& address) {
+    const esp_partition_t* partition = esp_ota_get_running_partition();
     if (partition == nullptr) {
         return false;
     }
@@ -591,11 +577,11 @@ bool OTAUpdater::getRunningPartitionInfo(String &label, uint32_t &address) {
     return true;
 }
 
-bool OTAUpdater::getOtherPartitionVersion(String &versionOut) {
+bool OTAUpdater::getOtherPartitionVersion(String& versionOut) {
     versionOut = "";
-    const esp_partition_t *running = esp_ota_get_running_partition();
+    const esp_partition_t* running = esp_ota_get_running_partition();
     if (running == nullptr) return false;
-    const esp_partition_t *other = esp_ota_get_next_update_partition(running);
+    const esp_partition_t* other = esp_ota_get_next_update_partition(running);
     if (other == nullptr) return false;
     esp_app_desc_t desc;
     if (esp_ota_get_partition_description(other, &desc) != ESP_OK) {
@@ -605,7 +591,7 @@ bool OTAUpdater::getOtherPartitionVersion(String &versionOut) {
     return true;
 }
 
-bool OTAUpdater::rollbackToOtherPartition(Config::ConfigManager &config) {
+bool OTAUpdater::rollbackToOtherPartition(Config::ConfigManager& config) {
     if (isUpdateInProgress()) {
         ESP_LOGW(TAG, "Rollback refused: an OTA check or update is already running");
         return false;
@@ -614,9 +600,9 @@ bool OTAUpdater::rollbackToOtherPartition(Config::ConfigManager &config) {
         ESP_LOGW(TAG, "Rollback refused: a pending update has not yet been confirmed");
         return false;
     }
-    const esp_partition_t *running = esp_ota_get_running_partition();
+    const esp_partition_t* running = esp_ota_get_running_partition();
     if (running == nullptr) return false;
-    const esp_partition_t *other = esp_ota_get_next_update_partition(running);
+    const esp_partition_t* other = esp_ota_get_next_update_partition(running);
     if (other == nullptr) return false;
     esp_app_desc_t desc;
     if (esp_ota_get_partition_description(other, &desc) != ESP_OK) {
@@ -633,7 +619,7 @@ bool OTAUpdater::rollbackToOtherPartition(Config::ConfigManager &config) {
     return true;
 }
 
-void OTAUpdater::getMemoryInfo(uint32_t &freeHeap, uint32_t &minFreeHeap) {
+void OTAUpdater::getMemoryInfo(uint32_t& freeHeap, uint32_t& minFreeHeap) {
     freeHeap = esp_get_free_heap_size();
     minFreeHeap = esp_get_minimum_free_heap_size();
 }
@@ -645,11 +631,11 @@ bool OTAUpdater::hasEnoughMemory() {
     uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
 
     if (internalFree < MIN_FREE_INTERNAL || largestBlock < MIN_LARGEST_INTERNAL_BLOCK) {
-        ESP_LOGW(TAG, "Insufficient internal heap: free=%u (need %u), largest block=%u (need %u)",
-                 internalFree, MIN_FREE_INTERNAL, largestBlock, MIN_LARGEST_INTERNAL_BLOCK);
+        ESP_LOGW(TAG, "Insufficient internal heap: free=%u (need %u), largest block=%u (need %u)", internalFree,
+                 MIN_FREE_INTERNAL, largestBlock, MIN_LARGEST_INTERNAL_BLOCK);
         return false;
     }
     return true;
 }
 
-#endif  // ARDUINO
+#endif // ARDUINO

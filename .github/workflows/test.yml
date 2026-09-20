@@ -70,9 +70,9 @@ jobs:
           SIZE=$(stat -c%s .pio/build/adafruit_qtpy_esp32s2/firmware.bin 2>/dev/null || stat -f%z .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.bin)
           SIZE_KB=$((SIZE / 1024))
           SIZE_MB=$((SIZE / 1024 / 1024))
-          
+
           echo "📦 Firmware Size: ${SIZE_KB}KB (${SIZE_MB}MB)"
-          
+
           # Check if firmware fits in partition (1856KB max)
           MAX_SIZE=$((1856 * 1024))
           if [ $SIZE -gt $MAX_SIZE ]; then

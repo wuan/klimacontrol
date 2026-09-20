@@ -32,15 +32,15 @@ namespace Net {
 #endif
     }
 
-    void NtpSync::logTime(const char *what) const {
+    void NtpSync::logTime(const char* what) const {
 #ifdef ARDUINO
         ESP_LOGI(TAG, "NTP %s: %s", what, client.getFormattedTime().c_str());
 #else
-        (void) what;
+        (void)what;
 #endif
     }
 
-    NtpSync::Result NtpSync::attempt(const char *what, uint32_t &epoch) {
+    NtpSync::Result NtpSync::attempt(const char* what, uint32_t& epoch) {
         if (!safeNtpUpdate()) return Result::Failed;
 #ifdef ARDUINO
         epoch = client.getEpochTime();
@@ -49,8 +49,8 @@ namespace Net {
 #endif
         if (isNtpEpochPlausible(epoch)) return Result::Ok;
         bogusCount++;
-        ESP_LOGE(TAG, "NTP %s returned implausible epoch: %u (expected between %u and %u)",
-                 what, epoch, NtpEpoch::MIN_VALID, NtpEpoch::MAX_VALID);
+        ESP_LOGE(TAG, "NTP %s returned implausible epoch: %u (expected between %u and %u)", what, epoch,
+                 NtpEpoch::MIN_VALID, NtpEpoch::MAX_VALID);
         return Result::Implausible;
     }
 
@@ -78,7 +78,7 @@ namespace Net {
         }
     }
 
-    void NtpSync::tick(const uint32_t nowMs, InternetHealth &health) {
+    void NtpSync::tick(const uint32_t nowMs, InternetHealth& health) {
         uint32_t epoch = 0;
         if (synced) {
             if (const uint32_t current = currentEpoch(); current - lastUpdateEpoch < UPDATE_INTERVAL_S) return;

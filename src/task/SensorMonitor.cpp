@@ -16,11 +16,10 @@ static_assert(Task::SensorMonitor::MAX_TICK_MS == SensorController::MEASUREMENT_
               "SensorMonitor::MAX_TICK_MS must track the default measurement interval");
 
 namespace Task {
-    
-    SensorMonitor::SensorMonitor(SensorController &controller, Control::TemperatureController &control)
-        : controller(controller), control(control) {
-    }
-    
+
+    SensorMonitor::SensorMonitor(SensorController& controller, Control::TemperatureController& control)
+        : controller(controller), control(control) {}
+
     void SensorMonitor::startTask() {
 #ifdef ARDUINO
         // Stack size is measured, not guessed. This stack comes out of *internal*
@@ -31,24 +30,23 @@ namespace Task {
         // (HWM reported 13944 B free of 16000). 6144 gives ~3x headroom; the
         // periodic "SensorMonitor stack HWM" line below re-measures it, so raise
         // this if that number ever approaches 0.
-        xTaskCreate(
-            taskWrapper, // Task Function
-            "SensorMonitor", // Task Name
-            6144, // Stack Size (measured peak 2056 B, ~3x headroom)
-            this, // Parameters
-            1, // Priority (same as Network task)
-            &taskHandle // Task Handle
+        xTaskCreate(taskWrapper,     // Task Function
+                    "SensorMonitor", // Task Name
+                    6144,            // Stack Size (measured peak 2056 B, ~3x headroom)
+                    this,            // Parameters
+                    1,               // Priority (same as Network task)
+                    &taskHandle      // Task Handle
         );
 #endif
     }
-    
+
 #ifdef ARDUINO
-    void SensorMonitor::taskWrapper(void *pvParameters) {
+    void SensorMonitor::taskWrapper(void* pvParameters) {
         ESP_LOGI(TAG, "SensorMonitor: taskWrapper()");
-        auto *instance = static_cast<SensorMonitor *>(pvParameters);
+        auto* instance = static_cast<SensorMonitor*>(pvParameters);
         instance->task();
     }
-    
+
     void SensorMonitor::task() {
         // Subscribe to the TWDT. setup() initializes the TWDT before creating
         // this task, so this should always succeed; log loudly if it does not,
@@ -108,5 +106,5 @@ namespace Task {
         }
     }
 #endif
-    
+
 } // namespace Task

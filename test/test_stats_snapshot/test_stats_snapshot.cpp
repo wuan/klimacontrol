@@ -9,8 +9,7 @@
 void setUp() {}
 void tearDown() {}
 
-namespace
-{
+namespace {
     // Sequence of values the writer inserts. Chosen so each value leaves
     // a recognisable fingerprint in min/max, and the invariants
     // min <= average <= max  and  min <= max  are easy to verify.
@@ -126,11 +125,10 @@ void test_snapshot_invariants_under_concurrent_adds() {
     r.join();
 
     TEST_ASSERT_GREATER_THAN(0, snapshots.load());
-    TEST_ASSERT_EQUAL_INT_MESSAGE(
-        0, violations.load(),
-        "Snapshot violated one of: min > max, average outside [min,max], "
-        "or min/max not drawn from the writer's insert set — a torn "
-        "cross-task read.");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, violations.load(),
+                                  "Snapshot violated one of: min > max, average outside [min,max], "
+                                  "or min/max not drawn from the writer's insert set — a torn "
+                                  "cross-task read.");
 }
 
 // Two writers, two readers — same invariants under higher contention.
@@ -190,11 +188,10 @@ void test_snapshot_invariants_under_two_writers_two_readers() {
     r2.join();
 
     TEST_ASSERT_GREATER_THAN(0, snapshots.load());
-    TEST_ASSERT_EQUAL_INT_MESSAGE(
-        0, violations.load(),
-        "Snapshot violated one of: min > max, average outside [min,max], "
-        "or min/max not drawn from the writer's insert set — a torn "
-        "cross-task read under higher contention.");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, violations.load(),
+                                  "Snapshot violated one of: min > max, average outside [min,max], "
+                                  "or min/max not drawn from the writer's insert set — a torn "
+                                  "cross-task read under higher contention.");
 }
 
 int runUnityTests() {

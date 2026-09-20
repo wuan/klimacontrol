@@ -475,4 +475,3 @@ by itself trigger a publish.
   have elapsed since the last publish
 - **THEN** no publish SHALL occur on that iteration, irrespective of the
   status LED's dark state
-

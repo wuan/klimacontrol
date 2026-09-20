@@ -55,7 +55,7 @@ The workflow:
 
 ### Setup Instructions
 
-1. **Create a SonarQube/SonarCloud account** 
+1. **Create a SonarQube/SonarCloud account**
    - For SonarCloud: [https://sonarcloud.io](https://sonarcloud.io)
    - For self-hosted SonarQube: Set up your server
 

@@ -118,8 +118,7 @@ void test_wifi_reconnect_failure_reset_on_success() {
 // Mirrors the guard condition in Network::task():
 //   if (currentEpoch > 0 && lastNtpUpdate > 0 && currentEpoch - lastNtpUpdate > 3600)
 static bool shouldUpdateNtp(uint32_t currentEpoch, uint32_t lastNtpUpdate) {
-    return currentEpoch > 0 && lastNtpUpdate > 0
-           && currentEpoch - lastNtpUpdate > 3600;
+    return currentEpoch > 0 && lastNtpUpdate > 0 && currentEpoch - lastNtpUpdate > 3600;
 }
 
 void test_ntp_epoch_guard_both_zero_no_update() {
@@ -166,21 +165,17 @@ static float averageTemperatures(const std::vector<Sensor::Measurement>& measure
 }
 
 void test_three_sensor_averaging() {
-    std::vector<Sensor::Measurement> measurements = {
-        {Sensor::MeasurementType::Temperature, 20.0f, "SHT4x-1", false},
-        {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x-2", false},
-        {Sensor::MeasurementType::Temperature, 24.0f, "SHT4x-3", false}
-    };
+    std::vector<Sensor::Measurement> measurements = {{Sensor::MeasurementType::Temperature, 20.0f, "SHT4x-1", false},
+                                                     {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x-2", false},
+                                                     {Sensor::MeasurementType::Temperature, 24.0f, "SHT4x-3", false}};
 
     float avg = averageTemperatures(measurements);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 22.0f, avg);
 }
 
 void test_two_sensor_averaging() {
-    std::vector<Sensor::Measurement> measurements = {
-        {Sensor::MeasurementType::Temperature, 20.0f, "SHT4x-1", false},
-        {Sensor::MeasurementType::Temperature, 24.0f, "SHT4x-2", false}
-    };
+    std::vector<Sensor::Measurement> measurements = {{Sensor::MeasurementType::Temperature, 20.0f, "SHT4x-1", false},
+                                                     {Sensor::MeasurementType::Temperature, 24.0f, "SHT4x-2", false}};
 
     float avg = averageTemperatures(measurements);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 22.0f, avg);
@@ -189,10 +184,8 @@ void test_two_sensor_averaging() {
 // --- Invalid readings exclusion ---
 
 void test_invalid_readings_excluded_from_average() {
-    std::vector<Sensor::Measurement> measurements = {
-        {Sensor::MeasurementType::Temperature, 20.0f, "SHT4x-1", false},
-        {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x-2", false}
-    };
+    std::vector<Sensor::Measurement> measurements = {{Sensor::MeasurementType::Temperature, 20.0f, "SHT4x-1", false},
+                                                     {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x-2", false}};
 
     float avg = averageTemperatures(measurements);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 21.0f, avg);
@@ -200,8 +193,7 @@ void test_invalid_readings_excluded_from_average() {
 
 void test_no_valid_temperature_returns_nan() {
     std::vector<Sensor::Measurement> measurements = {
-        {Sensor::MeasurementType::RelativeHumidity, 50.0f, "SHT4x-1", false}
-    };
+        {Sensor::MeasurementType::RelativeHumidity, 50.0f, "SHT4x-1", false}};
 
     float avg = averageTemperatures(measurements);
     TEST_ASSERT_TRUE(std::isnan(avg));
@@ -209,8 +201,8 @@ void test_no_valid_temperature_returns_nan() {
 
 // --- getValidMeasurements returns empty on invalid data ---
 
-static std::vector<Sensor::Measurement> getValidMeasurementsHelper(
-    bool dataValid, const std::vector<Sensor::Measurement>& currentMeasurements) {
+static std::vector<Sensor::Measurement>
+getValidMeasurementsHelper(bool dataValid, const std::vector<Sensor::Measurement>& currentMeasurements) {
     if (!dataValid) return {};
     return currentMeasurements;
 }
@@ -221,9 +213,7 @@ void test_get_valid_measurements_returns_empty_when_invalid() {
 }
 
 void test_get_valid_measurements_returns_data_when_valid() {
-    std::vector<Sensor::Measurement> measurements = {
-        {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x", false}
-    };
+    std::vector<Sensor::Measurement> measurements = {{Sensor::MeasurementType::Temperature, 22.0f, "SHT4x", false}};
     std::vector<Sensor::Measurement> result = getValidMeasurementsHelper(true, measurements);
     TEST_ASSERT_EQUAL(1, result.size());
 }
@@ -233,8 +223,7 @@ void test_get_valid_measurements_returns_data_when_valid() {
 void test_snapshot_contains_consistent_data() {
     std::vector<Sensor::Measurement> measurements = {
         {Sensor::MeasurementType::Temperature, 22.0f, "SHT4x", false},
-        {Sensor::MeasurementType::RelativeHumidity, 50.0f, "SHT4x", false}
-    };
+        {Sensor::MeasurementType::RelativeHumidity, 50.0f, "SHT4x", false}};
 
     bool dataValid = true;
     uint32_t timestamp = 12345;

@@ -454,4 +454,3 @@ unconditionally, and the page SHALL NOT gate their rendering on
   two — the Network section's values describe the Network task's
   per-iteration work duration; the Statistics section's values
   describe the Sensor Monitor task's per-tick sleep duration
-

@@ -28,8 +28,7 @@ namespace {
     constexpr uint32_t SHORT_TRAVEL = 60u * 1000u;
 
     // Drive from t0 for one cycle and report how long the valve was open.
-    uint32_t measureOpenMs(TimeProportionalOutput &tpo, float demand, uint32_t t0,
-                           uint32_t cycleMs, uint32_t stepMs) {
+    uint32_t measureOpenMs(TimeProportionalOutput& tpo, float demand, uint32_t t0, uint32_t cycleMs, uint32_t stepMs) {
         uint32_t openFor = 0;
         for (uint32_t t = t0; since_helper(t, t0) < cycleMs; t += stepMs) {
             if (tpo.update(demand, t)) {
@@ -94,8 +93,7 @@ namespace {
     };
 
     // Step cycle-by-cycle, sampling the delivered open time of each.
-    SkipRun runCycles(TimeProportionalOutput &tpo, float demand, uint32_t cycleMs,
-                      uint32_t travelMs, int n) {
+    SkipRun runCycles(TimeProportionalOutput& tpo, float demand, uint32_t cycleMs, uint32_t travelMs, int n) {
         SkipRun r;
         uint32_t t = 1000;
         for (int i = 0; i < n; ++i) {
@@ -123,7 +121,7 @@ void test_small_duty_averages_correctly_over_many_cycles() {
     const float delivered = static_cast<float>(r.totalOpenMs) / static_cast<float>(r.totalMs);
     TEST_ASSERT_FLOAT_WITHIN(0.01f, 0.05f, delivered);
     TEST_ASSERT_FALSE(r.everPartialStroke);
-    TEST_ASSERT_TRUE(r.pulses > 0); // it really did open sometimes
+    TEST_ASSERT_TRUE(r.pulses > 0);  // it really did open sometimes
     TEST_ASSERT_TRUE(r.pulses < 40); // and really did skip cycles
 }
 

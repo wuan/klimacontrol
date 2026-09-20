@@ -38,14 +38,14 @@ class DarkModeStatusLed {
 private:
     StatusLed led;
     LedState logicalState = LedState::OFF;
-    uint32_t lastNowMs = 0;        // most recent clock passed to update()
+    uint32_t lastNowMs = 0; // most recent clock passed to update()
 
     // Written from the HTTP handler task, read from the network task.
     std::atomic<uint32_t> darkAfterMs{0};
     // Only touched from the network task (plus the one-off init-time error path).
     bool darkAnchorArmed = false;
     uint32_t onSinceMs = 0;
-    bool suppressed = false;       // dark mode currently holds the LED dark (rail is cut)
+    bool suppressed = false; // dark mode currently holds the LED dark (rail is cut)
 
     void applyEffectiveState(uint32_t nowMs);
     [[nodiscard]] static bool isNormalOperation(LedState s) {
@@ -80,9 +80,7 @@ public:
     void setDarkAfterSeconds(uint16_t seconds);
 
     /** @return Configured dark-mode threshold in seconds (0 = disabled) */
-    [[nodiscard]] uint16_t getDarkAfterSeconds() const {
-        return static_cast<uint16_t>(darkAfterMs.load() / 1000u);
-    }
+    [[nodiscard]] uint16_t getDarkAfterSeconds() const { return static_cast<uint16_t>(darkAfterMs.load() / 1000u); }
 
     /**
      * @param nowMs Clock to evaluate against
@@ -100,7 +98,7 @@ public:
     void toggle() { setState(logicalState == LedState::ON ? LedState::OFF : LedState::ON); }
 
     /** The wrapped LED, for diagnostics and tests (effective state, colour). */
-    [[nodiscard]] const StatusLed &inner() const { return led; }
+    [[nodiscard]] const StatusLed& inner() const { return led; }
 };
 
-#endif //KLIMACONTROL_DARKMODESTATUSLED_H
+#endif // KLIMACONTROL_DARKMODESTATUSLED_H

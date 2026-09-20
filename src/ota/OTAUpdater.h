@@ -28,11 +28,11 @@ namespace Config {
  * Firmware release information from GitHub
  */
 struct FirmwareInfo {
-    String version = ""; // Tag name (e.g., "v1.0.0")
-    String name = ""; // Release name
-    String downloadUrl = ""; // Direct download link to .bin file
-    size_t size = 0; // File size in bytes
-    bool isValid = false; // Whether the structure contains valid data
+    String version = "";      // Tag name (e.g., "v1.0.0")
+    String name = "";         // Release name
+    String downloadUrl = "";  // Direct download link to .bin file
+    size_t size = 0;          // File size in bytes
+    bool isValid = false;     // Whether the structure contains valid data
     String errorMessage = ""; // Error description when check fails
 
     FirmwareInfo() = default;
@@ -50,10 +50,10 @@ class OTAUpdater {
 public:
     // State of the most recent background update check (see startBackgroundCheck).
     enum class CheckState : uint8_t {
-        Idle,        // no check has run yet
-        InProgress,  // a check is currently running on the worker task
-        Done,        // last check completed; result is valid
-        Failed       // last check failed; errorMessage is set
+        Idle,       // no check has run yet
+        InProgress, // a check is currently running on the worker task
+        Done,       // last check completed; result is valid
+        Failed      // last check failed; errorMessage is set
     };
 
     // State of the most recent background update (see startBackgroundUpdate).
@@ -67,9 +67,9 @@ public:
         // restart taking effect. Distinct from Success so the UI can label the
         // post-flash state as "Update installed, rebooting…" rather than
         // collapsing it into Success (which reads as "done, nothing more").
-        Pending,     // flash complete; restart scheduled but not yet fired
-        Success,     // restart has been requested; device is about to drop off
-        Failed       // last attempt failed; errorMessage is set
+        Pending, // flash complete; restart scheduled but not yet fired
+        Success, // restart has been requested; device is about to drop off
+        Failed   // last attempt failed; errorMessage is set
     };
 
     /**
@@ -113,7 +113,7 @@ public:
      */
     static void confirmRunningImage();
 
-    static bool checkForUpdate(const char *owner, const char *repo, FirmwareInfo &info);
+    static bool checkForUpdate(const char* owner, const char* repo, FirmwareInfo& info);
 
     /**
      * Run checkForUpdate() on the background OTA task and return immediately.
@@ -126,27 +126,27 @@ public:
      * @return true if a check was started; false if a check or update is already
      *         in progress, or begin() has not run.
      */
-    static bool startBackgroundCheck(const char *owner, const char *repo);
+    static bool startBackgroundCheck(const char* owner, const char* repo);
 
     /**
      * Read the background check state and (if Done/Failed) a copy of the result.
      * Thread-safe snapshot of both values under one lock.
      */
-    static CheckState getCheckResult(FirmwareInfo &infoOut);
+    static CheckState getCheckResult(FirmwareInfo& infoOut);
 
     /**
      * Thread-safe snapshot of the background update's progress and outcome.
      * `percentOut`/`bytesOut` are meaningful while Downloading and after
      * Success; `errorOut` is set when Failed.
      */
-    static UpdateState getUpdateProgress(int &percentOut, size_t &bytesOut, String &errorOut);
+    static UpdateState getUpdateProgress(int& percentOut, size_t& bytesOut, String& errorOut);
 
     /**
      * True if the release found by the last successful check is strictly newer
      * than the running firmware. Drives both the API's `update_available` flag
      * and the decision to flash, so a downgrade is never offered or installed.
      */
-    static bool isUpdateAvailable(const FirmwareInfo &info);
+    static bool isUpdateAvailable(const FirmwareInfo& info);
 
     /**
      * Start an OTA update for the firmware identified by the most recent
@@ -170,15 +170,12 @@ public:
      * @return true if the worker was started; false if no verified newer update
      *         is available, or a check/update is already in progress.
      */
-    static bool startBackgroundUpdateFromLatestCheck(
-        Config::ConfigManager &config,
-        bool allowReinstall = false
-    );
+    static bool startBackgroundUpdateFromLatestCheck(Config::ConfigManager& config, bool allowReinstall = false);
 
     static bool confirmBoot();
     static bool hasUnconfirmedUpdate();
-    static bool getRunningPartitionInfo(String &label, uint32_t &address);
-    static void getMemoryInfo(uint32_t &freeHeap, uint32_t &minFreeHeap);
+    static bool getRunningPartitionInfo(String& label, uint32_t& address);
+    static void getMemoryInfo(uint32_t& freeHeap, uint32_t& minFreeHeap);
     static bool hasEnoughMemory();
 
 #ifdef ARDUINO
@@ -187,13 +184,13 @@ public:
     // string (e.g., "v0.0.73" or "v0.0.73-4-gabc1234"). On failure, `versionOut`
     // is empty. Reports the version that would boot after a rollback — used by
     // GET /api/ota/rollback to label the button honestly.
-    static bool getOtherPartitionVersion(String &versionOut);
+    static bool getOtherPartitionVersion(String& versionOut);
 
     // Calls esp_ota_set_boot_partition() on the other partition and schedules a
     // restart. No download, no flash — the image on the other partition was
     // already verified when it was originally flashed. Refused while
     // isUpdateInProgress() or hasUnconfirmedUpdate() is true.
-    static bool rollbackToOtherPartition(Config::ConfigManager &config);
+    static bool rollbackToOtherPartition(Config::ConfigManager& config);
 #endif
 
     // True while a check or an update is running. The network task's low-heap
@@ -220,19 +217,13 @@ private:
     // Spawn the OTA worker for an already-validated download URL/size.
     // Internal only: the URL must originate from a trusted source (the device's
     // own GitHub check), never directly from a client request.
-    static bool startBackgroundUpdate(
-        const FirmwareInfo &info,
-        Config::ConfigManager &config
-    );
+    static bool startBackgroundUpdate(const FirmwareInfo& info, Config::ConfigManager& config);
 
     // Download and flash. Private because it accepts an arbitrary URL: only
     // otaWorkerTask may call it, with a URL that came from the device's own
     // GitHub check.
-    static bool performUpdate(
-        const String &downloadUrl,
-        size_t expectedSize,
-        const std::function<void(int, size_t)> &onProgress = nullptr
-    );
+    static bool performUpdate(const String& downloadUrl, size_t expectedSize,
+                              const std::function<void(int, size_t)>& onProgress = nullptr);
 
     static constexpr int TIMEOUT_MS = 30000;
     static constexpr int CHUNK_SIZE = 4096;
@@ -322,7 +313,7 @@ private:
     static inline char pendingOwner[64]{};
     static inline char pendingRepo[64]{};
     static inline FirmwareInfo pendingUpdate{};
-    static inline Config::ConfigManager *pendingConfig = nullptr;
+    static inline Config::ConfigManager* pendingConfig = nullptr;
 
     // Background-check result, guarded by stateMutex().
     static inline CheckState checkState = CheckState::Idle;
@@ -336,8 +327,8 @@ private:
 
 #ifdef ARDUINO
     static SemaphoreHandle_t stateMutex();
-    static void setUpdateState(UpdateState state, int percent, size_t bytes, const char *error);
-    static void otaCheckTask(void *arg);  // parked worker for startBackgroundCheck
-    static void otaWorkerTask(void *arg); // parked worker for startBackgroundUpdate
+    static void setUpdateState(UpdateState state, int percent, size_t bytes, const char* error);
+    static void otaCheckTask(void* arg);  // parked worker for startBackgroundCheck
+    static void otaWorkerTask(void* arg); // parked worker for startBackgroundUpdate
 #endif
 };

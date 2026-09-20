@@ -6,7 +6,7 @@
 
 struct I2CDevice {
     uint8_t address = 0x00;
-    const char* knownType = nullptr;  // nullptr if unknown
+    const char* knownType = nullptr; // nullptr if unknown
 
     I2CDevice() = default;
 };
@@ -22,7 +22,7 @@ namespace I2CScanner {
     const char* identifyAddress(uint8_t address);
 
     // Returns the full sensor registry
-    const SensorInfo* getRegistry(size_t &count);
+    const SensorInfo* getRegistry(size_t& count);
 
     // Returns list of possible sensor names for an address
     std::vector<const char*> sensorsForAddress(uint8_t address);

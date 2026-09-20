@@ -15,7 +15,7 @@ static constexpr auto TAG = "net";
 
 namespace Net {
 
-    const String &MdnsAdvertiser::hostname() {
+    const String& MdnsAdvertiser::hostname() {
 #ifdef ARDUINO
         if (cachedHostname.isEmpty()) {
             cachedHostname = Constants::HOSTNAME_PREFIX + DeviceId::getDeviceId();
@@ -29,7 +29,7 @@ namespace Net {
 
     void MdnsAdvertiser::advertise() {
 #ifdef ARDUINO
-        const String &host = hostname();
+        const String& host = hostname();
 
         if (!MDNS.begin(host.c_str())) {
             ESP_LOGE(TAG, "Error starting mDNS responder");
@@ -38,10 +38,10 @@ namespace Net {
         ESP_LOGI(TAG, "mDNS responder started: %s.local", host.c_str());
 
         const Config::DeviceConfig deviceConfig = config.loadDeviceConfig();
-        const bool hasCustomName = deviceConfig.device_name[0] != '\0'
-                                   && strcmp(deviceConfig.device_name, deviceConfig.device_id) != 0;
-        instanceName = Constants::INSTANCE_NAME_PREFIX
-                       + String(hasCustomName ? deviceConfig.device_name : deviceConfig.device_id);
+        const bool hasCustomName =
+            deviceConfig.device_name[0] != '\0' && strcmp(deviceConfig.device_name, deviceConfig.device_id) != 0;
+        instanceName =
+            Constants::INSTANCE_NAME_PREFIX + String(hasCustomName ? deviceConfig.device_name : deviceConfig.device_id);
 
         ESP_LOGI(TAG, "mDNS instance name: '%s'", instanceName.c_str());
         MDNS.setInstanceName(instanceName.c_str());

@@ -65,8 +65,7 @@ void test_compute_ap_password_fits_eight_hex_chars() {
     TEST_ASSERT_EQUAL_INT(8, static_cast<int>(strlen(buf)));
     for (int i = 0; i < 8; ++i) {
         const char c = buf[i];
-        const bool isHex =
-            (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        const bool isHex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
         TEST_ASSERT_TRUE_MESSAGE(isHex, "password must be lowercase hex");
     }
 }
@@ -77,10 +76,8 @@ void test_default_display_interval_is_sensible() {
     // The default interval sits inside the validator's accepted range;
     // pin both ends so a regression that pulls the default out of range
     // is caught even if the validator is later relaxed.
-    TEST_ASSERT_GREATER_OR_EQUAL_UINT16(Config::MIN_DISPLAY_INTERVAL,
-                                        Config::DEFAULT_DISPLAY_INTERVAL);
-    TEST_ASSERT_LESS_OR_EQUAL_UINT16(Config::MAX_DISPLAY_INTERVAL,
-                                     Config::DEFAULT_DISPLAY_INTERVAL);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT16(Config::MIN_DISPLAY_INTERVAL, Config::DEFAULT_DISPLAY_INTERVAL);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT16(Config::MAX_DISPLAY_INTERVAL, Config::DEFAULT_DISPLAY_INTERVAL);
 }
 
 int runUnityTests() {

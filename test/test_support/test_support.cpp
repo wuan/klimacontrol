@@ -1,7 +1,7 @@
 #include "unity.h"
 #include "support/Stats.h"
 
-Support::Stats *stats;
+Support::Stats* stats;
 
 void setUp() {
     stats = new Support::Stats();

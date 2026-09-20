@@ -42,11 +42,10 @@ namespace Net {
         static constexpr size_t AP_PASSWORD_BUF_SIZE = 9;
         static constexpr uint32_t FALLBACK_TIMEOUT_MS = 5UL * 60 * 1000; // 5 minutes
 
-        ApProvisioning(Config::ConfigManager &config, MdnsAdvertiser &mdns)
-            : config(config), mdns(mdns) {}
+        ApProvisioning(Config::ConfigManager& config, MdnsAdvertiser& mdns) : config(config), mdns(mdns) {}
 
-        ApProvisioning(const ApProvisioning &) = delete;
-        ApProvisioning &operator=(const ApProvisioning &) = delete;
+        ApProvisioning(const ApProvisioning&) = delete;
+        ApProvisioning& operator=(const ApProvisioning&) = delete;
 
         void setDisplay(Display::DisplayManager& display) { this->display = display; }
         void setWebServer(WebServerManager& webServer) { this->webServer = webServer; }
@@ -60,8 +59,8 @@ namespace Net {
         [[noreturn]] void runFallbackWindow(uint8_t failures);
 
     private:
-        Config::ConfigManager &config;
-        MdnsAdvertiser &mdns;
+        Config::ConfigManager& config;
+        MdnsAdvertiser& mdns;
         CaptivePortal captivePortal;
         std::optional<std::reference_wrapper<Display::DisplayManager>> display;
         std::optional<std::reference_wrapper<WebServerManager>> webServer;

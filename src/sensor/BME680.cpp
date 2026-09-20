@@ -29,7 +29,7 @@ namespace Sensor {
     }
 
     SensorReading BME680::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
-        (void) prior;
+        (void)prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
@@ -47,7 +47,8 @@ namespace Sensor {
             float gasResistance = bme->gas_resistance;
             reading.measurements.push_back({MeasurementType::Temperature, temperature, getType(), false});
             reading.measurements.push_back({MeasurementType::RelativeHumidity, relative_humidity, getType(), false});
-            reading.measurements.push_back({MeasurementType::DewPoint, calcDewPoint(temperature, relative_humidity), getType(), true});
+            reading.measurements.push_back(
+                {MeasurementType::DewPoint, calcDewPoint(temperature, relative_humidity), getType(), true});
             reading.measurements.push_back({MeasurementType::Pressure, stationPressure, getType(), false});
             reading.measurements.push_back({MeasurementType::GasResistance, gasResistance, getType(), false});
 

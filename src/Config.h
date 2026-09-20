@@ -22,6 +22,7 @@ using String = std::string;
  */
 class PreferencesGuard {
     Preferences& prefs;
+
 public:
     /**
      * Constructor - opens the Preferences namespace
@@ -29,17 +30,12 @@ public:
      * @param ns Namespace name
      * @param readOnly true for read-only access, false for read-write
      */
-    PreferencesGuard(Preferences& p, const char* ns, bool readOnly)
-        : prefs(p) {
-        prefs.begin(ns, readOnly);
-    }
+    PreferencesGuard(Preferences& p, const char* ns, bool readOnly) : prefs(p) { prefs.begin(ns, readOnly); }
 
     /**
      * Destructor - closes the Preferences namespace
      */
-    ~PreferencesGuard() {
-        prefs.end();
-    }
+    ~PreferencesGuard() { prefs.end(); }
 
     /**
      * Get reference to the underlying Preferences object
@@ -144,13 +140,13 @@ namespace Config {
      * Device configuration structure
      */
     struct DeviceConfig {
-        char device_id[16] = ""; // e.g., "AABBCC"
+        char device_id[16] = "";   // e.g., "AABBCC"
         char device_name[32] = ""; // Custom device name
 
         // Sensor and temperature control configuration
         uint8_t sensor_i2c_address = DEFAULT_SENSOR_I2C_ADDRESS; // Default I2C address for sensors
         float target_temperature = TARGET_TEMPERATURE_DEFAULT_C; // Target temperature for control
-        bool temperature_control_enabled = false; // Temperature control enabled
+        bool temperature_control_enabled = false;                // Temperature control enabled
         float elevation = 0.0f; // Meters above sea level, for sea-level pressure calculation
 
         // Heating actuator: which manifold, and which channel on it. The host
@@ -190,7 +186,7 @@ namespace Config {
         char username[64] = "";
         char password[64] = "";
         char prefix[64] = "sensors"; // topic prefix, e.g. "sensors/bedroom"
-        uint16_t interval = 15; // publish interval in seconds
+        uint16_t interval = 15;      // publish interval in seconds
         bool enabled = false;
 
         MqttConfig() = default;
@@ -209,9 +205,11 @@ namespace Config {
      * Energy configuration structure
      */
     struct EnergyConfig {
-        uint8_t wifi_power = Constants::DEFAULT_WIFI_POWER; // wifi_power_t raw value, default Constants::DEFAULT_WIFI_POWER (13 dBm)
-        uint8_t wifi_sleep_mode = 0; // 0=WIFI_PS_NONE, 1=WIFI_PS_MIN_MODEM, 2=WIFI_PS_MAX_MODEM
-        uint16_t led_dark_after_s = Constants::DEFAULT_LED_DARK_AFTER_S; // seconds of normal operation before the status LED goes dark; 0 = never
+        uint8_t wifi_power =
+            Constants::DEFAULT_WIFI_POWER; // wifi_power_t raw value, default Constants::DEFAULT_WIFI_POWER (13 dBm)
+        uint8_t wifi_sleep_mode = 0;       // 0=WIFI_PS_NONE, 1=WIFI_PS_MIN_MODEM, 2=WIFI_PS_MAX_MODEM
+        uint16_t led_dark_after_s = Constants::DEFAULT_LED_DARK_AFTER_S; // seconds of normal operation before the
+                                                                         // status LED goes dark; 0 = never
         EnergyConfig() = default;
     };
 
@@ -239,18 +237,18 @@ namespace Config {
      * E-paper display configuration structure
      */
     struct DisplayConfig {
-        bool enabled = false; // Default off — an unconfigured device behaves as before
-        uint8_t rotation = 0; // 0..3, mounting orientation
+        bool enabled = false;                         // Default off — an unconfigured device behaves as before
+        uint8_t rotation = 0;                         // 0..3, mounting orientation
         uint16_t interval = DEFAULT_DISPLAY_INTERVAL; // Minimum seconds between refreshes
 
         DisplayConfig() = default;
     };
 
     // Validation functions — pure C++, testable on native builds
-    void validateDeviceConfig(DeviceConfig &config);
-    void validateMqttConfig(MqttConfig &config);
-    void validateEnergyConfig(EnergyConfig &config);
-    void validateDisplayConfig(DisplayConfig &config);
+    void validateDeviceConfig(DeviceConfig& config);
+    void validateMqttConfig(MqttConfig& config);
+    void validateEnergyConfig(EnergyConfig& config);
+    void validateDisplayConfig(DisplayConfig& config);
 
     // Deferred-restart state encoding helpers (pure C++, testable on native builds).
     // The state is packed into a single 64-bit word: low bit = "requested" flag,
@@ -261,7 +259,7 @@ namespace Config {
 
     constexpr void unpackRestartState(uint64_t state, bool& requested, uint64_t& deadline) {
         requested = (state & 1ULL) != 0;
-        deadline  = state >> 1;
+        deadline = state >> 1;
     }
 
     constexpr bool isRequestedOf(uint64_t state) {
@@ -274,7 +272,7 @@ namespace Config {
 
     // True when `key` fits NVS's 15-character limit. constexpr so callers can
     // static_assert on it; see the ConfigManager key block for why.
-    constexpr bool nvsKeyFits(const char *key) {
+    constexpr bool nvsKeyFits(const char* key) {
         size_t length = 0;
         while (key[length] != '\0') {
             ++length;
@@ -291,26 +289,26 @@ namespace Config {
 #ifdef ARDUINO
         Preferences prefs;
 #endif
-        static constexpr const char *NAMESPACE = "klima";
-        static constexpr const char *TARGET_TEMPERATURE = "target_temp";
-        static constexpr const char *TEMPERATURE_CONTROL_ENABLED = "ctrl_enabled";
-        static constexpr const char *ELEVATION = "elevation";
-        static constexpr const char *ENERGY_WIFI_PW = "energy_wifi_pw";
-        static constexpr const char *ENERGY_WIFI_SLEEP = "wifi_sleep";
-        static constexpr const char *SENSOR_I2C_ADDRESS = "sensor_i2c";
-        static constexpr const char *TIMEZONE = "timezone";
-        static constexpr const char *ACTUATOR_HOST = "act_host";
-        static constexpr const char *ACTUATOR_CHANNEL = "act_ch";
-        static constexpr const char *TPO_CYCLE = "tpo_cycle";
-        static constexpr const char *TPO_TRAVEL = "tpo_travel";
-        static constexpr const char *SAFETY_MAX = "safe_max";
-        static constexpr const char *SAFETY_HYST = "safe_hyst";
-        static constexpr const char *PID_KP = "pid_kp";
-        static constexpr const char *PID_KI = "pid_ki";
-        static constexpr const char *PID_KD = "pid_kd";
+        static constexpr const char* NAMESPACE = "klima";
+        static constexpr const char* TARGET_TEMPERATURE = "target_temp";
+        static constexpr const char* TEMPERATURE_CONTROL_ENABLED = "ctrl_enabled";
+        static constexpr const char* ELEVATION = "elevation";
+        static constexpr const char* ENERGY_WIFI_PW = "energy_wifi_pw";
+        static constexpr const char* ENERGY_WIFI_SLEEP = "wifi_sleep";
+        static constexpr const char* SENSOR_I2C_ADDRESS = "sensor_i2c";
+        static constexpr const char* TIMEZONE = "timezone";
+        static constexpr const char* ACTUATOR_HOST = "act_host";
+        static constexpr const char* ACTUATOR_CHANNEL = "act_ch";
+        static constexpr const char* TPO_CYCLE = "tpo_cycle";
+        static constexpr const char* TPO_TRAVEL = "tpo_travel";
+        static constexpr const char* SAFETY_MAX = "safe_max";
+        static constexpr const char* SAFETY_HYST = "safe_hyst";
+        static constexpr const char* PID_KP = "pid_kp";
+        static constexpr const char* PID_KI = "pid_ki";
+        static constexpr const char* PID_KD = "pid_kd";
         // Abbreviated for the same reason "disp_intv" is: "control_interval_s"
         // is 18 characters and would fail silently.
-        static constexpr const char *CONTROL_INTERVAL = "ctrl_intv";
+        static constexpr const char* CONTROL_INTERVAL = "ctrl_intv";
 
         // NVS keys are capped at 15 characters (NVS_KEY_NAME_MAX_SIZE is 16
         // including the terminator). Preferences::putX() fails silently on a
@@ -369,9 +367,7 @@ namespace Config {
         }
 
         // Release the spinlock.
-        void unlockRestart() const {
-            restartLock.clear();
-        }
+        void unlockRestart() const { restartLock.clear(); }
 
         // Spinlock protecting the in-memory DeviceConfig cache. Same shape and
         // rationale as restartLock: a freeRTOS mutex is heavier than this
@@ -392,9 +388,7 @@ namespace Config {
             }
         }
 
-        void unlockDeviceConfig() const {
-            deviceConfigLock.clear();
-        }
+        void unlockDeviceConfig() const { deviceConfigLock.clear(); }
 
     public:
         ConfigManager();
@@ -460,7 +454,7 @@ namespace Config {
          * Save WiFi configuration to NVS
          * @param config WiFi configuration to save
          */
-        void saveWiFiConfig(const WiFiConfig &config);
+        void saveWiFiConfig(const WiFiConfig& config);
 
         /**
          * Load device configuration from NVS into the in-memory cache
@@ -497,7 +491,7 @@ namespace Config {
          * Save device configuration to NVS (partial updates)
          * @param config Device configuration to save
          */
-        void saveDeviceConfig(const DeviceConfig &config);
+        void saveDeviceConfig(const DeviceConfig& config);
 
         /**
          * Update individual device configuration fields
@@ -513,7 +507,7 @@ namespace Config {
          * entirely, because a half-assignment is not a thing that can be acted
          * on safely.
          */
-        void updateActuatorAssignment(const char *actuatorHost, int8_t actuatorChannel);
+        void updateActuatorAssignment(const char* actuatorHost, int8_t actuatorChannel);
 
         /**
          * Cycle period, actuator travel time and the over-temperature limit.
@@ -521,8 +515,7 @@ namespace Config {
          * pair together if they are inconsistent, so callers should check the
          * pair before offering it.
          */
-        void updateActuatorTiming(uint16_t cycleS, uint16_t travelS, float safetyMaxC,
-                                  float safetyHystC);
+        void updateActuatorTiming(uint16_t cycleS, uint16_t travelS, float safetyMaxC, float safetyHystC);
 
         /**
          * PID gains and the control interval. Taken as a set because gains are
@@ -574,7 +567,7 @@ namespace Config {
          * Save sensor configuration to NVS
          * @param config Sensor configuration to save
          */
-        void saveSensorConfig(const SensorConfig &config);
+        void saveSensorConfig(const SensorConfig& config);
 
         /**
          * Load MQTT configuration from NVS
@@ -586,13 +579,13 @@ namespace Config {
          * Save MQTT configuration to NVS
          * @param config MQTT configuration to save
          */
-        void saveMqttConfig(const MqttConfig &config);
+        void saveMqttConfig(const MqttConfig& config);
 
         EnergyConfig loadEnergyConfig();
-        void saveEnergyConfig(const EnergyConfig &config);
+        void saveEnergyConfig(const EnergyConfig& config);
 
         SyslogConfig loadSyslogConfig();
-        void saveSyslogConfig(const SyslogConfig &config);
+        void saveSyslogConfig(const SyslogConfig& config);
 
         /**
          * Load e-paper display configuration from NVS
@@ -604,8 +597,8 @@ namespace Config {
          * Save e-paper display configuration to NVS
          * @param config Display configuration to save
          */
-        void saveDisplayConfig(const DisplayConfig &config);
+        void saveDisplayConfig(const DisplayConfig& config);
     };
 } // namespace Config
 
-#endif //KLIMACONTROL_CONFIG_H
+#endif // KLIMACONTROL_CONFIG_H

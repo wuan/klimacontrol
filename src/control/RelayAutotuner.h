@@ -33,10 +33,10 @@ namespace Control {
         CeilingBreached,
         FloorBreached,
         SensorLost,
-        RunTimeout,          // never converged within the budget
-        SettlingTimeout,     // never stopped moving
-        AmplitudeTooSmall,   // oscillation never cleared the hysteresis band
-        DerivedGainsInvalid  // arithmetic produced something unusable
+        RunTimeout,         // never converged within the budget
+        SettlingTimeout,    // never stopped moving
+        AmplitudeTooSmall,  // oscillation never cleared the hysteresis band
+        DerivedGainsInvalid // arithmetic produced something unusable
     };
 
     /**
@@ -134,7 +134,7 @@ namespace Control {
         AutotuneAbort abortReason() const { return abortCause; }
 
         /** Meaningful only when state() == Done. */
-        const AutotuneResult &result() const { return runResult; }
+        const AutotuneResult& result() const { return runResult; }
 
         /** Convenience for callers that only want the derived gains. */
         PidGains getResultGains() const { return runResult.gains; }

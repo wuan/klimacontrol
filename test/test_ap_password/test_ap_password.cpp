@@ -12,9 +12,9 @@ void tearDown() {}
 // is constant for a given board, so two firmwares built with the same
 // implementation MUST agree on the password for a given device id.
 
-static const char *PIN_FOR_000000 = "eceec3eb";
-static const char *PIN_FOR_AABBCC = "edc5507b";
-static const char *PIN_FOR_EMPTY  = "215f7803";
+static const char* PIN_FOR_000000 = "eceec3eb";
+static const char* PIN_FOR_AABBCC = "edc5507b";
+static const char* PIN_FOR_EMPTY = "215f7803";
 
 // --- Output shape ---
 
@@ -24,10 +24,8 @@ void test_output_is_eight_lowercase_hex_chars() {
     TEST_ASSERT_EQUAL_INT(8, static_cast<int>(std::strlen(buf)));
     for (int i = 0; i < 8; ++i) {
         const char c = buf[i];
-        const bool isHexDigit =
-            (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
-        TEST_ASSERT_TRUE_MESSAGE(isHexDigit,
-            "output character must be lowercase hex digit");
+        const bool isHexDigit = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+        TEST_ASSERT_TRUE_MESSAGE(isHexDigit, "output character must be lowercase hex digit");
     }
 }
 
@@ -86,12 +84,8 @@ void test_nearby_ids_distinct_passwords() {
 
 void test_many_distinct_ids_all_distinct() {
     // 16 hex ids spanning the byte range, all expected to be distinct.
-    const char *ids[] = {
-        "000000", "010203", "040506", "070809",
-        "0A0B0C", "0D0E0F", "101112", "131415",
-        "AABBCC", "DDEEFF", "DEADBE", "FACADE",
-        "123456", "789ABC", "BEEF42", "CAFEFE"
-    };
+    const char* ids[] = {"000000", "010203", "040506", "070809", "0A0B0C", "0D0E0F", "101112", "131415",
+                         "AABBCC", "DDEEFF", "DEADBE", "FACADE", "123456", "789ABC", "BEEF42", "CAFEFE"};
     char passwords[16][9] = {{0}};
     for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
         Support::computeApPassword(ids[i], passwords[i], 9);
@@ -99,7 +93,7 @@ void test_many_distinct_ids_all_distinct() {
     for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i) {
         for (size_t j = i + 1; j < sizeof(ids) / sizeof(ids[0]); ++j) {
             TEST_ASSERT_NOT_EQUAL_MESSAGE(0, std::strcmp(passwords[i], passwords[j]),
-                "two distinct ids produced the same password");
+                                          "two distinct ids produced the same password");
         }
     }
 }

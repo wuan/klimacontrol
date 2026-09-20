@@ -6,12 +6,12 @@ void tearDown() {}
 
 // 3.3 — doubling portion of the curve: failures 1..8.
 void test_backoff_doubles_each_failure() {
-    TEST_ASSERT_EQUAL_UINT32(2000,   Support::staFailureBackoffMs(1));
-    TEST_ASSERT_EQUAL_UINT32(4000,   Support::staFailureBackoffMs(2));
-    TEST_ASSERT_EQUAL_UINT32(8000,   Support::staFailureBackoffMs(3));
-    TEST_ASSERT_EQUAL_UINT32(16000,  Support::staFailureBackoffMs(4));
-    TEST_ASSERT_EQUAL_UINT32(32000,  Support::staFailureBackoffMs(5));
-    TEST_ASSERT_EQUAL_UINT32(64000,  Support::staFailureBackoffMs(6));
+    TEST_ASSERT_EQUAL_UINT32(2000, Support::staFailureBackoffMs(1));
+    TEST_ASSERT_EQUAL_UINT32(4000, Support::staFailureBackoffMs(2));
+    TEST_ASSERT_EQUAL_UINT32(8000, Support::staFailureBackoffMs(3));
+    TEST_ASSERT_EQUAL_UINT32(16000, Support::staFailureBackoffMs(4));
+    TEST_ASSERT_EQUAL_UINT32(32000, Support::staFailureBackoffMs(5));
+    TEST_ASSERT_EQUAL_UINT32(64000, Support::staFailureBackoffMs(6));
     TEST_ASSERT_EQUAL_UINT32(128000, Support::staFailureBackoffMs(7));
     TEST_ASSERT_EQUAL_UINT32(256000, Support::staFailureBackoffMs(8));
 }

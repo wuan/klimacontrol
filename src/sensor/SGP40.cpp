@@ -2,8 +2,7 @@
 
 namespace Sensor {
 
-    SGP40::SGP40(uint8_t address) : I2CSensor(address) {
-    }
+    SGP40::SGP40(uint8_t address) : I2CSensor(address) {}
 
     bool SGP40::begin() {
 #ifdef ARDUINO
@@ -20,8 +19,8 @@ namespace Sensor {
     }
 
     SensorReading SGP40::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
-        (void) config;
-        (void) prior; // used only under ARDUINO
+        (void)config;
+        (void)prior; // used only under ARDUINO
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();

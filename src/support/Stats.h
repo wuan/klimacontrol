@@ -7,22 +7,19 @@
 #include <atomic>
 #include <cstdint>
 
-namespace Support
-{
+namespace Support {
     // Indivisible copy of the four cycle-delay counters. Cross-task readers
     // SHALL go through Stats::snapshot() — see the
     // "Cross-task reads of `Support::Stats` use a snapshot accessor"
     // requirement in openspec/specs/system-architecture/spec.md.
-    struct StatsSnapshot
-    {
+    struct StatsSnapshot {
         uint64_t count;
         uint64_t average;
         uint64_t min;
         uint64_t max;
     };
 
-    class Stats
-    {
+    class Stats {
         uint64_t total = 0;
         uint64_t count = 0;
         uint64_t min_value = UINT64_MAX;
@@ -42,9 +39,7 @@ namespace Support
             }
         }
 
-        void unlockStats() const {
-            lock.clear();
-        }
+        void unlockStats() const { lock.clear(); }
 
     public:
         void add(uint64_t value);
@@ -64,4 +59,4 @@ namespace Support
     };
 } // Support
 
-#endif //KLIMACONTROL_STATS_H
+#endif // KLIMACONTROL_STATS_H

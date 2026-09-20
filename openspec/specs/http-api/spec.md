@@ -672,4 +672,3 @@ cycle-delay stats (`stats.cycle_*`).
   present and unchanged in name, type, meaning, and parent sub-object;
   the Network loop's `net_*` keys are top-level additions that do not
   replace them and do not duplicate them under `stats`
-

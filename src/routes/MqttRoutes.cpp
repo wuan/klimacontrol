@@ -12,7 +12,7 @@
 void WebServerManager::setupMqttRoutes() {
 #ifdef ARDUINO
     // GET /api/mqtt - Get MQTT configuration
-    server.on("/api/mqtt", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    server.on("/api/mqtt", HTTP_GET, [this](AsyncWebServerRequest* request) {
         Config::MqttConfig mqttConfig = config.loadMqttConfig();
 
         JsonDocument doc;
@@ -46,40 +46,40 @@ void WebServerManager::setupMqttRoutes() {
     });
 
     // POST /api/mqtt - Update MQTT configuration
-    server.on("/api/mqtt", HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
-                  if (index == 0) {
-                      if (!verifyCsrfHeader(request)) {
-                          return;
-                      }
+    server.on(
+        "/api/mqtt", HTTP_POST, []([[maybe_unused]] AsyncWebServerRequest* request) {}, nullptr,
+        [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, [[maybe_unused]] size_t total) {
+            if (index == 0) {
+                if (!verifyCsrfHeader(request)) {
+                    return;
+                }
 
-                      JsonDocument doc;
-                      DeserializationError error = deserializeJson(doc, data, len);
+                JsonDocument doc;
+                DeserializationError error = deserializeJson(doc, data, len);
 
-                      if (error) {
-                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
-                          return;
-                      }
+                if (error) {
+                    request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
+                    return;
+                }
 
-                      Config::MqttConfig mqttConfig = config.loadMqttConfig();
+                Config::MqttConfig mqttConfig = config.loadMqttConfig();
 
-                      if (doc["enabled"].is<bool>()) mqttConfig.enabled = doc["enabled"];
-                      if (doc["host"].is<const char*>()) strlcpy(mqttConfig.host, doc["host"] | "", sizeof(mqttConfig.host));
-                      if (doc["port"].is<int>()) mqttConfig.port = doc["port"];
-                      if (doc["username"].is<const char*>()) strlcpy(mqttConfig.username, doc["username"] | "", sizeof(mqttConfig.username));
-                      if (doc["password"].is<const char*>()) strlcpy(mqttConfig.password, doc["password"] | "", sizeof(mqttConfig.password));
-                      if (doc["prefix"].is<const char*>()) strlcpy(mqttConfig.prefix, doc["prefix"] | "", sizeof(mqttConfig.prefix));
-                      if (doc["interval"].is<int>()) mqttConfig.interval = doc["interval"];
+                if (doc["enabled"].is<bool>()) mqttConfig.enabled = doc["enabled"];
+                if (doc["host"].is<const char*>()) strlcpy(mqttConfig.host, doc["host"] | "", sizeof(mqttConfig.host));
+                if (doc["port"].is<int>()) mqttConfig.port = doc["port"];
+                if (doc["username"].is<const char*>())
+                    strlcpy(mqttConfig.username, doc["username"] | "", sizeof(mqttConfig.username));
+                if (doc["password"].is<const char*>())
+                    strlcpy(mqttConfig.password, doc["password"] | "", sizeof(mqttConfig.password));
+                if (doc["prefix"].is<const char*>())
+                    strlcpy(mqttConfig.prefix, doc["prefix"] | "", sizeof(mqttConfig.prefix));
+                if (doc["interval"].is<int>()) mqttConfig.interval = doc["interval"];
 
-                      config.saveMqttConfig(mqttConfig);
-                      network.updateMqttConfig(mqttConfig);
+                config.saveMqttConfig(mqttConfig);
+                network.updateMqttConfig(mqttConfig);
 
-                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
-                  }
-              }
-    );
+                request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+            }
+        });
 #endif
 }

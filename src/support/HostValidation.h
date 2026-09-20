@@ -34,18 +34,15 @@ namespace Support {
     //
     // See `openspec/changes/2026-09-03-harden-config-ap-and-actuator-host/`
     // for the design rationale and the SSRF attack matrix.
-    inline bool isValidActuatorHost(const char *host) {
+    inline bool isValidActuatorHost(const char* host) {
         if (host == nullptr) {
             return false;
         }
         std::size_t length = 0;
-        for (const char *p = host; *p != '\0'; ++p) {
+        for (const char* p = host; *p != '\0'; ++p) {
             const unsigned char c = static_cast<unsigned char>(*p);
-            const bool inClass =
-                (c >= '0' && c <= '9') ||
-                (c >= 'A' && c <= 'Z') ||
-                (c >= 'a' && c <= 'z') ||
-                c == '.' || c == '_' || c == '-';
+            const bool inClass = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                                 c == '.' || c == '_' || c == '-';
             if (!inClass) {
                 return false;
             }

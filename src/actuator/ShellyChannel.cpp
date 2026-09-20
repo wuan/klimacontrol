@@ -13,7 +13,7 @@ namespace Actuator {
         // The quotes are part of the search so that `auto_off` cannot match
         // inside `auto_off_delay`, which is the one collision that actually
         // occurs in these payloads.
-        const char *findValue(const char *json, const char *key) {
+        const char* findValue(const char* json, const char* key) {
             if (json == nullptr || key == nullptr) {
                 return nullptr;
             }
@@ -27,11 +27,11 @@ namespace Actuator {
             quoted[keyLen + 1] = '"';
             quoted[keyLen + 2] = '\0';
 
-            const char *at = std::strstr(json, quoted);
+            const char* at = std::strstr(json, quoted);
             if (at == nullptr) {
                 return nullptr;
             }
-            const char *cursor = at + keyLen + 2;
+            const char* cursor = at + keyLen + 2;
             while (*cursor == ' ' || *cursor == '\t') {
                 ++cursor;
             }
@@ -46,8 +46,8 @@ namespace Actuator {
         }
     }
 
-    bool extractBool(const char *json, const char *key, bool &out) {
-        const char *v = findValue(json, key);
+    bool extractBool(const char* json, const char* key, bool& out) {
+        const char* v = findValue(json, key);
         if (v == nullptr) {
             return false;
         }
@@ -62,12 +62,12 @@ namespace Actuator {
         return false;
     }
 
-    bool extractNumber(const char *json, const char *key, float &out) {
-        const char *v = findValue(json, key);
+    bool extractNumber(const char* json, const char* key, float& out) {
+        const char* v = findValue(json, key);
         if (v == nullptr) {
             return false;
         }
-        char *end = nullptr;
+        char* end = nullptr;
         const float parsed = std::strtof(v, &end);
         if (end == v) {
             return false;
@@ -76,12 +76,12 @@ namespace Actuator {
         return true;
     }
 
-    bool extractString(const char *json, const char *key, char *out, size_t outSize) {
+    bool extractString(const char* json, const char* key, char* out, size_t outSize) {
         if (out == nullptr || outSize == 0) {
             return false;
         }
         out[0] = '\0';
-        const char *v = findValue(json, key);
+        const char* v = findValue(json, key);
         if (v == nullptr || *v != '"') {
             return false;
         }
@@ -97,7 +97,7 @@ namespace Actuator {
         return *v == '"';
     }
 
-    bool ChannelConfig::parse(const char *json) {
+    bool ChannelConfig::parse(const char* json) {
         read = false;
         if (json == nullptr) {
             return false;
@@ -110,7 +110,7 @@ namespace Actuator {
         return ok;
     }
 
-    Conformance checkConformance(const ChannelConfig &config, float minAutoOffDelayS) {
+    Conformance checkConformance(const ChannelConfig& config, float minAutoOffDelayS) {
         if (!config.read) {
             return Conformance::NotRead;
         }
@@ -132,30 +132,38 @@ namespace Actuator {
         return Conformance::Ok;
     }
 
-    const char *conformanceName(Conformance c) {
+    const char* conformanceName(Conformance c) {
         switch (c) {
-            case Conformance::Ok: return "ok";
-            case Conformance::NotRead: return "not_read";
-            case Conformance::AutoOffDisabled: return "auto_off_disabled";
-            case Conformance::AutoOffTooShort: return "auto_off_too_short";
-            case Conformance::InitialStateUnsafe: return "initial_state_unsafe";
-            case Conformance::InputNotDetached: return "input_not_detached";
+            case Conformance::Ok:
+                return "ok";
+            case Conformance::NotRead:
+                return "not_read";
+            case Conformance::AutoOffDisabled:
+                return "auto_off_disabled";
+            case Conformance::AutoOffTooShort:
+                return "auto_off_too_short";
+            case Conformance::InitialStateUnsafe:
+                return "initial_state_unsafe";
+            case Conformance::InputNotDetached:
+                return "input_not_detached";
         }
         return "unknown";
     }
 
-    const char *conformanceDetail(Conformance c) {
+    const char* conformanceDetail(Conformance c) {
         switch (c) {
             case Conformance::Ok:
                 return "Channel is safe to drive";
             case Conformance::NotRead:
                 return "Could not read the channel configuration from the manifold";
             case Conformance::AutoOffDisabled:
-                return "Set auto_off=true on this channel: without it nothing closes the valve if this controller stops";
+                return "Set auto_off=true on this channel: without it nothing closes the valve if this controller "
+                       "stops";
             case Conformance::AutoOffTooShort:
                 return "auto_off_delay is too short: a single failed request would move the valve";
             case Conformance::InitialStateUnsafe:
-                return "Set initial_state=off: a relay reboot would otherwise restore the previous output with no controller running";
+                return "Set initial_state=off: a relay reboot would otherwise restore the previous output with no "
+                       "controller running";
             case Conformance::InputNotDetached:
                 return "Set in_mode=detached: a physical input could otherwise override the controller";
         }

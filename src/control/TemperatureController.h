@@ -29,7 +29,7 @@ namespace Control {
      */
     class TemperatureController {
     private:
-        Config::ConfigManager &config;
+        Config::ConfigManager& config;
 
         float lastControlOutput = 0.0f;
 
@@ -118,10 +118,10 @@ namespace Control {
          *               config.begin() has read NVS, so the constructor sees the
          *               compiled-in defaults and begin() adopts the stored tuning.
          */
-        explicit TemperatureController(Config::ConfigManager &config);
+        explicit TemperatureController(Config::ConfigManager& config);
 
-        TemperatureController(const TemperatureController &) = delete;
-        TemperatureController &operator=(const TemperatureController &) = delete;
+        TemperatureController(const TemperatureController&) = delete;
+        TemperatureController& operator=(const TemperatureController&) = delete;
 
         /**
          * Adopt the stored tuning. Called from setup() before the Sensor
@@ -143,14 +143,12 @@ namespace Control {
          * rather than claiming to heat. With no channel assigned it falls back to
          * demand, because nothing exists to confirm against.
          */
-        bool isControlActive() const {
-            return getReportedState() == Actuator::ReportedState::Heating;
-        }
+        bool isControlActive() const { return getReportedState() == Actuator::ReportedState::Heating; }
 
         /** The full picture, for displays that can show more than on/off. */
         Actuator::ReportedState getReportedState() const {
-            return Actuator::reportedState(config.getDeviceConfig().temperature_control_enabled,
-                                           actuatorAssigned, actuatorAgreement, lastControlOutput);
+            return Actuator::reportedState(config.getDeviceConfig().temperature_control_enabled, actuatorAssigned,
+                                           actuatorAgreement, lastControlOutput);
         }
 
         /**
@@ -213,7 +211,7 @@ namespace Control {
 
         Control::AutotuneState getAutotuneState() const { return autotuner.state(); }
         Control::AutotuneAbort getAutotuneAbort() const { return autotuner.abortReason(); }
-        const Control::AutotuneResult &getAutotuneResult() const { return autotuner.result(); }
+        const Control::AutotuneResult& getAutotuneResult() const { return autotuner.result(); }
         uint8_t getAutotuneCycles() const { return autotuner.completedCycles(); }
         uint32_t getAutotuneElapsedMs(uint32_t nowMs) const { return autotuner.elapsedMs(nowMs); }
         bool isAutotuneActive() const {

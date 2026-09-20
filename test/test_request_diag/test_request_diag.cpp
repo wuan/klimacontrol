@@ -13,7 +13,7 @@ void setUp() {
 void tearDown() {}
 
 namespace {
-    void push(const char *url, int code, uint32_t at) {
+    void push(const char* url, int code, uint32_t at) {
         recordRequest("POST", url, code, 32, 1, 50000, 40000, at);
     }
 }
@@ -49,8 +49,7 @@ void test_wraps_and_keeps_the_newest() {
     // Oldest held is request #5; newest is the last one pushed.
     TEST_ASSERT_EQUAL_STRING("/r5", requestAt(0).url);
     char expected[16];
-    snprintf(expected, sizeof(expected), "/r%u",
-             static_cast<unsigned>(REQUEST_DIAG_CAPACITY + 4));
+    snprintf(expected, sizeof(expected), "/r%u", static_cast<unsigned>(REQUEST_DIAG_CAPACITY + 4));
     TEST_ASSERT_EQUAL_STRING(expected, requestAt(REQUEST_DIAG_CAPACITY - 1).url);
 }
 
@@ -84,7 +83,7 @@ void test_the_signature_being_hunted() {
     markStage(StageBodyEntered);
     markStage(StageCsrfPassed);
     push("/api/actuator/timing", 501, 100);
-    const RequestRecord &r = requestAt(0);
+    const RequestRecord& r = requestAt(0);
     TEST_ASSERT_EQUAL_INT(501, r.code);
     TEST_ASSERT_TRUE((r.stages & StageBodyEntered) != 0);
     TEST_ASSERT_TRUE((r.stages & StageCsrfPassed) != 0);
@@ -99,9 +98,8 @@ void test_describe_stages() {
     describeStages(StageBodyEntered | StageCsrfPassed, buf, sizeof(buf));
     TEST_ASSERT_EQUAL_STRING("body|csrf", buf);
 
-    describeStages(StageBodyEntered | StageCsrfPassed | StageJsonParsed | StageValidated |
-                       StageResponded,
-                   buf, sizeof(buf));
+    describeStages(StageBodyEntered | StageCsrfPassed | StageJsonParsed | StageValidated | StageResponded, buf,
+                   sizeof(buf));
     TEST_ASSERT_EQUAL_STRING("body|csrf|json|valid|sent", buf);
 }
 
@@ -116,7 +114,7 @@ void test_long_url_is_truncated_not_overflowed() {
     std::memset(longUrl, 'x', sizeof(longUrl) - 1);
     longUrl[sizeof(longUrl) - 1] = '\0';
     recordRequest("POST", longUrl, 200, 0, 0, 0, 0, 1);
-    const RequestRecord &r = requestAt(0);
+    const RequestRecord& r = requestAt(0);
     TEST_ASSERT_TRUE(std::strlen(r.url) < sizeof(r.url));
 }
 

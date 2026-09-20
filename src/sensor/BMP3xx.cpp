@@ -3,8 +3,7 @@
 
 namespace Sensor {
 
-    BMP3xx::BMP3xx(uint8_t address) : I2CSensor(address) {
-    }
+    BMP3xx::BMP3xx(uint8_t address) : I2CSensor(address) {}
 
     bool BMP3xx::begin() {
 #ifdef ARDUINO
@@ -29,7 +28,7 @@ namespace Sensor {
     }
 
     SensorReading BMP3xx::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
-        (void) prior;
+        (void)prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();

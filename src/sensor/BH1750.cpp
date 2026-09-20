@@ -2,8 +2,7 @@
 
 namespace Sensor {
 
-    BH1750Sensor::BH1750Sensor(uint8_t address) : I2CSensor(address) {
-    }
+    BH1750Sensor::BH1750Sensor(uint8_t address) : I2CSensor(address) {}
 
     bool BH1750Sensor::begin() {
 #ifdef ARDUINO
@@ -19,8 +18,8 @@ namespace Sensor {
     }
 
     SensorReading BH1750Sensor::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
-        (void) config;
-        (void) prior;
+        (void)config;
+        (void)prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();

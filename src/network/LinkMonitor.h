@@ -40,7 +40,7 @@ namespace Net {
         static constexpr uint32_t ACTIVE_RECONNECT_AFTER_MS = 30000;
         static constexpr uint32_t ACTIVE_RECONNECT_MIN_INTERVAL_MS = 30000;
         static constexpr uint8_t MAX_ACTIVE_RECONNECT_FAILURES = 6;
-        static constexpr uint32_t STABLE_CONNECT_MS = 60000;        // 1 min up = "stable"
+        static constexpr uint32_t STABLE_CONNECT_MS = 60000;           // 1 min up = "stable"
         static constexpr uint32_t FORCE_RESTART_NO_STABLE_MS = 600000; // 10 min without stability
 
         enum class Restart : uint8_t {
@@ -50,13 +50,13 @@ namespace Net {
         };
 
         struct Verdict {
-            bool reconnected = false;    // down -> up transition since the last poll
-            bool dropped = false;        // up -> down transition since the last poll
-            bool forceReconnect = false; // caller should disconnect + reconnect now
+            bool reconnected = false;     // down -> up transition since the last poll
+            bool dropped = false;         // up -> down transition since the last poll
+            bool forceReconnect = false;  // caller should disconnect + reconnect now
             uint8_t reconnectAttempt = 0; // 1-based attempt number when forceReconnect is set
-            uint32_t downForMs = 0;      // how long the link has been down (0 when up or unknown)
+            uint32_t downForMs = 0;       // how long the link has been down (0 when up or unknown)
             Restart restart = Restart::None;
-            uint32_t unstableForMs = 0;  // time since the last stable connection (for logging)
+            uint32_t unstableForMs = 0; // time since the last stable connection (for logging)
         };
 
         // --- WiFi event task ---

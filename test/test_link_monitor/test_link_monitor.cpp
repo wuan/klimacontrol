@@ -9,7 +9,7 @@ void tearDown() {}
 namespace {
     constexpr uint32_t T0 = 100000;
 
-    void superviseAt(LinkMonitor &m, uint32_t t) {
+    void superviseAt(LinkMonitor& m, uint32_t t) {
         m.markConnected(t);
         m.beginSupervision(t);
     }
@@ -91,8 +91,8 @@ void test_active_reconnect_rate_limited_and_exhausts_into_restart() {
     TEST_ASSERT_EQUAL_UINT8(LinkMonitor::MAX_ACTIVE_RECONNECT_FAILURES, attempts);
     TEST_ASSERT_EQUAL(static_cast<int>(LinkMonitor::Restart::ReconnectExhausted), static_cast<int>(restart));
     // Attempts are spaced by the minimum interval: 6 attempts span 5 intervals.
-    const uint32_t expectedEnd = T0 + LinkMonitor::ACTIVE_RECONNECT_AFTER_MS
-                                 + 5 * LinkMonitor::ACTIVE_RECONNECT_MIN_INTERVAL_MS;
+    const uint32_t expectedEnd =
+        T0 + LinkMonitor::ACTIVE_RECONNECT_AFTER_MS + 5 * LinkMonitor::ACTIVE_RECONNECT_MIN_INTERVAL_MS;
     TEST_ASSERT_EQUAL_UINT32(expectedEnd + 1000, t);
 }
 
@@ -136,9 +136,16 @@ void test_stable_link_advances_backstop_baseline() {
     // 9 minutes solid, then a 1 s flicker, then 9 more minutes solid: the
     // backstop must not fire, because the baseline advanced during the
     // first stable stretch.
-    for (uint32_t i = 0; i < 540; i++) { t += 1000; TEST_ASSERT_EQUAL(0, static_cast<int>(m.poll(true, t).restart)); }
-    t += 1000; TEST_ASSERT_EQUAL(0, static_cast<int>(m.poll(false, t).restart));
-    for (uint32_t i = 0; i < 540; i++) { t += 1000; TEST_ASSERT_EQUAL(0, static_cast<int>(m.poll(true, t).restart)); }
+    for (uint32_t i = 0; i < 540; i++) {
+        t += 1000;
+        TEST_ASSERT_EQUAL(0, static_cast<int>(m.poll(true, t).restart));
+    }
+    t += 1000;
+    TEST_ASSERT_EQUAL(0, static_cast<int>(m.poll(false, t).restart));
+    for (uint32_t i = 0; i < 540; i++) {
+        t += 1000;
+        TEST_ASSERT_EQUAL(0, static_cast<int>(m.poll(true, t).restart));
+    }
 }
 
 void test_mark_connected_only_seeds_when_no_event_arrived() {

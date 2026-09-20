@@ -89,7 +89,7 @@ namespace Config {
         return config;
     }
 
-    void ConfigManager::saveWiFiConfig([[maybe_unused]] const WiFiConfig &config) {
+    void ConfigManager::saveWiFiConfig([[maybe_unused]] const WiFiConfig& config) {
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false); // Read-write mode
 
@@ -99,9 +99,8 @@ namespace Config {
 #endif
     }
 
-    void validateDeviceConfig(DeviceConfig &config) {
-        if (std::isnan(config.target_temperature) ||
-            config.target_temperature < TARGET_TEMPERATURE_MIN_C ||
+    void validateDeviceConfig(DeviceConfig& config) {
+        if (std::isnan(config.target_temperature) || config.target_temperature < TARGET_TEMPERATURE_MIN_C ||
             config.target_temperature > TARGET_TEMPERATURE_MAX_C) {
             config.target_temperature = TARGET_TEMPERATURE_DEFAULT_C;
         }
@@ -118,8 +117,7 @@ namespace Config {
             config.sensor_i2c_address = DEFAULT_SENSOR_I2C_ADDRESS;
         }
 
-        if (config.actuator_channel < 0 ||
-            config.actuator_channel > static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
+        if (config.actuator_channel < 0 || config.actuator_channel > static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
             config.actuator_channel = ACTUATOR_CHANNEL_UNASSIGNED;
         }
 
@@ -129,8 +127,7 @@ namespace Config {
         // assignment had been made: clear the host and the channel
         // together, the same way the host/channel pair is validated at
         // write time. Empty host is permitted (explicit "no assignment").
-        if (config.actuator_host[0] != '\0' &&
-            !Support::isValidActuatorHost(config.actuator_host)) {
+        if (config.actuator_host[0] != '\0' && !Support::isValidActuatorHost(config.actuator_host)) {
             config.actuator_host[0] = '\0';
             config.actuator_channel = ACTUATOR_CHANNEL_UNASSIGNED;
         }
@@ -140,13 +137,10 @@ namespace Config {
         // bang-bang without saying so. If either is out of range, or the pair
         // is inconsistent, both go back to defaults rather than leaving a
         // half-trusted combination in force.
-        const bool travelSane = config.tpo_travel_s >= MIN_TPO_TRAVEL_S &&
-                                config.tpo_travel_s <= MAX_TPO_TRAVEL_S;
-        const bool cycleSane = config.tpo_cycle_s >= MIN_TPO_CYCLE_S &&
-                               config.tpo_cycle_s <= MAX_TPO_CYCLE_S;
+        const bool travelSane = config.tpo_travel_s >= MIN_TPO_TRAVEL_S && config.tpo_travel_s <= MAX_TPO_TRAVEL_S;
+        const bool cycleSane = config.tpo_cycle_s >= MIN_TPO_CYCLE_S && config.tpo_cycle_s <= MAX_TPO_CYCLE_S;
         const bool pairSane =
-            travelSane && cycleSane &&
-            config.tpo_cycle_s >= config.tpo_travel_s * TPO_MIN_STROKES_PER_CYCLE;
+            travelSane && cycleSane && config.tpo_cycle_s >= config.tpo_travel_s * TPO_MIN_STROKES_PER_CYCLE;
         if (!pairSane) {
             config.tpo_cycle_s = DEFAULT_TPO_CYCLE_S;
             config.tpo_travel_s = DEFAULT_TPO_TRAVEL_S;
@@ -156,8 +150,7 @@ namespace Config {
             config.safety_max_c > MAX_SAFETY_MAX_C) {
             config.safety_max_c = DEFAULT_SAFETY_MAX_C;
         }
-        if (std::isnan(config.safety_hyst_c) || config.safety_hyst_c <= 0.0f ||
-            config.safety_hyst_c > 10.0f) {
+        if (std::isnan(config.safety_hyst_c) || config.safety_hyst_c <= 0.0f || config.safety_hyst_c > 10.0f) {
             config.safety_hyst_c = DEFAULT_SAFETY_HYST_C;
         }
 
@@ -176,8 +169,7 @@ namespace Config {
         if (!std::isfinite(config.kd) || config.kd < MIN_PID_KD || config.kd > MAX_PID_KD) {
             config.kd = DEFAULT_PID_KD;
         }
-        if (config.control_interval_s < MIN_CONTROL_INTERVAL_S ||
-            config.control_interval_s > MAX_CONTROL_INTERVAL_S) {
+        if (config.control_interval_s < MIN_CONTROL_INTERVAL_S || config.control_interval_s > MAX_CONTROL_INTERVAL_S) {
             config.control_interval_s = DEFAULT_CONTROL_INTERVAL_S;
         }
     }
@@ -204,14 +196,12 @@ namespace Config {
         }
 
         // Load other device settings
-        deviceConfig.target_temperature =
-            guard.get().getFloat(TARGET_TEMPERATURE, TARGET_TEMPERATURE_DEFAULT_C);
+        deviceConfig.target_temperature = guard.get().getFloat(TARGET_TEMPERATURE, TARGET_TEMPERATURE_DEFAULT_C);
         deviceConfig.temperature_control_enabled = guard.get().getBool(TEMPERATURE_CONTROL_ENABLED, false);
         deviceConfig.elevation = guard.get().getFloat(ELEVATION, 0.0f);
         guard.get().getString(TIMEZONE, deviceConfig.timezone, sizeof(deviceConfig.timezone));
         deviceConfig.sensor_i2c_address = guard.get().getUChar(SENSOR_I2C_ADDRESS, DEFAULT_SENSOR_I2C_ADDRESS);
-        guard.get().getString(ACTUATOR_HOST, deviceConfig.actuator_host,
-                              sizeof(deviceConfig.actuator_host));
+        guard.get().getString(ACTUATOR_HOST, deviceConfig.actuator_host, sizeof(deviceConfig.actuator_host));
         deviceConfig.actuator_channel =
             static_cast<int8_t>(guard.get().getChar(ACTUATOR_CHANNEL, ACTUATOR_CHANNEL_UNASSIGNED));
         deviceConfig.tpo_cycle_s = guard.get().getUShort(TPO_CYCLE, DEFAULT_TPO_CYCLE_S);
@@ -221,8 +211,7 @@ namespace Config {
         deviceConfig.kp = guard.get().getFloat(PID_KP, DEFAULT_PID_KP);
         deviceConfig.ki = guard.get().getFloat(PID_KI, DEFAULT_PID_KI);
         deviceConfig.kd = guard.get().getFloat(PID_KD, DEFAULT_PID_KD);
-        deviceConfig.control_interval_s =
-            guard.get().getUShort(CONTROL_INTERVAL, DEFAULT_CONTROL_INTERVAL_S);
+        deviceConfig.control_interval_s = guard.get().getUShort(CONTROL_INTERVAL, DEFAULT_CONTROL_INTERVAL_S);
         unlockDeviceConfig();
 #endif
 
@@ -237,7 +226,7 @@ namespace Config {
         return deviceConfig;
     }
 
-    void ConfigManager::saveDeviceConfig([[maybe_unused]] const DeviceConfig &config) {
+    void ConfigManager::saveDeviceConfig([[maybe_unused]] const DeviceConfig& config) {
         // Validate before persisting to keep NVS consistent
         DeviceConfig validated = config;
         validateDeviceConfig(validated);
@@ -310,7 +299,7 @@ namespace Config {
         unlockDeviceConfig();
     }
 
-    void ConfigManager::updateActuatorAssignment([[maybe_unused]] const char *actuatorHost,
+    void ConfigManager::updateActuatorAssignment([[maybe_unused]] const char* actuatorHost,
                                                  [[maybe_unused]] int8_t actuatorChannel) {
         char hostBuf[sizeof(deviceConfig.actuator_host)] = "";
         int8_t ch = ACTUATOR_CHANNEL_UNASSIGNED;
@@ -321,10 +310,8 @@ namespace Config {
         // bad host, missing host, or invalid host all clear the assignment
         // rather than storing a half-bad value. See change
         // 2026-09-03-harden-config-ap-and-actuator-host.
-        if (actuatorHost != nullptr && actuatorHost[0] != '\0' &&
-            Support::isValidActuatorHost(actuatorHost) &&
-            actuatorChannel >= 0 &&
-            actuatorChannel <= static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
+        if (actuatorHost != nullptr && actuatorHost[0] != '\0' && Support::isValidActuatorHost(actuatorHost) &&
+            actuatorChannel >= 0 && actuatorChannel <= static_cast<int8_t>(MAX_ACTUATOR_CHANNEL)) {
             strlcpy(hostBuf, actuatorHost, sizeof(hostBuf));
             ch = actuatorChannel;
         }
@@ -339,10 +326,8 @@ namespace Config {
         unlockDeviceConfig();
     }
 
-    void ConfigManager::updateActuatorTiming([[maybe_unused]] uint16_t cycleS,
-                                             [[maybe_unused]] uint16_t travelS,
-                                             [[maybe_unused]] float safetyMaxC,
-                                             [[maybe_unused]] float safetyHystC) {
+    void ConfigManager::updateActuatorTiming([[maybe_unused]] uint16_t cycleS, [[maybe_unused]] uint16_t travelS,
+                                             [[maybe_unused]] float safetyMaxC, [[maybe_unused]] float safetyHystC) {
         DeviceConfig candidate = deviceConfig;
         candidate.tpo_cycle_s = cycleS;
         candidate.tpo_travel_s = travelS;
@@ -369,8 +354,7 @@ namespace Config {
         unlockDeviceConfig();
     }
 
-    void ConfigManager::updateTuning([[maybe_unused]] float kp, [[maybe_unused]] float ki,
-                                     [[maybe_unused]] float kd,
+    void ConfigManager::updateTuning([[maybe_unused]] float kp, [[maybe_unused]] float ki, [[maybe_unused]] float kd,
                                      [[maybe_unused]] uint16_t intervalS) {
         DeviceConfig candidate = deviceConfig;
         candidate.kp = kp;
@@ -444,7 +428,7 @@ namespace Config {
     void ConfigManager::reset() {
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
-        guard.get().clear(); // Clear all keys in this namespace
+        guard.get().clear();                             // Clear all keys in this namespace
 #endif
     }
 
@@ -455,8 +439,7 @@ namespace Config {
         memcpy(mac_bytes, &mac, 6);
 
         char id[16];
-        snprintf(id, sizeof(id), "%02X%02X%02X",
-                 mac_bytes[3], mac_bytes[4], mac_bytes[5]);
+        snprintf(id, sizeof(id), "%02X%02X%02X", mac_bytes[3], mac_bytes[4], mac_bytes[5]);
         return String(id);
 #else
         return String("000000");
@@ -507,7 +490,7 @@ namespace Config {
         return sensorConfig;
     }
 
-    void ConfigManager::saveSensorConfig([[maybe_unused]] const SensorConfig &config) {
+    void ConfigManager::saveSensorConfig([[maybe_unused]] const SensorConfig& config) {
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
 
@@ -517,7 +500,7 @@ namespace Config {
 #endif
     }
 
-    void validateMqttConfig(MqttConfig &config) {
+    void validateMqttConfig(MqttConfig& config) {
         if (config.prefix[0] == '\0') {
             strlcpy(config.prefix, "sensors", sizeof(config.prefix));
         }
@@ -550,7 +533,7 @@ namespace Config {
         return mqttConfig;
     }
 
-    void ConfigManager::saveMqttConfig([[maybe_unused]] const MqttConfig &config) {
+    void ConfigManager::saveMqttConfig([[maybe_unused]] const MqttConfig& config) {
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, NAMESPACE, false); // Read-write mode
 
@@ -565,7 +548,7 @@ namespace Config {
         ESP_LOGD(TAG, "Saved MQTT configuration");
 #endif
     }
-    void validateEnergyConfig(EnergyConfig &config) {
+    void validateEnergyConfig(EnergyConfig& config) {
         uint8_t wp = config.wifi_power;
         if (wp != 8 && wp != 34 && wp != 52 && wp != 68 && wp != 80) {
             config.wifi_power = Constants::DEFAULT_WIFI_POWER;
@@ -588,10 +571,11 @@ namespace Config {
 
         energyConfig.wifi_power = guard.get().getUChar(PrefsKeys::ENERGY_WIFI_POWER, Constants::DEFAULT_WIFI_POWER);
         energyConfig.wifi_sleep_mode = guard.get().getUChar(PrefsKeys::ENERGY_WIFI_SLEEP_MODE, 0);
-        energyConfig.led_dark_after_s = guard.get().getUShort(PrefsKeys::ENERGY_LED_DARK_AFTER_S, Constants::DEFAULT_LED_DARK_AFTER_S);
+        energyConfig.led_dark_after_s =
+            guard.get().getUShort(PrefsKeys::ENERGY_LED_DARK_AFTER_S, Constants::DEFAULT_LED_DARK_AFTER_S);
 
-        ESP_LOGD(TAG, "Loaded energy config from NVS: power=%u, sleep=%u, led_dark_after_s=%u",
-                 energyConfig.wifi_power, energyConfig.wifi_sleep_mode, energyConfig.led_dark_after_s);
+        ESP_LOGD(TAG, "Loaded energy config from NVS: power=%u, sleep=%u, led_dark_after_s=%u", energyConfig.wifi_power,
+                 energyConfig.wifi_sleep_mode, energyConfig.led_dark_after_s);
 #endif
 
         // Validate configuration values
@@ -600,7 +584,7 @@ namespace Config {
         return energyConfig;
     }
 
-    void ConfigManager::saveEnergyConfig([[maybe_unused]] const EnergyConfig &config) {
+    void ConfigManager::saveEnergyConfig([[maybe_unused]] const EnergyConfig& config) {
         // Validate before persisting to keep NVS consistent
         EnergyConfig validated = config;
         validateEnergyConfig(validated);
@@ -608,8 +592,8 @@ namespace Config {
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false);
 
-        ESP_LOGD(TAG, "Saving energy config: power=%u, sleep=%u, led_dark_after_s=%u",
-                 validated.wifi_power, validated.wifi_sleep_mode, validated.led_dark_after_s);
+        ESP_LOGD(TAG, "Saving energy config: power=%u, sleep=%u, led_dark_after_s=%u", validated.wifi_power,
+                 validated.wifi_sleep_mode, validated.led_dark_after_s);
         guard.get().putUChar(PrefsKeys::ENERGY_WIFI_POWER, validated.wifi_power);
         guard.get().putUChar(PrefsKeys::ENERGY_WIFI_SLEEP_MODE, validated.wifi_sleep_mode);
         guard.get().putUShort(PrefsKeys::ENERGY_LED_DARK_AFTER_S, validated.led_dark_after_s);
@@ -627,7 +611,7 @@ namespace Config {
         return config;
     }
 
-    void ConfigManager::saveSyslogConfig([[maybe_unused]] const SyslogConfig &config) {
+    void ConfigManager::saveSyslogConfig([[maybe_unused]] const SyslogConfig& config) {
 #ifdef ARDUINO
         PreferencesGuard guard(prefs, PrefsKeys::NAMESPACE, false);
 
@@ -639,7 +623,7 @@ namespace Config {
 #endif
     }
 
-    void validateDisplayConfig(DisplayConfig &config) {
+    void validateDisplayConfig(DisplayConfig& config) {
         if (config.rotation > MAX_DISPLAY_ROTATION) {
             config.rotation = 0;
         }
@@ -660,8 +644,8 @@ namespace Config {
         displayConfig.rotation = guard.get().getUChar(PrefsKeys::DISPLAY_ROTATION, 0);
         displayConfig.interval = guard.get().getUShort(PrefsKeys::DISPLAY_INTERVAL, DEFAULT_DISPLAY_INTERVAL);
 
-        ESP_LOGD(TAG, "Loaded display config from NVS: enabled=%d rotation=%u interval=%u",
-                 displayConfig.enabled, displayConfig.rotation, displayConfig.interval);
+        ESP_LOGD(TAG, "Loaded display config from NVS: enabled=%d rotation=%u interval=%u", displayConfig.enabled,
+                 displayConfig.rotation, displayConfig.interval);
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
@@ -670,7 +654,7 @@ namespace Config {
         return displayConfig;
     }
 
-    void ConfigManager::saveDisplayConfig([[maybe_unused]] const DisplayConfig &config) {
+    void ConfigManager::saveDisplayConfig([[maybe_unused]] const DisplayConfig& config) {
         // Validate before persisting to keep NVS consistent
         DisplayConfig validated = config;
         validateDisplayConfig(validated);
@@ -682,8 +666,8 @@ namespace Config {
         guard.get().putUChar(PrefsKeys::DISPLAY_ROTATION, validated.rotation);
         guard.get().putUShort(PrefsKeys::DISPLAY_INTERVAL, validated.interval);
 
-        ESP_LOGD(TAG, "Saved display configuration: enabled=%d rotation=%u interval=%u",
-                 validated.enabled, validated.rotation, validated.interval);
+        ESP_LOGD(TAG, "Saved display configuration: enabled=%d rotation=%u interval=%u", validated.enabled,
+                 validated.rotation, validated.interval);
 #endif
     }
 } // namespace Config

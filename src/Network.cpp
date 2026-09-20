@@ -17,13 +17,11 @@
 
 static constexpr auto TAG = "net";
 
-Network::Network(Config::ConfigManager &config, SensorController &sensorController,
-                 Control::TemperatureController &temperatureController, Task::SensorMonitor &sensorMonitor,
-                 DarkModeStatusLed &statusLed, std::optional<std::reference_wrapper<WebServerManager> > webServer)
-    : config(config), temperatureController(temperatureController),
-      sensorMonitor(sensorMonitor), statusLed(statusLed),
-      mdns(config), provisioning(config, mdns), wifi(config), mqtt(sensorController, statusLed),
-      webServer(webServer) {
+Network::Network(Config::ConfigManager& config, SensorController& sensorController,
+                 Control::TemperatureController& temperatureController, Task::SensorMonitor& sensorMonitor,
+                 DarkModeStatusLed& statusLed, std::optional<std::reference_wrapper<WebServerManager>> webServer)
+    : config(config), temperatureController(temperatureController), sensorMonitor(sensorMonitor), statusLed(statusLed),
+      mdns(config), provisioning(config, mdns), wifi(config), mqtt(sensorController, statusLed), webServer(webServer) {
     if (webServer.has_value()) {
         provisioning.setWebServer(webServer->get());
     }
@@ -33,12 +31,12 @@ void Network::begin() {
     mqtt.begin();
 }
 
-void Network::setWebServer(WebServerManager &server) {
+void Network::setWebServer(WebServerManager& server) {
     webServer = server;
     provisioning.setWebServer(server);
 }
 
-void Network::setDisplay(Display::DisplayManager &displayManager) {
+void Network::setDisplay(Display::DisplayManager& displayManager) {
     display = displayManager;
     provisioning.setDisplay(displayManager);
 }
@@ -55,15 +53,15 @@ void Network::setLedDarkAfterSeconds(uint16_t seconds) {
     statusLed.setDarkAfterSeconds(seconds);
 }
 
-void Network::publishMeasurements(const std::vector<Sensor::Measurement> &measurements) {
+void Network::publishMeasurements(const std::vector<Sensor::Measurement>& measurements) {
     mqtt.publishMeasurements(measurements, ntp.currentEpoch());
 }
 
-void Network::updateMqttConfig(const Config::MqttConfig &mqttConfig) {
+void Network::updateMqttConfig(const Config::MqttConfig& mqttConfig) {
     mqtt.updateConfig(mqttConfig);
 }
 
-bool Network::startSTA(const char *ssid, const char *password) {
+bool Network::startSTA(const char* ssid, const char* password) {
     mode = NetworkMode::STA;
 
     if (!wifi.connect(ssid, password)) return false;
@@ -71,8 +69,8 @@ bool Network::startSTA(const char *ssid, const char *password) {
 #ifdef ARDUINO
     ESP_LOGI(TAG, "Configuring mDNS...");
     mdns.advertise();
-    ESP_LOGI(TAG, "%s available at http://%s.local/ or http://%s",
-             Constants::PROJECT_NAME, mdns.hostname().c_str(), WiFi.localIP().toString().c_str());
+    ESP_LOGI(TAG, "%s available at http://%s.local/ or http://%s", Constants::PROJECT_NAME, mdns.hostname().c_str(),
+             WiFi.localIP().toString().c_str());
 #endif
 
     ntp.begin();
@@ -85,33 +83,30 @@ void Network::tickActuator(const uint32_t now) {
     lastActuatorTickMs = now;
     const Config::DeviceConfig cfg = config.getDeviceConfigSnapshot();
     heatingActuator.configure(cfg);
-    heatingActuator.tick(temperatureController.getControlOutput(),
-                         temperatureController.isHeatingPermitted(), now);
-    temperatureController.publishActuatorState(heatingActuator.isAssigned(),
-                                               heatingActuator.agreement(now));
+    heatingActuator.tick(temperatureController.getControlOutput(), temperatureController.isHeatingPermitted(), now);
+    temperatureController.publishActuatorState(heatingActuator.isAssigned(), heatingActuator.agreement(now));
 }
 
 void Network::logDiagnostics(uint32_t now) {
 #ifdef ARDUINO
-    ESP_LOGI(TAG, "Diagnostics: heap=%u bytes (min=%u), uptime=%lu s",
-             ESP.getFreeHeap(), ESP.getMinFreeHeap(), static_cast<unsigned long>(now / 1000));
+    ESP_LOGI(TAG, "Diagnostics: heap=%u bytes (min=%u), uptime=%lu s", ESP.getFreeHeap(), ESP.getMinFreeHeap(),
+             static_cast<unsigned long>(now / 1000));
     const Support::StatsSnapshot netStats = stats.snapshot();
     ESP_LOGI(TAG,
-             "Diagnostics: net_cycle_count=%llu net_avg_cycle_work_ms=%llu net_min_cycle_work_ms=%llu net_max_cycle_work_ms=%llu",
-             (unsigned long long) netStats.count,
-             (unsigned long long) netStats.average,
-             (unsigned long long) netStats.min,
-             (unsigned long long) netStats.max);
+             "Diagnostics: net_cycle_count=%llu net_avg_cycle_work_ms=%llu net_min_cycle_work_ms=%llu "
+             "net_max_cycle_work_ms=%llu",
+             (unsigned long long)netStats.count, (unsigned long long)netStats.average, (unsigned long long)netStats.min,
+             (unsigned long long)netStats.max);
     if (taskHandle) {
         ESP_LOGI(TAG, "Network task stack HWM: %u bytes",
                  uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
     }
 #else
-    (void) now;
+    (void)now;
 #endif
 }
 
-void Network::initialize_wifi(const uint8_t &AP_FALLBACK_THRESHOLD) {
+void Network::initialize_wifi(const uint8_t& AP_FALLBACK_THRESHOLD) {
     if (!config.isConfigured()) {
         ESP_LOGI(TAG, "No WiFi configuration found - starting AP mode");
         mode = NetworkMode::AP;
@@ -126,7 +121,7 @@ void Network::initialize_wifi(const uint8_t &AP_FALLBACK_THRESHOLD) {
     }
 }
 
-void Network::handle_connection_failure(const uint8_t &AP_FALLBACK_THRESHOLD) {
+void Network::handle_connection_failure(const uint8_t& AP_FALLBACK_THRESHOLD) {
     // incrementConnectionFailures() already persists wifi_failures to NVS.
     const uint8_t newFailures = config.incrementConnectionFailures();
 
@@ -135,8 +130,8 @@ void Network::handle_connection_failure(const uint8_t &AP_FALLBACK_THRESHOLD) {
     // its association state. See the spec `network-wifi-resilience` →
     // "Exponential backoff on boot-time STA failure".
     const uint32_t backoffMs = Support::staFailureBackoffMs(newFailures);
-    ESP_LOGW(TAG, "Failed to connect (failure %u/%u) - waiting %u ms before retry...",
-             newFailures, AP_FALLBACK_THRESHOLD, backoffMs);
+    ESP_LOGW(TAG, "Failed to connect (failure %u/%u) - waiting %u ms before retry...", newFailures,
+             AP_FALLBACK_THRESHOLD, backoffMs);
 
     vTaskDelay(backoffMs / portTICK_PERIOD_MS);
     ESP.restart();
@@ -249,9 +244,8 @@ void Network::handle_network_events(const uint32_t now) {
 
         const uint32_t elapsedMs = millis() - startTime;
         if (elapsedMs > 500) {
-            ESP_LOGD(TAG, "Tick slow work: work=%lums wait=%lums status=%d",
-                     static_cast<unsigned long>(elapsedMs), static_cast<unsigned long>(LOOP_TICKS_MS),
-                     WiFi.status());
+            ESP_LOGD(TAG, "Tick slow work: work=%lums wait=%lums status=%d", static_cast<unsigned long>(elapsedMs),
+                     static_cast<unsigned long>(LOOP_TICKS_MS), WiFi.status());
         }
 
         stats.add(elapsedMs);
@@ -259,8 +253,7 @@ void Network::handle_network_events(const uint32_t now) {
         lastElapsedMs = elapsedMs;
     }
 #else
-    for (;;) {
-    }
+    for (;;) {}
 #endif
 }
 
@@ -279,20 +272,19 @@ void Network::startTask() {
     // exercised when the mark was taken: the AP/captive-portal fallback and the
     // mDNS re-advertisement on reconnect. The periodic "Network task stack HWM"
     // diagnostic re-measures this; raise it if the number ever approaches 0.
-    xTaskCreate(
-        taskWrapper, // Task Function
-        "Network", // Task Name
-        8192, // Stack Size (measured peak 3544 B, ~2.3x headroom)
-        this, // Parameters
-        1, // Priority
-        &taskHandle // Task Handle
+    xTaskCreate(taskWrapper, // Task Function
+                "Network",   // Task Name
+                8192,        // Stack Size (measured peak 3544 B, ~2.3x headroom)
+                this,        // Parameters
+                1,           // Priority
+                &taskHandle  // Task Handle
     );
 #endif
 }
 
-void Network::taskWrapper(void *pvParameters) {
+void Network::taskWrapper(void* pvParameters) {
     ESP_LOGI(TAG, "taskWrapper()");
-    auto *instance = static_cast<Network *>(pvParameters);
+    auto* instance = static_cast<Network*>(pvParameters);
     instance->task();
 }
 

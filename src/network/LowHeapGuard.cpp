@@ -16,8 +16,7 @@ namespace Net {
             return false;
         }
         lowStreak++;
-        ESP_LOGW(TAG, "Low internal heap %u bytes (%u/%u consecutive)",
-                 freeInternalBytes, lowStreak, RESTART_STREAK);
+        ESP_LOGW(TAG, "Low internal heap %u bytes (%u/%u consecutive)", freeInternalBytes, lowStreak, RESTART_STREAK);
         if (lowStreak >= RESTART_STREAK) {
             ESP_LOGE(TAG, "CRITICAL: Low heap persisted - restarting...");
             return true;

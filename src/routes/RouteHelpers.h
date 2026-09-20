@@ -36,8 +36,8 @@ inline const char* CSRF_HEADER_VALUE = "KlimaControl";
 
 // Returns true when the request carries the required CSRF header. Otherwise
 // sends a 403 response and returns false; the caller must stop processing.
-inline bool verifyCsrfHeader(AsyncWebServerRequest *request) {
-    const AsyncWebHeader *header = request->getHeader(CSRF_HEADER);
+inline bool verifyCsrfHeader(AsyncWebServerRequest* request) {
+    const AsyncWebHeader* header = request->getHeader(CSRF_HEADER);
     if (header == nullptr || header->value() != CSRF_HEADER_VALUE) {
         request->send(403, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_CSRF);
         return false;
@@ -45,8 +45,9 @@ inline bool verifyCsrfHeader(AsyncWebServerRequest *request) {
     return true;
 }
 
-inline void sendGzippedResponse(AsyncWebServerRequest *request, const char *contentType, const uint8_t *data, size_t len) {
-    AsyncWebServerResponse *response = request->beginResponse(200, contentType, data, len);
+inline void sendGzippedResponse(AsyncWebServerRequest* request, const char* contentType, const uint8_t* data,
+                                size_t len) {
+    AsyncWebServerResponse* response = request->beginResponse(200, contentType, data, len);
     response->addHeader("Content-Encoding", "gzip");
     response->addHeader("Cache-Control", "max-age=86400");
     request->send(response);
@@ -54,4 +55,4 @@ inline void sendGzippedResponse(AsyncWebServerRequest *request, const char *cont
 
 #endif
 
-#endif //KLIMACONTROL_ROUTEHELPERS_H
+#endif // KLIMACONTROL_ROUTEHELPERS_H

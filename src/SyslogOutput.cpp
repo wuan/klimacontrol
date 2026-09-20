@@ -80,12 +80,18 @@ void SyslogOutput::send(char level, const char* tag, const char* msg) {
 
 int SyslogOutput::levelToSeverity(char level) {
     switch (level) {
-        case 'E': return 3; // error
-        case 'W': return 4; // warning
-        case 'I': return 6; // informational
-        case 'D': return 7; // debug
-        case 'V': return 7; // debug
-        default:  return 6; // informational
+        case 'E':
+            return 3; // error
+        case 'W':
+            return 4; // warning
+        case 'I':
+            return 6; // informational
+        case 'D':
+            return 7; // debug
+        case 'V':
+            return 7; // debug
+        default:
+            return 6; // informational
     }
 }
 

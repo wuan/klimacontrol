@@ -419,4 +419,3 @@ The consolidated response SHALL NOT replace the standalone endpoints: `GET /api/
 
 - **WHEN** `GET /api/ota/status` has been extended with `check` and `update` blocks
 - **THEN** `GET /api/ota/check` SHALL continue to respond with the existing `status` / `current_version` / `latest_version` / `update_available` / `can_reinstall` / `is_dev_build_promotion` shape, and `GET /api/ota/update` SHALL continue to respond with the existing `status` / `percent` / `bytes` shape plus the new `expected_bytes` field
-

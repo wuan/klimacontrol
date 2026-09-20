@@ -27,8 +27,8 @@ namespace Sensor {
     }
 
     SensorReading SHT4x::read(const ReadConfig& config, const std::vector<Measurement>& prior) {
-        (void) config;
-        (void) prior;
+        (void)config;
+        (void)prior;
         SensorReading reading;
         reading.measurements.reserve(measurementCount());
         reading.timestamp = millis();
@@ -47,9 +47,8 @@ namespace Sensor {
             if (temperature > -30.0f && temperature < 80.0f && relativeHumidity > 5.0f && relativeHumidity < 100.0f) {
                 reading.measurements.push_back({MeasurementType::Temperature, temperature, getType(), false});
                 reading.measurements.push_back({MeasurementType::RelativeHumidity, relativeHumidity, getType(), false});
-                reading.measurements.push_back({
-                    MeasurementType::DewPoint, calcDewPoint(temperature, relativeHumidity), getType(), true
-                });
+                reading.measurements.push_back(
+                    {MeasurementType::DewPoint, calcDewPoint(temperature, relativeHumidity), getType(), true});
                 reading.valid = true;
             } else {
                 reading.valid = false;

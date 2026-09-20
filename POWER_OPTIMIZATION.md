@@ -129,10 +129,10 @@ static constexpr unsigned long TX_POWER_UPDATE_INTERVAL_MS = 60000; // Check eve
 
 if (now - lastTxPowerUpdate >= TX_POWER_UPDATE_INTERVAL_MS && isConnected) {
     lastTxPowerUpdate = now;
-    
+
     int32_t rssi = WiFi.RSSI();  // Signal strength in dBm (-50 to -100)
     wifi_power_t newPower = (wifi_power_t)energyConfig.wifi_power;
-    
+
     if (rssi > -60) {
         // Very close to AP - use minimum power
         newPower = WIFI_POWER_7dBm;      // 40 mA
@@ -143,7 +143,7 @@ if (now - lastTxPowerUpdate >= TX_POWER_UPDATE_INTERVAL_MS && isConnected) {
     } else {
         newPower = WIFI_POWER_17dBm;     // 100 mA
     }
-    
+
     if (newPower != WiFi.getTxPower()) {
         WiFi.setTxPower(newPower);
         ESP_LOGD(TAG, "WiFi TX power adjusted: RSSI=%d dBm, TxPower=%d", rssi, newPower);

@@ -16,7 +16,7 @@ void WebServerManager::setupSensorRoutes() {
 #ifdef ARDUINO
     // GET /api/sensors/config - Get sensor configuration as devices array
     // NOTE: Must be registered before /api/sensors to avoid prefix matching
-    server.on("/api/sensors/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    server.on("/api/sensors/config", HTTP_GET, [this](AsyncWebServerRequest* request) {
         Config::SensorConfig sensorConfig = config.loadSensorConfig();
 
         JsonDocument doc;
@@ -48,7 +48,7 @@ void WebServerManager::setupSensorRoutes() {
 
     // GET /api/sensors/registry - Get known sensor types and their I2C addresses
     // NOTE: Must be registered before /api/sensors to avoid prefix matching
-    server.on("/api/sensors/registry", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/api/sensors/registry", HTTP_GET, [](AsyncWebServerRequest* request) {
         JsonDocument doc;
 
         size_t registryCount;
@@ -68,62 +68,58 @@ void WebServerManager::setupSensorRoutes() {
     // POST /api/sensors/config - Save sensor configuration (triggers restart)
     // Accepts: {"devices": [{"address": 68, "type": "SHT4x"}, ...]}
     // NOTE: Must be registered before /api/sensors to avoid prefix matching
-    server.on("/api/sensors/config", HTTP_POST,
-              []([[maybe_unused]] AsyncWebServerRequest *request) {
-              },
-              nullptr,
-              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
-                  if (index == 0) {
-                      if (!verifyCsrfHeader(request)) {
-                          return;
-                      }
+    server.on(
+        "/api/sensors/config", HTTP_POST, []([[maybe_unused]] AsyncWebServerRequest* request) {}, nullptr,
+        [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, [[maybe_unused]] size_t total) {
+            if (index == 0) {
+                if (!verifyCsrfHeader(request)) {
+                    return;
+                }
 
-                      JsonDocument doc;
-                      DeserializationError error = deserializeJson(doc, data, len);
+                JsonDocument doc;
+                DeserializationError error = deserializeJson(doc, data, len);
 
-                      if (error) {
-                          request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
-                          return;
-                      }
+                if (error) {
+                    request->send(400, CONTENT_TYPE_JSON, JSON_RESPONSE_ERROR_INVALID_JSON);
+                    return;
+                }
 
-                      Config::SensorConfig sensorConfig;
-                      char* p = sensorConfig.assignments;
-                      size_t remaining = sizeof(sensorConfig.assignments);
+                Config::SensorConfig sensorConfig;
+                char* p = sensorConfig.assignments;
+                size_t remaining = sizeof(sensorConfig.assignments);
 
-                      JsonArray devices = doc["devices"];
-                      for (size_t i = 0; i < devices.size(); i++) {
-                          uint8_t addr = devices[i]["address"];
-                          const char* type = devices[i]["type"];
-                          if (!type) continue;
+                JsonArray devices = doc["devices"];
+                for (size_t i = 0; i < devices.size(); i++) {
+                    uint8_t addr = devices[i]["address"];
+                    const char* type = devices[i]["type"];
+                    if (!type) continue;
 
-                          int written = snprintf(p, remaining, "%s%u=%s",
-                                                 (p != sensorConfig.assignments) ? "," : "",
-                                                 addr, type);
-                          if (written > 0 && (size_t)written < remaining) {
-                              p += written;
-                              remaining -= written;
-                          }
-                      }
+                    int written =
+                        snprintf(p, remaining, "%s%u=%s", (p != sensorConfig.assignments) ? "," : "", addr, type);
+                    if (written > 0 && (size_t)written < remaining) {
+                        p += written;
+                        remaining -= written;
+                    }
+                }
 
-                      config.saveSensorConfig(sensorConfig);
-                      config.requestRestart(1000);
+                config.saveSensorConfig(sensorConfig);
+                config.requestRestart(1000);
 
-                      request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
-                  }
-              }
-    );
+                request->send(200, CONTENT_TYPE_JSON, JSON_RESPONSE_SUCCESS);
+            }
+        });
 
     // GET /api/sensors - Get sensor information
     // Sized to hold up to 10 sensors × 5+ measurements × ~30 bytes each, plus
     // the per-sensor block. 1024 is the documented cap for this route —
     // larger than the 512-byte baseline because the sensor list is the largest
     // fixed-cost output of the API.
-    server.on("/api/sensors", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    server.on("/api/sensors", HTTP_GET, [this](AsyncWebServerRequest* request) {
         JsonDocument doc;
         JsonArray sensors = doc["sensors"].to<JsonArray>();
 
         for (size_t i = 0; i < sensorController.getSensorCount(); i++) {
-            Sensor::Sensor *sensor = sensorController.getSensor(i);
+            Sensor::Sensor* sensor = sensorController.getSensor(i);
             if (sensor) {
                 auto sensorObj = sensors.add<JsonObject>();
                 sensorObj["type"] = sensor->getType();
@@ -145,16 +141,16 @@ void WebServerManager::setupSensorRoutes() {
             return static_cast<float>(NAN);
         };
 
-        doc["current_temperature"] = snap.valid ? floatOf(Sensor::MeasurementType::Temperature)
-                                                : static_cast<float>(NAN);
-        doc["current_humidity"] = snap.valid ? floatOf(Sensor::MeasurementType::RelativeHumidity)
-                                             : static_cast<float>(NAN);
+        doc["current_temperature"] =
+            snap.valid ? floatOf(Sensor::MeasurementType::Temperature) : static_cast<float>(NAN);
+        doc["current_humidity"] =
+            snap.valid ? floatOf(Sensor::MeasurementType::RelativeHumidity) : static_cast<float>(NAN);
         doc["data_valid"] = snap.valid;
         doc["data_timestamp"] = snap.timestamp;
 
         // Add measurements array
         JsonArray measurements = doc["measurements"].to<JsonArray>();
-        for (const auto &m : snap.measurements) {
+        for (const auto& m : snap.measurements) {
             auto mObj = measurements.add<JsonObject>();
             mObj["type"] = Sensor::measurementTypeLabel(m.type);
             if (auto* i = std::get_if<int32_t>(&m.value)) {

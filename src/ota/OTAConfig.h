@@ -45,7 +45,7 @@ namespace Support {
      * `OTA_FIRMWARE_ASSET` for why. Pure C++, no Arduino-only headers, so it
      * can be exercised from a native test without dragging in <esp_http_client.h>.
      */
-    inline bool isExpectedFirmwareAsset(const char *name) {
+    inline bool isExpectedFirmwareAsset(const char* name) {
         if (name == nullptr) {
             return false;
         }

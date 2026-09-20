@@ -39,8 +39,7 @@ namespace Support {
      * the hook is still called once after the throw propagates, so the
      * watchdog is fed even in the error path.
      */
-    template <typename Fn>
-    bool guardedCall(Fn&& fn) {
+    template <typename Fn> bool guardedCall(Fn&& fn) {
         feedWdt();
         bool result;
         try {

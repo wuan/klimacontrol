@@ -29,10 +29,10 @@ namespace Display {
      */
     class DisplayManager {
     public:
-        DisplayManager(SensorController &controller, Control::TemperatureController &control);
+        DisplayManager(SensorController& controller, Control::TemperatureController& control);
 
-        DisplayManager(const DisplayManager &) = delete;
-        DisplayManager &operator=(const DisplayManager &) = delete;
+        DisplayManager(const DisplayManager&) = delete;
+        DisplayManager& operator=(const DisplayManager&) = delete;
 
         /**
          * Initialise the panel and paint the boot splash. Only called when the
@@ -42,7 +42,7 @@ namespace Display {
          * @param deviceName Name shown on the splash and in the footer
          * @return false if the panel faulted during initialisation
          */
-        bool begin(const Config::DisplayConfig &config, const char *deviceName);
+        bool begin(const Config::DisplayConfig& config, const char* deviceName);
 
         /**
          * Stop refreshing, blank the panel, and put it to sleep.
@@ -98,14 +98,14 @@ namespace Display {
          * No-op on the panel state when the manager was already enabled
          * — the panel's `initialised` flag is left as-is.
          */
-        bool tryBeginForApInfo(const Config::DisplayConfig &config);
+        bool tryBeginForApInfo(const Config::DisplayConfig& config);
 
         /**
          * Paint the AP info screen and set `apModeActive` so the normal
          * `update()` tick does not paint temperature on top of the
          * password. No-op if the panel is not initialised.
          */
-        void showApInfo(const char *ssid, const char *password, const char *ip);
+        void showApInfo(const char* ssid, const char* password, const char* ip);
 
         /**
          * Clear `apModeActive`. A panel in normal operation is left
@@ -130,15 +130,15 @@ namespace Display {
          * Supplies the footer clock. Set by main.cpp once Network exists;
          * nullptr simply means no clock is drawn.
          */
-        void setNetwork(Network *net) { network = net; }
+        void setNetwork(Network* net) { network = net; }
 
         bool isEnabled() const { return enabled; }
         bool hasFaulted() const { return panel.hasFaulted(); }
 
     private:
-        SensorController &controller;
-        Control::TemperatureController &control;
-        Network *network = nullptr;
+        SensorController& controller;
+        Control::TemperatureController& control;
+        Network* network = nullptr;
 
         EPaperDisplay panel;
         RefreshPolicy policy;
@@ -162,7 +162,7 @@ namespace Display {
         // Renders the current local date and time as "YY-MM-DD HH:MM" into
         // `out`, or an empty string when NTP has not synced (or no Network is
         // wired in) — the footer then stays blank rather than claiming a time.
-        void formatDateTime(char *out, size_t n) const;
+        void formatDateTime(char* out, size_t n) const;
     };
 
 } // namespace Display
