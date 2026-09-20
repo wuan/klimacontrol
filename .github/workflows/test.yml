@@ -27,6 +27,23 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install clang-format and shellcheck
+        # System deps for the .pre-commit-config.yaml hooks (clang-format
+        # dry-run on staged C/C++, shellcheck on scripts/*.sh).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format shellcheck
+
+      - name: Run pre-commit hooks
+        # Mirrors the local pre-commit gate: clang-format, shellcheck,
+        # openspec validate, plus the standard hygiene hooks
+        # (whitespace, EOF newlines, YAML/JSON/TOML syntax, etc.).
+        # Fails fast so a formatting regression surfaces before the
+        # PlatformIO build kicks off.
+        uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files --show-diff-on-failure
+
       - name: Install build-wrapper
         uses: SonarSource/sonarqube-scan-action/install-build-wrapper@v8
 
