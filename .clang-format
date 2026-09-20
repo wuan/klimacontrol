@@ -64,3 +64,9 @@ NamespaceIndentation: All
 IndentCaseLabels: true
 FixNamespaceComments: false
 AccessModifierOffset: -4
+
+# Don't pad lines up to the column limit before `\` line-continuations.
+# Without this, multi-line macros are reformatted on every clang-format
+# version bump, and CI's older clang-format (Ubuntu's default) disagrees
+# with newer versions on how much trailing whitespace to insert.
+AlignEscapedNewlines: DontAlign

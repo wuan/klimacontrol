@@ -29,15 +29,15 @@
 #undef ESP_LOGD
 #undef ESP_LOGV
 
-#define _KLIMA_LOG(letter, tag, format, ...)                                                                           \
-    do {                                                                                                               \
-        Serial.printf("%08lu " #letter " %8s " format "\r\n", (unsigned long)(esp_timer_get_time() / 1000ULL),         \
-                      tag, ##__VA_ARGS__);                                                                             \
-        if (SyslogOutput::isActive()) {                                                                                \
-            char _syslog_buf[256];                                                                                     \
-            snprintf(_syslog_buf, sizeof(_syslog_buf), format, ##__VA_ARGS__);                                         \
-            SyslogOutput::send(#letter[0], tag, _syslog_buf);                                                          \
-        }                                                                                                              \
+#define _KLIMA_LOG(letter, tag, format, ...) \
+    do { \
+        Serial.printf("%08lu " #letter " %8s " format "\r\n", (unsigned long)(esp_timer_get_time() / 1000ULL), \
+                      tag, ##__VA_ARGS__); \
+        if (SyslogOutput::isActive()) { \
+            char _syslog_buf[256]; \
+            snprintf(_syslog_buf, sizeof(_syslog_buf), format, ##__VA_ARGS__); \
+            SyslogOutput::send(#letter[0], tag, _syslog_buf); \
+        } \
     } while (0)
 
 #define ESP_LOGE(tag, format, ...) _KLIMA_LOG(E, tag, format, ##__VA_ARGS__)
@@ -51,16 +51,16 @@
 #if CORE_DEBUG_LEVEL >= 4
 #define ESP_LOGD(tag, format, ...) _KLIMA_LOG(D, tag, format, ##__VA_ARGS__)
 #else
-#define ESP_LOGD(tag, format, ...)                                                                                     \
-    do {                                                                                                               \
+#define ESP_LOGD(tag, format, ...) \
+    do { \
     } while (0)
 #endif
 
 #if CORE_DEBUG_LEVEL >= 5
 #define ESP_LOGV(tag, format, ...) _KLIMA_LOG(V, tag, format, ##__VA_ARGS__)
 #else
-#define ESP_LOGV(tag, format, ...)                                                                                     \
-    do {                                                                                                               \
+#define ESP_LOGV(tag, format, ...) \
+    do { \
     } while (0)
 #endif
 
