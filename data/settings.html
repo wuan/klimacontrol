@@ -402,11 +402,23 @@
 
             <div id="updateAvailable" style="display: none; margin-top: 15px;">
                 <div class="success-box">
-                    <strong>Update Available!</strong><br>
+                    <strong id="updateAvailableTitle">Update Available!</strong><br>
                     <strong>Version: </strong><span id="latestVersion"></span><br>
                     <strong>Size: </strong><span id="updateSize"></span>
                 </div>
-                <button class="btn btn-primary" onclick="performUpdate()" id="installUpdateBtn">Install Update</button>
+                <div id="reinstallSection" style="display: none; margin-top: 10px;">
+                    <div class="form-group" style="display: flex; align-items: flex-start; gap: 12px;">
+                        <label class="toggle-switch" style="margin-top: 2px; flex-shrink: 0;">
+                            <input type="checkbox" id="allowReinstall">
+                            <span class="slider"></span>
+                        </label>
+                        <div style="flex: 1;">
+                            <div id="reinstallLabel" class="toggle-label"></div>
+                            <small class="device-subtitle" style="display: block; margin-top: 4px;">Overwrites the other slot &mdash; no rollback target until the next release.</small>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-primary" id="installUpdateBtn" onclick="performUpdate({allowReinstall: document.getElementById('allowReinstall').checked})">Install Update</button>
             </div>
 
             <div id="updateProgress" style="display: none; margin-top: 15px;">
@@ -420,9 +432,23 @@
 
             <div id="updateResult" style="display: none; margin-top: 15px;"></div>
 
-            <div class="warning-box">
+            <div id="installWarning" class="warning-box" style="display: none;">
                 <strong>Note:</strong> The device will restart after installing an update. Make sure you have a stable
                 WiFi connection before updating.
+            </div>
+
+            <h3 id="advancedHeading" style="margin-top: 24px; font-size: 1.05em;">Advanced</h3>
+            <div id="rollbackSection" style="margin-top: 10px;">
+                <div class="info-box">
+                    <strong>Other partition: </strong><span id="otherPartitionVersion">Loading&hellip;</span>
+                </div>
+                <button class="btn btn-sm" id="rollbackBtn" onclick="performRollback()" disabled>Roll back to previous</button>
+                <div id="rollbackResult" style="margin-top: 10px;"></div>
+            </div>
+            <div id="rollbackWarning" class="warning-box">
+                <strong>Note:</strong> Both the reinstall and rollback actions overwrite the other slot.
+                After either one, there is no automatic fallback until the next release &mdash; if the new
+                image has a problem you will need to wait for a fix to be published.
             </div>
         </div>
 
@@ -861,6 +887,17 @@
         btn.textContent = 'Checking...';
         resultDiv.style.display = 'none';
         document.getElementById('updateAvailable').style.display = 'none';
+        // The reinstall block lives inside updateAvailable, so it hides too.
+        document.getElementById('reinstallSection').style.display = 'none';
+        // The install button and its restart warning live outside
+        // #updateAvailable, so reset them explicitly. Each branch below
+        // restores them when an install is actually possible.
+        document.getElementById('installUpdateBtn').style.display = 'none';
+        document.getElementById('installWarning').style.display = 'none';
+        // Reinstall mode resets the opt-in so the install button stays
+        // hidden until the user re-ticks the checkbox.
+        const reinstallBox = document.getElementById('allowReinstall');
+        if (reinstallBox) reinstallBox.checked = false;
 
         try {
             // Start the background check, then poll for the result.
@@ -871,9 +908,33 @@
                 updateInfo = data;
                 document.getElementById('latestVersion').textContent = data.latest_version;
                 document.getElementById('updateSize').textContent = formatBytes(data.size_bytes);
+                document.getElementById('updateAvailableTitle').textContent = 'Update Available!';
                 document.getElementById('updateAvailable').style.display = 'block';
+                document.getElementById('reinstallSection').style.display = 'none';
                 resultDiv.style.display = 'none';
                 btn.textContent = 'Update Available!';
+                // Regular update: install button and warning both visible.
+                updateInstallButtonVisibility();
+            } else if (data.can_reinstall) {
+                // Semver-equal: the strict-newer path is closed, but the opt-in
+                // reinstall path is open. Show the checkbox rather than an
+                // "Up to date" message — the user explicitly wanted this.
+                updateInfo = data;
+                document.getElementById('latestVersion').textContent = data.latest_version;
+                document.getElementById('updateSize').textContent = formatBytes(data.size_bytes);
+                document.getElementById('updateAvailableTitle').textContent =
+                    data.is_dev_build_promotion ? 'Promote dev build' : 'Already up to date';
+                document.getElementById('reinstallLabel').textContent = data.is_dev_build_promotion
+                    ? 'Promote dev build to ' + data.latest_version + ' (replace ' + data.current_version + ')'
+                    : 'Reinstall firmware ' + data.latest_version;
+                document.getElementById('reinstallSection').style.display = 'block';
+                document.getElementById('updateAvailable').style.display = 'block';
+                resultDiv.style.display = 'none';
+                btn.textContent = 'Check for Updates';
+                btn.disabled = false;
+                // Install button + restart warning only appear when the user
+                // has opted in to the reinstall action.
+                updateInstallButtonVisibility();
             } else if (data.status === 'error' || data.error) {
                 resultDiv.className = 'warning-box';
                 resultDiv.innerHTML = '<strong>Update check failed</strong><br>' + esc(data.error || 'Unknown error');
@@ -887,6 +948,11 @@
                 btn.textContent = 'Check for Updates';
                 btn.disabled = false;
             }
+
+            // Populate the Advanced section regardless of which path above
+            // fired — the rollback button lives independently of the
+            // reinstall/update flow.
+            await loadRollbackInfo();
         } catch (error) {
             console.error('Failed to check for updates:', error);
             resultDiv.className = 'warning-box';
@@ -897,13 +963,115 @@
         }
     }
 
-    async function performUpdate() {
+    // The Install button (and its "device will restart" warning) is hidden
+    // when in reinstall mode and the checkbox is not ticked: the device
+    // refuses allow_reinstall=false in that case, so showing a clickable
+    // button would only lead to a 409. Outside reinstall mode (regular
+    // update_available) the button and warning stay visible. Called on every
+    // checkbox toggle and whenever reinstall mode is entered.
+    function updateInstallButtonVisibility() {
+        const reinstallSection = document.getElementById('reinstallSection');
+        const installBtn = document.getElementById('installUpdateBtn');
+        const warning = document.getElementById('installWarning');
+        const box = document.getElementById('allowReinstall');
+        if (!reinstallSection || !installBtn) return;
+        const inReinstallMode = reinstallSection.style.display === 'block';
+        const hidden = inReinstallMode && box && !box.checked;
+        installBtn.style.display = hidden ? 'none' : '';
+        if (warning) warning.style.display = hidden ? 'none' : '';
+    }
+
+    // Wire the checkbox to the install button on page load. The script tag is
+    // at the end of <body>, so the checkbox element is already in the DOM by
+    // the time this runs.
+    {
+        const box = document.getElementById('allowReinstall');
+        if (box) box.addEventListener('change', updateInstallButtonVisibility);
+    }
+
+    // Populate the Advanced section's rollback info from GET /api/ota/rollback.
+    // The Advanced block is always rendered (so the user sees the rollback
+    // action without having to check for updates first); this just fills in
+    // the version on the other partition and gates the button on the result.
+    async function loadRollbackInfo() {
+        const versionSpan = document.getElementById('otherPartitionVersion');
+        const rollbackBtn = document.getElementById('rollbackBtn');
+        const result = document.getElementById('rollbackResult');
+        result.textContent = '';
+        try {
+            const r = await fetch('/api/ota/rollback');
+            const d = await r.json();
+            if (d.available) {
+                versionSpan.textContent = esc(d.version);
+                if (rollbackBtn) rollbackBtn.disabled = false;
+            } else {
+                // Other partition has no readable image header (factory-fresh
+                // device, failed prior flash, or a header that fails the SDK's
+                // validation). Keep the section visible so the user sees why
+                // the button is disabled rather than the section vanishing.
+                versionSpan.textContent = '(empty)';
+                if (rollbackBtn) rollbackBtn.disabled = true;
+            }
+        } catch (e) {
+            versionSpan.textContent = '(unavailable)';
+            if (rollbackBtn) rollbackBtn.disabled = true;
+            console.error('Failed to load rollback info:', e);
+        }
+    }
+
+    // POST /api/ota/rollback. The action flips the boot target and restarts
+    // the device — confirm() is the only safety net, so be explicit about the
+    // version we are rolling back to.
+    async function performRollback() {
+        const versionSpan = document.getElementById('otherPartitionVersion');
+        const version = versionSpan.textContent;
+        if (!version || version === 'Loading\u2026') {
+            alert('No rollback target available.');
+            return;
+        }
+        if (!confirm('Roll back to ' + version + '?\n\nThe device will restart into the other partition.')) {
+            return;
+        }
+        const btn = document.getElementById('rollbackBtn');
+        const result = document.getElementById('rollbackResult');
+        btn.disabled = true;
+        btn.textContent = 'Rolling back\u2026';
+        try {
+            const r = await fetch('/api/ota/rollback', {
+                method: 'POST', headers: {'X-Requested-With': 'KlimaControl'}
+            });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok) {
+                result.className = 'success-box';
+                result.innerHTML = '<strong>Rollback started.</strong> The device is restarting &mdash; reload this page in a few seconds.';
+                btn.textContent = 'Roll back to previous';
+            } else {
+                result.className = 'warning-box';
+                result.innerHTML = '<strong>Rollback refused</strong><br>' + esc(d.message || 'Unknown error');
+                btn.disabled = false;
+                btn.textContent = 'Roll back to previous';
+            }
+        } catch (e) {
+            result.className = 'warning-box';
+            result.innerHTML = 'Could not reach the device.';
+            btn.disabled = false;
+            btn.textContent = 'Roll back to previous';
+        }
+    }
+
+    async function performUpdate(options) {
         if (!updateInfo) {
             alert('No update information available. Please check for updates first.');
             return;
         }
+        options = options || {};
 
-        if (!confirm('Install firmware update ' + updateInfo.latest_version + '?\n\nThe device will restart after the update completes.')) {
+        const confirmMsg = options.allowReinstall
+            ? (updateInfo.is_dev_build_promotion
+                ? 'Promote dev build ' + (updateInfo.current_version || '') + ' to ' + updateInfo.latest_version + '?\n\nThis overwrites the other slot — no rollback target until the next release.'
+                : 'Reinstall firmware ' + updateInfo.latest_version + '?\n\nThis overwrites the other slot — no rollback target until the next release.')
+            : 'Install firmware update ' + updateInfo.latest_version + '?\n\nThe device will restart after the update completes.';
+        if (!confirm(confirmMsg)) {
             return;
         }
 
@@ -926,8 +1094,17 @@
         try {
             // No download URL is sent: the device installs only the release it
             // found during its own update check, so it can't be pointed at an
-            // arbitrary binary.
-            const response = await fetch('/api/ota/update', {method: 'POST', headers: {'X-Requested-With': 'KlimaControl'}});
+            // arbitrary binary. allow_reinstall is the opt-in for the
+            // semver-equal case; absent defaults to today's strict-newer
+            // behaviour.
+            const fetchOpts = {
+                method: 'POST', headers: {'X-Requested-With': 'KlimaControl'}
+            };
+            if (options.allowReinstall) {
+                fetchOpts.headers['Content-Type'] = 'application/json';
+                fetchOpts.body = JSON.stringify({allow_reinstall: true});
+            }
+            const response = await fetch('/api/ota/update', fetchOpts);
 
             if (!response.ok) {
                 showFailure('The device refused to start the update. It may already be busy, or the update is no longer newer than the running firmware.');
@@ -1588,6 +1765,7 @@
     async function loadAll() {
         await loadStatus();
         await loadOTAStatus();
+        await loadRollbackInfo();
         await loadSensorConfig();
         await loadMqttConfig();
         await loadSyslogConfig();

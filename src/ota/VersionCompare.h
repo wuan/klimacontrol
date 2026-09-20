@@ -56,6 +56,23 @@ namespace Support {
         return compareVersions(current, available) > 0;
     }
 
+    /**
+     * Gate behind both the default strict-newer update path and the opt-in
+     * reinstall path on POST /api/ota/update. Strictly newer always proceeds;
+     * strictly older never proceeds (the existing "Older release is never
+     * installed" scenario); semver-equal proceeds only when the caller has set
+     * `allowReinstall`. Lives in this header so the native test can exercise it
+     * without dragging in OTA headers.
+     */
+    inline bool isReinstallOrNewer(const char *current,
+                                   const char *available,
+                                   bool allowReinstall) {
+        int cmp = compareVersions(current, available);
+        if (cmp > 0) return true;            // strictly newer
+        if (cmp < 0) return false;           // strictly older — refused either way
+        return allowReinstall;               // semver-equal — gated by flag
+    }
+
 } // namespace Support
 
 #endif // KLIMACONTROL_VERSION_COMPARE_H

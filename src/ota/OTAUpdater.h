@@ -151,22 +151,45 @@ public:
      * a GitHub release for the compiled-in owner/repo — and never from the
      * caller. This is deliberate: clients must not be able to point the device
      * at an arbitrary binary. A check (CheckState::Done with a valid asset that
-     * is strictly newer than the running version) must have completed first.
+     * is strictly newer than the running version, OR semver-equal when
+     * `allowReinstall` is true) must have completed first.
      *
      * The multi-minute download runs on the background OTA task so the HTTP
      * handler can respond right away; on success the worker schedules a restart
      * via the supplied ConfigManager.
      *
+     * @param allowReinstall when true, permits installing the latest release
+     *        when it is semver-equal to the running version. Refused while
+     *        hasUnconfirmedUpdate() is true (the partition being written is the
+     *        only remaining rollback target the spec preserves).
      * @return true if the worker was started; false if no verified newer update
      *         is available, or a check/update is already in progress.
      */
-    static bool startBackgroundUpdateFromLatestCheck(Config::ConfigManager &config);
+    static bool startBackgroundUpdateFromLatestCheck(
+        Config::ConfigManager &config,
+        bool allowReinstall = false
+    );
 
     static bool confirmBoot();
     static bool hasUnconfirmedUpdate();
     static bool getRunningPartitionInfo(String &label, uint32_t &address);
     static void getMemoryInfo(uint32_t &freeHeap, uint32_t &minFreeHeap);
     static bool hasEnoughMemory();
+
+#ifdef ARDUINO
+    // Returns true when the other partition has a readable image header. On
+    // success, `versionOut` is set to the header's esp_app_desc_t::version
+    // string (e.g., "v0.0.73" or "v0.0.73-4-gabc1234"). On failure, `versionOut`
+    // is empty. Reports the version that would boot after a rollback — used by
+    // GET /api/ota/rollback to label the button honestly.
+    static bool getOtherPartitionVersion(String &versionOut);
+
+    // Calls esp_ota_set_boot_partition() on the other partition and schedules a
+    // restart. No download, no flash — the image on the other partition was
+    // already verified when it was originally flashed. Refused while
+    // isUpdateInProgress() or hasUnconfirmedUpdate() is true.
+    static bool rollbackToOtherPartition(Config::ConfigManager &config);
+#endif
 
     // True while a check or an update is running. The network task's low-heap
     // guard consults this to avoid rebooting the device mid-OTA, when TLS

@@ -12,6 +12,7 @@
 
 using Support::compareVersions;
 using Support::isNewerVersion;
+using Support::isReinstallOrNewer;
 
 void setUp() {}
 void tearDown() {}
@@ -91,6 +92,42 @@ void test_default_dev_version_accepts_any_release() {
     TEST_ASSERT_TRUE(isNewerVersion("v0.0.0-dev", "v1.0.0"));
 }
 
+// --- isReinstallOrNewer: the gate behind the strict-newer default and the
+// opt-in reinstall path on POST /api/ota/update. Strictly newer always
+// proceeds; strictly older never proceeds; semver-equal proceeds only with
+// allowReinstall. Lives in this header so the native test can exercise it
+// without dragging in OTA headers.
+
+// Strictly newer proceeds regardless of the flag.
+void test_is_reinstall_or_newer_strict_newer() {
+    TEST_ASSERT_TRUE(isReinstallOrNewer("v1.0.0", "v1.0.1", false));
+    TEST_ASSERT_TRUE(isReinstallOrNewer("v1.0.0", "v1.0.1", true));
+    TEST_ASSERT_TRUE(isReinstallOrNewer("v1.2.3", "v2.0.0", false));
+    TEST_ASSERT_TRUE(isReinstallOrNewer("v1.2.3", "v2.0.0", true));
+}
+
+// Strictly older never proceeds, even with allowReinstall=true (the flag
+// unlocks only the semver-equal case).
+void test_is_reinstall_or_newer_strict_older() {
+    TEST_ASSERT_FALSE(isReinstallOrNewer("v1.0.1", "v1.0.0", false));
+    TEST_ASSERT_FALSE(isReinstallOrNewer("v1.0.1", "v1.0.0", true));
+    TEST_ASSERT_FALSE(isReinstallOrNewer("v2.0.0", "v1.2.3", false));
+    TEST_ASSERT_FALSE(isReinstallOrNewer("v2.0.0", "v1.2.3", true));
+}
+
+// Semver-equal with strict string equality: gated by the flag.
+void test_is_reinstall_or_newer_semver_equal_clean() {
+    TEST_ASSERT_FALSE(isReinstallOrNewer("v0.0.74", "v0.0.74", false));
+    TEST_ASSERT_TRUE(isReinstallOrNewer("v0.0.74", "v0.0.74", true));
+}
+
+// A git-describe dev build vs the matching tagged release: semver-equal
+// (suffix is ignored), so the same flag gate applies.
+void test_is_reinstall_or_newer_dev_build_vs_tagged() {
+    TEST_ASSERT_FALSE(isReinstallOrNewer("v1.2.3-4-gabc1234", "v1.2.3", false));
+    TEST_ASSERT_TRUE(isReinstallOrNewer("v1.2.3-4-gabc1234", "v1.2.3", true));
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_version_compare_newer_available);
@@ -107,6 +144,10 @@ int runUnityTests() {
     RUN_TEST(test_is_newer_true_only_when_greater);
     RUN_TEST(test_untagged_dev_build_is_not_offered_a_downgrade);
     RUN_TEST(test_default_dev_version_accepts_any_release);
+    RUN_TEST(test_is_reinstall_or_newer_strict_newer);
+    RUN_TEST(test_is_reinstall_or_newer_strict_older);
+    RUN_TEST(test_is_reinstall_or_newer_semver_equal_clean);
+    RUN_TEST(test_is_reinstall_or_newer_dev_build_vs_tagged);
     return UNITY_END();
 }
 

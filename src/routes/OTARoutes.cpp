@@ -3,6 +3,7 @@
 
 #include "Config.h"
 #include "ota/OTAUpdater.h"
+#include "ota/VersionCompare.h"
 #include "Constants.h"
 #include "ota/OTAConfig.h"
 
@@ -55,6 +56,19 @@ void WebServerManager::setupOTARoutes() {
                 doc["latest_version"] = info.version;
                 doc["release_name"] = info.name;
                 doc["size_bytes"] = info.size;
+                // Semver-equal — the opt-in reinstall path is available. The
+                // strict-newer path is covered by update_available above.
+                {
+                    int cmp = Support::compareVersions(FIRMWARE_VERSION, info.version.c_str());
+                    bool semverEqual = (cmp == 0);
+                    doc["can_reinstall"] = semverEqual;
+                    // When semver-equal but the strings differ, the user is on
+                    // a git-describe dev build and the latest is the matching
+                    // tagged release. The UI uses this to label the action
+                    // honestly (Promote dev build, not Reinstall).
+                    doc["is_dev_build_promotion"] =
+                        semverEqual && strcmp(FIRMWARE_VERSION, info.version.c_str()) != 0;
+                }
                 // The download URL is deliberately NOT exposed: the device
                 // updates only from its own checked result, so clients never
                 // need it and cannot supply one.
@@ -78,22 +92,55 @@ void WebServerManager::setupOTARoutes() {
     // so a client cannot point it at an arbitrary binary. A successful check
     // must have run first.
     //
+    // The optional JSON body field `allow_reinstall` opts the caller into the
+    // semver-equal case (e.g. "Reinstall current version" or "Promote dev
+    // build to the tagged release"). Absent or false preserves the default
+    // strict-newer-only behaviour.
+    //
     // startBackgroundUpdateFromLatestCheck() only spawns a worker (the actual
     // multi-minute download runs there), so it returns quickly and is safe to
     // call inline on the AsyncTCP event task.
-    server.on("/api/ota/update", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    //
+    // The three-arg form (onRequest / nullptr for onUpload / onBody) is the
+    // ESPAsyncWebServer pattern for routes that need to read a small JSON
+    // body: onBody is invoked as the body chunks arrive, and only when there
+    // is a body — so the empty-body case keeps the default allow_reinstall=
+    // false and matches today's behaviour.
+    server.on("/api/ota/update", HTTP_POST,
+              []([[maybe_unused]] AsyncWebServerRequest *request) {},
+              nullptr,
+              [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, [[maybe_unused]] size_t total) {
         if (!verifyCsrfHeader(request)) {
             return;
         }
-        ESP_LOGI(TAG, "OTA update requested");
+        // Only parse the first chunk — the body is small and we just need
+        // the allow_reinstall flag.
+        if (index != 0) {
+            return;
+        }
 
-        if (OTAUpdater::startBackgroundUpdateFromLatestCheck(this->config)) {
+        bool allowReinstall = false;
+        if (len > 0) {
+            JsonDocument doc;
+            DeserializationError err = deserializeJson(doc, data, len);
+            if (err) {
+                request->send(400, CONTENT_TYPE_JSON,
+                              R"({"status":"error","message":"Invalid JSON body"})");
+                return;
+            }
+            allowReinstall = doc["allow_reinstall"].as<bool>();
+        }
+
+        ESP_LOGI(TAG, "OTA update requested (allow_reinstall=%s)",
+                 allowReinstall ? "true" : "false");
+
+        if (OTAUpdater::startBackgroundUpdateFromLatestCheck(this->config, allowReinstall)) {
             request->send(200, CONTENT_TYPE_JSON,
                           R"({"status":"starting","message":"OTA update started"})");
         } else {
-            ESP_LOGW(TAG, "OTA update not started (no verified update, busy, or task creation failed)");
+            ESP_LOGW(TAG, "OTA update not started (no verified update, busy, pending verify, or task creation failed)");
             request->send(409, CONTENT_TYPE_JSON,
-                          R"({"status":"error","message":"No verified update available or update already in progress"})");
+                          R"({"status":"error","message":"No verified update available, or update already in progress"})");
         }
     });
 
@@ -188,6 +235,41 @@ void WebServerManager::setupOTARoutes() {
         String response;
         serializeJson(doc, response);
         request->send(success ? 200 : 500, CONTENT_TYPE_JSON, response);
+    });
+
+    // GET /api/ota/rollback - Report the version that would boot after a
+    // rollback to the other partition. Reads the image header without booting
+    // from it; returns available: false when the header cannot be read
+    // (factory-fresh device, failed prior flash, or invalid header).
+    server.on("/api/ota/rollback", HTTP_GET, [](AsyncWebServerRequest *request) {
+        JsonDocument doc;
+        String version;
+        if (OTAUpdater::getOtherPartitionVersion(version)) {
+            doc["available"] = true;
+            doc["version"] = version;
+        } else {
+            doc["available"] = false;
+        }
+        String response;
+        serializeJson(doc, response);
+        request->send(200, CONTENT_TYPE_JSON, response);
+    });
+
+    // POST /api/ota/rollback - Switch the boot target to the other partition.
+    // No download, no flash: the image on the other partition was already
+    // verified when it was originally flashed. Refused while isUpdateInProgress()
+    // or hasUnconfirmedUpdate() is true.
+    server.on("/api/ota/rollback", HTTP_POST, [this](AsyncWebServerRequest *request) {
+        if (!verifyCsrfHeader(request)) {
+            return;
+        }
+        if (OTAUpdater::rollbackToOtherPartition(this->config)) {
+            request->send(200, CONTENT_TYPE_JSON,
+                          R"json({"status":"starting","message":"Rolling back, device is restarting"})json");
+        } else {
+            request->send(409, CONTENT_TYPE_JSON,
+                          R"json({"status":"error","message":"Rollback refused (update in progress, unconfirmed update, or other slot empty)"})json");
+        }
     });
 #endif
 }

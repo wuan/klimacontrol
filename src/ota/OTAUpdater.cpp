@@ -467,7 +467,10 @@ OTAUpdater::UpdateState OTAUpdater::getUpdateProgress(int &percentOut, size_t &b
     return UpdateState::Idle;
 }
 
-bool OTAUpdater::startBackgroundUpdateFromLatestCheck(Config::ConfigManager &config) {
+bool OTAUpdater::startBackgroundUpdateFromLatestCheck(
+    Config::ConfigManager &config,
+    bool allowReinstall
+) {
     FirmwareInfo info;
     CheckState state = getCheckResult(info);
 
@@ -477,13 +480,23 @@ bool OTAUpdater::startBackgroundUpdateFromLatestCheck(Config::ConfigManager &con
         return false;
     }
 
-    // Only ever move forward. Without an ordering comparison an untagged
-    // developer build (FIRMWARE_VERSION "v1.2.3-4-gabc1234") differs textually
-    // from the v1.2.3 release, so the device would have offered — and
-    // installed — a downgrade while calling it an update.
-    if (!isUpdateAvailable(info)) {
+    // Strict-greater default; semver-equal requires allow_reinstall. The
+    // ordering predicate (not textual inequality) is what makes an untagged
+    // developer build (FIRMWARE_VERSION "v1.2.3-4-gabc1234") refuse the v1.2.3
+    // release by default — otherwise the device would have offered, and
+    // installed, a downgrade while calling it an update.
+    if (!Support::isReinstallOrNewer(FIRMWARE_VERSION, info.version.c_str(), allowReinstall)) {
         ESP_LOGW(TAG, "Update refused: %s is not newer than running %s",
                  info.version.c_str(), FIRMWARE_VERSION);
+        return false;
+    }
+
+    // Protect the rollback target the spec already preserves: an unconfirmed
+    // update means the partition we'd overwrite is the only one still pointing
+    // at the previously known-good image. Reinstall writes to the same
+    // partition the regular worker targets, so the same protection applies.
+    if (hasUnconfirmedUpdate()) {
+        ESP_LOGW(TAG, "Reinstall refused: a pending update has not yet been confirmed");
         return false;
     }
 
@@ -553,6 +566,48 @@ bool OTAUpdater::getRunningPartitionInfo(String &label, uint32_t &address) {
     }
     label = String(partition->label);
     address = partition->address;
+    return true;
+}
+
+bool OTAUpdater::getOtherPartitionVersion(String &versionOut) {
+    versionOut = "";
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (running == nullptr) return false;
+    const esp_partition_t *other = esp_ota_get_next_update_partition(running);
+    if (other == nullptr) return false;
+    esp_app_desc_t desc;
+    if (esp_ota_get_partition_description(other, &desc) != ESP_OK) {
+        return false;
+    }
+    versionOut = String(desc.version);
+    return true;
+}
+
+bool OTAUpdater::rollbackToOtherPartition(Config::ConfigManager &config) {
+    if (isUpdateInProgress()) {
+        ESP_LOGW(TAG, "Rollback refused: an OTA check or update is already running");
+        return false;
+    }
+    if (hasUnconfirmedUpdate()) {
+        ESP_LOGW(TAG, "Rollback refused: a pending update has not yet been confirmed");
+        return false;
+    }
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (running == nullptr) return false;
+    const esp_partition_t *other = esp_ota_get_next_update_partition(running);
+    if (other == nullptr) return false;
+    esp_app_desc_t desc;
+    if (esp_ota_get_partition_description(other, &desc) != ESP_OK) {
+        ESP_LOGW(TAG, "Rollback refused: the other partition has no readable image header");
+        return false;
+    }
+    esp_err_t err = esp_ota_set_boot_partition(other);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_ota_set_boot_partition failed: %s", esp_err_to_name(err));
+        return false;
+    }
+    ESP_LOGI(TAG, "Rollback to %s (%s) scheduled; restarting", other->label, desc.version);
+    config.requestRestart(1000);
     return true;
 }
 
