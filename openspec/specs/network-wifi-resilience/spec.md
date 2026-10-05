@@ -1,7 +1,11 @@
 # network-wifi-resilience Specification
 
 ## Purpose
-TBD - created by archiving change wifi-resilience. Update Purpose after archive.
+The network-wifi-resilience capability defines how the device recovers
+from WiFi failures instead of giving up. It specifies human-readable
+reason-code logging, retrying the initial association before declaring
+failure, actively reconnecting after mid-session disconnects, and
+exponential backoff when the boot-time STA association keeps failing.
 ## Requirements
 ### Requirement: Log WiFi events with human-readable reason codes
 

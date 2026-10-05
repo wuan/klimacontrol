@@ -1,7 +1,13 @@
 # sensor-management Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The sensor-management capability defines how the firmware reads and
+validates its temperature, humidity, and CO2 sensors. It specifies the
+supported sensor types and their assignment strings, the measurement
+model with per-driver range validation, lifecycle status and per-sensor
+last-good caching, calculated dependent measurements, and the read
+scheduling that keeps the monitor tick aligned with the fastest
+configured sensor.
 ## Requirements
 ### Requirement: Supported sensor types
 

@@ -1,7 +1,12 @@
 # networking Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The networking capability defines how the device reaches the network
+and makes itself reachable. It specifies the two network modes (STA and
+configuration AP with WPA2 and a derivable password), AP fallback after
+repeated failures, mDNS advertisement, NTP synchronization, and the
+task-safety and adaptive-scheduling rules the network loop must follow
+on a single-core device.
 ## Requirements
 ### Requirement: Two network modes
 

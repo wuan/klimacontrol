@@ -1,7 +1,12 @@
 # pid-autotune Specification
 
 ## Purpose
-TBD - created by archiving change add-relay-autotuner-core. Update Purpose after archive.
+The pid-autotune capability defines the relay-based autotuning that
+derives PID parameters from the plant instead of manual tuning. It
+specifies settling before measurement, the ultimate gain and period
+calculation, the Tyreus–Luyben PI derivation, the safety envelope and
+output ownership while a run is active, and persistence of gains once
+accepted.
 ## Requirements
 ### Requirement: Relay autotune identification component
 

@@ -1,7 +1,11 @@
 # temperature-control Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The temperature-control capability defines the closed-loop regulation
+of room temperature. It specifies the enable/disable and control-active
+states, setpoint range, PID scheduling and anti-windup, safety limits,
+bumpless restart, configurability of the PID parameters, and the
+decoupling of the control loop from sensor acquisition.
 ## Requirements
 ### Requirement: Enable/disable state
 

@@ -1,7 +1,11 @@
 # status-led Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The status-led capability defines the behaviour of the single built-in
+NeoPixel as the device's at-a-glance indicator. It specifies the
+`LedState` state machine and its state-to-behaviour mapping (publish
+progress gradient, startup blink, transmit flash, dark mode), periodic
+updates from the network task, and control of the NeoPixel power rail.
 ## Requirements
 ### Requirement: Hardware target
 

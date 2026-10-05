@@ -1,7 +1,12 @@
 # ota-updates Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The ota-updates capability defines how the firmware updates itself
+from GitHub releases. It specifies release discovery with semver
+comparison, memory-guarded streamed downloads with TLS and redirect
+verification, partition management with boot rollback, mutual
+exclusion of OTA activities, the static task lifecycle, and how
+progress and outcomes are reported to the operator.
 ## Requirements
 ### Requirement: GitHub-release-based update discovery
 

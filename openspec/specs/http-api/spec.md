@@ -1,7 +1,12 @@
 # http-api Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The http-api capability defines the device's HTTP surface: the JSON
+endpoints used to configure and monitor the device (sensors, control,
+settings, MQTT, OTA, display, time, energy, autotune) and the pages
+served to a browser. It also fixes the allocation discipline every
+route handler must follow and the observability of recent request
+outcomes, so the API stays memory-safe on the constrained ESP32-S2.
 ## Requirements
 ### Requirement: HTTP framework and response format
 

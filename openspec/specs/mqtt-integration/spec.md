@@ -1,7 +1,11 @@
 # mqtt-integration Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The mqtt-integration capability defines how the device reports its
+measurements to a broker. It specifies the configuration model, the
+PubSubClient-based connection management, the publish topic and
+payload format, the last-will testament, and the observability of the
+MQTT TX buffer state.
 ## Requirements
 ### Requirement: MQTT configuration model
 

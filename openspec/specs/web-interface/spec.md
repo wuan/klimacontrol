@@ -1,7 +1,11 @@
 # web-interface Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The web-interface capability defines the browser UI embedded in the
+firmware. It specifies the embedded vanilla-JavaScript assets, the
+dashboard and settings pages with their polled live updates, control
+and autotune UI, the Device Info page with its memory and network
+diagnostics, and which diagnostic fields stay off the main dashboard.
 ## Requirements
 ### Requirement: Embedded web assets
 

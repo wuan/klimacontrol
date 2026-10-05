@@ -1,7 +1,12 @@
 # heating-actuator Specification
 
 ## Purpose
-TBD - created by archiving change add-shelly-actuator. Update Purpose after archive.
+The heating-actuator capability defines how the firmware commands the
+physical heating output through a Shelly device over HTTP RPC. It
+specifies time-proportional output derived from the controller demand,
+the requirement that actuator I/O never blocks the control loop,
+explicit valve closing, confirmation of actuator state, and the
+validation that refuses control against a non-conforming channel.
 ## Requirements
 ### Requirement: Commanding a Shelly channel over HTTP RPC
 

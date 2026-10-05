@@ -1,7 +1,11 @@
 # system-architecture Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The system-architecture capability defines the structural contract of
+the firmware: the target hardware and memory budget, the FreeRTOS task
+structure and each task's responsibilities, the ownership hierarchy and
+thread-safety rules for shared data, and the diagnosability guarantees
+that keep the device observable in the field.
 ## Requirements
 ### Requirement: Target hardware platform
 

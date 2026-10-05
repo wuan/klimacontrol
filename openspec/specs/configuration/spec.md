@@ -1,7 +1,13 @@
 # configuration Specification
 
 ## Purpose
-TBD - created by archiving change baseline-capabilities. Update Purpose after archive.
+The configuration capability defines how the firmware persists and
+serves its runtime settings. It specifies a single NVS namespace and
+versioned configuration structs, partial updates that preserve
+unspecified fields, derived identifiers such as the device ID,
+validation ranges applied at the storage boundary, and the
+factory-reset and restart-management behaviours that let an operator
+recover a misconfigured device.
 ## Requirements
 ### Requirement: NVS namespace
 

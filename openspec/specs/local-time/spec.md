@@ -1,7 +1,11 @@
 # local-time Specification
 
 ## Purpose
-TBD - created by archiving change add-timezone-config. Update Purpose after archive.
+The local-time capability defines how the device represents and
+displays time. It specifies the POSIX TZ string as the stored timezone
+format, automatic daylight-saving handling, local formatting helpers,
+timezone validation at the storage boundary, and the rule that epoch
+values on the wire stay UTC.
 ## Requirements
 ### Requirement: Timezone is stored as a POSIX TZ string
 
