@@ -1,5 +1,8 @@
 .pio
 
+# Local build output (mock display renders, etc.)
+build/
+
 .cache
 
 .idea

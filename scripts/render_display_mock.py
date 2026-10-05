@@ -1,220 +1,105 @@
 #!/usr/bin/env python3
-"""Render mock PNGs of the e-paper panel layout for design review.
+"""Render pixel-exact mock PNGs of the e-paper panel layout.
 
-Parses the layout constants out of src/display/EPaperDisplay.cpp so the mock
-stays in step with the firmware drawing code, then draws sample screens with
-PIL. This is a REVIEW AID, not a simulator: fonts are approximated with
-system TrueType fonts and 1-bit dithering/GxEPD2 paging is not modelled.
-Pixel-exact checking happens on hardware (change add-display-warning-icon,
-task 5.2).
+Compiles the real src/display/EPaperDisplay.cpp against the real Adafruit_GFX
+library — the same FreeSans*7b.h font headers the firmware uses — with small
+host-side shims for the Arduino/GxEPD2 APIs (scripts/render_host/), runs it to
+paint each sample screen into a framebuffer, and converts the dumped frames
+(PBM) to PNG. What you see is the firmware's own drawing code, bit for bit;
+only the panel hardware (SPI, BUSY, page flush) is emulated away.
+
+Requires the PlatformIO library dependencies to be fetched once
+(`pio pkg install` or any `pio run`) so the Adafruit GFX sources are present
+under .pio/libdeps/, plus Pillow for the PBM → PNG conversion.
 
 Usage:
-    python3 scripts/render_display_mock.py [--out DIR] [--src EPaperDisplay.cpp]
+    python3 scripts/render_display_mock.py [--out DIR]
 
 Outputs one PNG per sample state (normal, each warning token, etc.).
 """
 
 import argparse
-import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image
 except ImportError:
     sys.exit("Pillow is required: pip install pillow")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_SRC = REPO_ROOT / "src" / "display" / "EPaperDisplay.cpp"
-
-WHITE = 255
-BLACK = 0
-
-# macOS / Linux font candidates, best first. FreeSans metrics differ slightly
-# from these, which is acceptable for a review aid.
-FONT_CANDIDATES = {
-    "sans": [
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    ],
-    "sans-bold": [
-        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-        "/System/Library/Fonts/HelveticaNeue.ttc",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    ],
-}
+HOST_DIR = REPO_ROOT / "scripts" / "render_host"
+SHIM_DIR = HOST_DIR / "shim"
+SRC_DIR = REPO_ROOT / "src"
+GFX_LIB = REPO_ROOT / ".pio" / "libdeps" / "adafruit_qtpy_esp32s2" / "Adafruit GFX Library"
+DEFAULT_OUT = REPO_ROOT / "build" / "mock_display"
 
 
-def load_font(kind: str, size: int):
-    for path in FONT_CANDIDATES[kind]:
+def firmware_version() -> str:
+    """Same chain as scripts/get_version.py so the header band matches."""
+    for args in (["git", "describe", "--tags", "--exact-match"], ["git", "describe", "--tags", "--always"]):
         try:
-            return ImageFont.truetype(path, size)
-        except OSError:
+            return subprocess.check_output(args, cwd=REPO_ROOT, stderr=subprocess.DEVNULL).decode().strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
             continue
-    return ImageFont.load_default(size)
+    return "v0.0.0-dev"
 
 
-def parse_constants(src_path: Path) -> dict:
-    """Extract constexpr int16_t constants (and simple derived expressions)."""
-    text = src_path.read_text()
-    # PANEL_W/H come from GxEPD2_154_D67::WIDTH/HEIGHT; DEMAND_BUCKETS from
-    # RefreshPolicy.h. Values are fixed for this panel.
-    consts: dict = {"PANEL_W": 200, "PANEL_H": 200, "DEMAND_BUCKETS": 5}
-    pattern = re.compile(r"constexpr int16_t (\w+)\s*=\s*([^;]+);", re.DOTALL)
-    for name, expr in pattern.findall(text):
-        expr = re.sub(r"\s+", " ", expr.replace("Display::", "")).strip()
-        try:
-            consts[name] = int(eval(expr, {"__builtins__": {}}, dict(consts)))  # noqa: S307
-        except Exception:
-            pass  # derived constant referencing something we did not parse
-    return consts
+def compiler() -> str:
+    for cc in ("g++", "c++", "clang++"):
+        if shutil.which(cc):
+            return cc
+    sys.exit("No C++ compiler found (need g++, c++ or clang++ on PATH)")
 
 
-# The warning-icon geometry lives in EPaperDisplay.cpp; these mirror the
-# parse. Kept here only as fallbacks if the parse misses a constant.
-WARN_DEFAULTS = {
-    "WARN_CX": 31,
-    "PANEL_W": 200,  # mirrored right icon: WARN_CX_RIGHT = PANEL_W - WARN_CX
-    "WARN_APEX_Y": 53,
-    "WARN_BASE_Y": 95,
-    "WARN_BASE_HALF_W": 21,
-    "WARN_BAR_W": 5,
-    "WARN_BAR_TOP_Y": 69,
-    "WARN_BAR_BOTTOM_Y": 83,
-    "WARN_DOT_TOP_Y": 87,
-    "WARN_DOT_H": 3,
-    "WARN_LABEL_Y": 105,
-}
+def build(out_dir: Path) -> Path:
+    if not GFX_LIB.is_dir():
+        sys.exit(f"Adafruit GFX Library not found at {GFX_LIB}.\n"
+                 "Run `pio pkg install` (or any `pio run`) first to fetch the "
+                 "PlatformIO library dependencies.")
 
-WARNING_LABELS = {
-    "NONE": "",
-    "OVERHEAT": "OVERHEAT",
-    "FROST": "FROST",
-    "SENSOR": "SENSOR",
-    "ACTUATOR": "ACTUATOR",
-    "HUMID": "HUMID",
-}
-
-
-def draw_panel(consts: dict, warning: str, temp: str, hum: str) -> Image.Image:
-    c = {**WARN_DEFAULTS, **consts}
-    img = Image.new("L", (c["PANEL_W"], c["PANEL_H"]), WHITE)
-    d = ImageDraw.Draw(img)
-
-    font_builtin = load_font("sans", 8)   # ~5x7 built-in font
-    font_temp = load_font("sans-bold", 32)  # FreeSansBold24pt
-    font_hum = load_font("sans", 16)      # FreeSans12pt
-    font_footer = load_font("sans", 12)   # FreeSans9pt
-
-    # Header band (constant content only)
-    d.text((c["FOOTER_MARGIN_X"], 2), "KlimaControl", font=font_builtin, fill=BLACK)
-    d.text((c["PANEL_W"] - 40, 2), "v0.1.1", font=font_builtin, fill=BLACK)
-
-    # Temperature, centred with a drawn degree ring
-    tw = d.textlength(temp, font=font_temp)
-    degree_adv = c["DEGREE_GAP"] + 2 * c["DEGREE_RADIUS"]
-    x = (c["PANEL_W"] - (tw + degree_adv)) / 2
-    d.text((x, c["TEMP_BASELINE_Y"] - 30), temp, font=font_temp, fill=BLACK)
-    ring_cx = x + tw + c["DEGREE_GAP"] + c["DEGREE_RADIUS"]
-    ring_cy = c["TEMP_BASELINE_Y"] - 30 + 8 + c["DEGREE_RADIUS"]
-    for r in (c["DEGREE_RADIUS"] - 1, c["DEGREE_RADIUS"], c["DEGREE_RADIUS"] + 1):
-        d.ellipse([ring_cx - r, ring_cy - r, ring_cx + r, ring_cy + r], outline=BLACK)
-
-    # Humidity, centred
-    hum_line = f"{hum} %rH"
-    hw = d.textlength(hum_line, font=font_hum)
-    d.text(((c["PANEL_W"] - hw) / 2, c["HUMIDITY_BASELINE_Y"] - 14), hum_line, font=font_hum, fill=BLACK)
-
-    # Warning slots (both margins, same token)
-    if warning != "NONE":
-        for cx in (c["WARN_CX"], c["PANEL_W"] - c["WARN_CX"]):
-            apex = (cx, c["WARN_APEX_Y"])
-            base_l = (cx - c["WARN_BASE_HALF_W"], c["WARN_BASE_Y"])
-            base_r = (cx + c["WARN_BASE_HALF_W"], c["WARN_BASE_Y"])
-            d.polygon([apex, base_l, base_r], fill=BLACK)
-            d.rectangle(
-                [cx - c["WARN_BAR_W"] // 2, c["WARN_BAR_TOP_Y"],
-                 cx + c["WARN_BAR_W"] // 2, c["WARN_BAR_BOTTOM_Y"]],
-                fill=WHITE,
-            )
-            d.rectangle(
-                [cx - c["WARN_BAR_W"] // 2, c["WARN_DOT_TOP_Y"],
-                 cx + c["WARN_BAR_W"] // 2, c["WARN_DOT_TOP_Y"] + c["WARN_DOT_H"] - 1],
-                fill=WHITE,
-            )
-            label = WARNING_LABELS[warning]
-            lw = d.textlength(label, font=font_builtin)
-            d.text((cx - lw / 2, c["WARN_LABEL_Y"]), label, font=font_builtin, fill=BLACK)
-
-    # Footer
-    d.line(
-        [c["FOOTER_MARGIN_X"], c["FOOTER_RULE_Y"], c["PANEL_W"] - c["FOOTER_MARGIN_X"], c["FOOTER_RULE_Y"]],
-        fill=BLACK,
-    )
-    d.text((c["FOOTER_MARGIN_X"], c["FOOTER_LINE1_Y"] - 12), "klima-aabbcc", font=font_footer, fill=BLACK)
-    d.text((c["FOOTER_MARGIN_X"], c["FOOTER_LINE2_Y"] - 12), "26-10-05 14:07", font=font_footer, fill=BLACK)
-
-    # Setpoint + degree ring, right-aligned
-    setpoint = "22.0"
-    sw = d.textlength(setpoint, font=font_footer)
-    ring_cx = c["FOOTER_RIGHT_X"] - c["SETPOINT_DEGREE_RADIUS"]
-    ring_cy = c["FOOTER_LINE1_Y"] - 10
-    d.ellipse(
-        [ring_cx - c["SETPOINT_DEGREE_RADIUS"], ring_cy - c["SETPOINT_DEGREE_RADIUS"],
-         ring_cx + c["SETPOINT_DEGREE_RADIUS"], ring_cy + c["SETPOINT_DEGREE_RADIUS"]],
-        outline=BLACK,
-    )
-    d.text((ring_cx - c["SETPOINT_DEGREE_RADIUS"] - c["SETPOINT_DEGREE_GAP"] - sw, c["FOOTER_LINE1_Y"] - 12),
-           setpoint, font=font_footer, fill=BLACK)
-
-    # Control symbol: filled circle (heating) on footer line 2
-    sym_cx = c["FOOTER_RIGHT_X"] - c["CONTROL_SYMBOL_RADIUS"]
-    sym_cy = c["CONTROL_SYMBOL_CY"]
-    d.ellipse(
-        [sym_cx - c["CONTROL_SYMBOL_RADIUS"], sym_cy - c["CONTROL_SYMBOL_RADIUS"],
-         sym_cx + c["CONTROL_SYMBOL_RADIUS"], sym_cy + c["CONTROL_SYMBOL_RADIUS"]],
-        fill=BLACK,
-    )
-
-    # Demand bar, left of the symbol
-    bar_right = sym_cx - c["CONTROL_SYMBOL_RADIUS"] - c["DEMAND_BAR_GAP"]
-    top = c["FOOTER_LINE2_Y"] - c["DEMAND_SEG_H"]
-    for i in range(5):
-        x0 = bar_right - c["DEMAND_BAR_W"] + i * (c["DEMAND_SEG_W"] + c["DEMAND_SEG_GAP"])
-        box = [x0, top, x0 + c["DEMAND_SEG_W"], top + c["DEMAND_SEG_H"]]
-        if i < 3:
-            d.rectangle(box, fill=BLACK)
-        else:
-            d.rectangle(box, outline=BLACK)
-
-    return img
-
-
-SAMPLES = [
-    ("normal", "NONE", "21.4", "45"),
-    ("frost", "FROST", "2.8", "52"),
-    ("overheat", "OVERHEAT", "31.6", "40"),
-    ("sensor", "SENSOR", "--.-", "--"),
-    ("actuator", "ACTUATOR", "21.4", "45"),
-    ("humid", "HUMID", "21.4", "78"),
-]
+    binary = out_dir / "host" / "render_host"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        compiler(),
+        "-std=gnu++17",
+        "-DARDUINO=10607",
+        f'-DFIRMWARE_VERSION="{firmware_version()}"',
+        "-Wno-macro-redefined",  # glcdfont.c redefines PROGMEM our shim set
+        f"-I{SHIM_DIR}",
+        f"-I{SRC_DIR}",
+        f"-I{GFX_LIB}",
+        str(HOST_DIR / "main.cpp"),
+        str(SRC_DIR / "display" / "EPaperDisplay.cpp"),
+        str(GFX_LIB / "Adafruit_GFX.cpp"),
+        "-o",
+        str(binary),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(result.stderr, file=sys.stderr)
+        sys.exit("Host renderer build failed")
+    return binary
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--src", type=Path, default=DEFAULT_SRC)
-    parser.add_argument("--out", type=Path, default=REPO_ROOT / "build" / "mock_display")
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="PNG output directory")
     args = parser.parse_args()
 
-    consts = parse_constants(args.src)
     args.out.mkdir(parents=True, exist_ok=True)
+    binary = build(args.out)
 
-    for name, warning, temp, hum in SAMPLES:
-        img = draw_panel(consts, warning, temp, hum)
-        out = args.out / f"display_{name}.png"
-        img.save(out)
-        print(f"wrote {out}")
+    subprocess.run([str(binary), str(args.out)], check=True)
+
+    for pbm in sorted(args.out.glob("display_*.pbm")):
+        img = Image.open(pbm).convert("L")
+        png = pbm.with_suffix(".png")
+        img.save(png)
+        pbm.unlink()
+        print(f"wrote {png}")
     return 0
 
 

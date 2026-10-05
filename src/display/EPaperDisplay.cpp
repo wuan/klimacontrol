@@ -133,9 +133,14 @@ namespace Display {
         // glyphs 0x20-0x7E, so U+00B0 (and the Latin-1 0xB0 byte) renders as
         // nothing — the ring has to be drawn, not printed.
         constexpr int16_t DEGREE_RADIUS = 6;
-        constexpr int16_t DEGREE_GAP = 5;       // space between the digits and the ring
+        constexpr int16_t DEGREE_GAP = 3;       // space between the digits and the ring
         constexpr int16_t DEGREE_TOP_INSET = 0; // below the cap height of the big font
         constexpr int16_t DEGREE_ADVANCE = DEGREE_GAP + 2 * DEGREE_RADIUS;
+
+        // The digits-plus-ring group is centred as a whole, then nudged right:
+        // the ring's hollow right side makes a mathematically centred group
+        // read as sitting slightly left of the panel axis.
+        constexpr int16_t TEMP_GROUP_SHIFT_X = 5;
 
         // Warning slots, both margins next to the value block — x 8..55 and
         // its mirror image x 145..192. Both show the same token:
@@ -259,16 +264,28 @@ namespace Display {
             const int16_t groupW = static_cast<int16_t>(w) + DEGREE_ADVANCE;
             // The -x1 here cancels the +x1 below, so the X axis is unaffected
             // by the absolute-vs-relative distinction.
-            const int16_t x = static_cast<int16_t>((PANEL_W - groupW) / 2 - x1);
+            const int16_t x = static_cast<int16_t>((PANEL_W - groupW) / 2 - x1 + TEMP_GROUP_SHIFT_X);
             display.setCursor(x, baselineY);
             display.print(text);
 
             const int16_t ringCx = static_cast<int16_t>(x + x1 + static_cast<int16_t>(w) + DEGREE_GAP + DEGREE_RADIUS);
-            // y1 is already the absolute top of the digits.
-            const int16_t ringCy = static_cast<int16_t>(y1 + DEGREE_TOP_INSET + DEGREE_RADIUS);
-            display.drawCircle(ringCx, ringCy, DEGREE_RADIUS + 1, GxEPD_BLACK);
-            display.drawCircle(ringCx, ringCy, DEGREE_RADIUS, GxEPD_BLACK);
-            display.drawCircle(ringCx, ringCy, DEGREE_RADIUS - 1, GxEPD_BLACK);
+            // The ring is anchored to the digits' cap height, measured on a
+            // reference "0" rather than on the string itself: the "--.-"
+            // placeholder has no ascenders, so its bounding-box top sits at
+            // hyphen height and would drag the ring down to the baseline.
+            int16_t refX1 = 0;
+            int16_t refY1 = 0;
+            uint16_t refW = 0;
+            uint16_t refH = 0;
+            display.getTextBounds("0", 0, baselineY, &refX1, &refY1, &refW, &refH);
+            const int16_t ringCy = static_cast<int16_t>(refY1 + DEGREE_TOP_INSET + DEGREE_RADIUS);
+            // A filled disc with a white hole punched out, not stacked circle
+            // outlines: Bresenham's rasterised rings do not overlap exactly, so
+            // concentric drawCircle() calls leave white speckles inside the
+            // band. fillCircle produces a solid annulus of the same weight —
+            // outer radius DEGREE_RADIUS + 1, band 3 px, hole radius 4.
+            display.fillCircle(ringCx, ringCy, DEGREE_RADIUS + 1, GxEPD_BLACK);
+            display.fillCircle(ringCx, ringCy, DEGREE_RADIUS - 2, GxEPD_WHITE);
         }
 
         // Advance width of `text` in the currently selected font.
