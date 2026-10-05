@@ -118,9 +118,10 @@ namespace Display {
          *                    the control symbol, and only while controlState is
          *                    not INACTIVE. Pre-bucketed by the caller so the
          *                    panel repaints on a visible change, not every tick.
-         * @param warning   Warning token for the left-margin icon slot; NONE
-         *                    leaves the margin blank. The values and the
-         *                    footer keep their geometry either way.
+         * @param warning   Warning token for the margin icon slots (left and
+         *                    mirrored right); NONE leaves both margins blank.
+         *                    The values and the footer keep their geometry
+         *                    either way.
          * @param kind        Partial repaints the value+footer window; Full also
          *                    clears ghosting
          */

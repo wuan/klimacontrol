@@ -14,10 +14,11 @@ trigger.
 
 Scope decisions from exploration:
 
-- **Layout**: a large drawn warning triangle (~45–50 px) in the left margin
-  beside the values, with a short uppercase 5x7 label below it. The values
-  never move or shrink — the warning is purely additive. WiFi/MQTT-down
-  warnings are explicitly deferred to a later change.
+- **Layout**: a large drawn warning triangle (~45–50 px) in each margin beside
+  the values (left and mirrored right, both showing the same token), with a
+  short uppercase 5x7 label below each. The values never move or shrink — the
+  warning is purely additive. WiFi/MQTT-down warnings are explicitly deferred
+  to a later change.
 - **Labels**: fixed compile-time vocabulary, not user-supplied free text —
   known to fit the ~55 px margin, no truncation behaviour to spec.
 - **Multiple conditions**: single icon slot; most severe wins (priority encoded
@@ -26,9 +27,9 @@ Scope decisions from exploration:
 
 ## What Changes
 
-- New drawn warning icon (triangle + label) in the value block's left margin,
-  inside the existing partial-refresh window, rendered only while a warning is
-  active.
+- New drawn warning icon (triangle + label) in each margin of the value block
+  (left and mirrored right, same token), inside the existing partial-refresh
+  window, rendered only while a warning is active.
 - New native-testable `Display::WarningPolicy` sibling to `RefreshPolicy`:
   conditions in, one warning token out, anti-flap dwell state inside. A change
   of token (including none) is a change worth showing to the refresh policy.

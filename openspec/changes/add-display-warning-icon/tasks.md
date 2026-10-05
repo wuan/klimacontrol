@@ -15,6 +15,7 @@
 ## 3. Rendering
 
 - [x] 3.1 Add warning-slot layout constants and the drawn icon to `EPaperDisplay.cpp`: filled triangle + white `!` bar in the left margin (x ≈ 8..55) inside the partial window, `WARNING_LABELS[]` table indexed by token, 5x7 label centered below the triangle. Verify: `pio run -e adafruit_qtpy_esp32s2`; visual check on hardware.
+- [x] 3.4 Shift the icon slot 5 px down (triangle y 53..95, label y 105) and add a mirrored second icon in the right margin (x ≈ 145..192); both slots always show the same token. Update `scripts/render_display_mock.py` to match. Verify: `pio run -e adafruit_qtpy_esp32s2`; `python3 scripts/render_display_mock.py`; visual check on hardware folded into 5.2.
 - [x] 3.2 Thread the warning token through `DisplayManager` (gather conditions from `SensorController::getSnapshot().valid`, `TemperatureController::isSafetyShutoffEngaged()`, computed `ControlState`, thresholds vs. snapshot values) and `EPaperDisplay::render()` (one new `WarningToken` parameter). Values and footer keep their existing geometry. Verify: `pio run -e adafruit_qtpy_esp32s2`.
 - [x] 3.3 Implement onset-bypass in `DisplayManager::update()`: token change to a non-`NONE` token refreshes immediately; `NONE` and unchanged tokens go through the ordinary `RefreshPolicy` floor. Pass the token into `RefreshPolicy::evaluate()` as a change-detection input. Verify: `pio test -e native` for the policy-level change detection; hardware check for immediate onset.
 

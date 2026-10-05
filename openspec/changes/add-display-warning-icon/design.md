@@ -61,21 +61,29 @@ not a user decision worth an NVS key.
 its own state keeps both testable and the dwell timer out of the refresh
 state machine.
 
-### D2: Icon geometry — fixed left-margin slot
+### D2: Icon geometry — mirrored pair of fixed margin slots
 
 ```
-x 8..55 reserved for the warning slot (values stay centered on 0..199)
+left slot x 8..55, mirrored right slot x 145..192 (values stay centered on 0..199)
 icon: filled triangle ~45 px tall, apex up, with a drawn '!' cutout bar
 label: built-in 5x7 font, centered under the triangle, ≤ 8 chars
 ```
 
-The slot is inside the partial window (y 30..199). Constants go alongside the
-existing layout constants in `EPaperDisplay.cpp`. The triangle is drawn with
-`fillTriangle` + a white `!` bar (fillRect), matching how the degree rings and
-control symbol are drawn rather than printed.
+Both slots sit inside the partial window (y 30..199) and always show the same
+token. Constants go alongside the existing layout constants in
+`EPaperDisplay.cpp`. The triangle is drawn with `fillTriangle` + a white `!`
+bar (fillRect), matching how the degree rings and control symbol are drawn
+rather than printed.
 
-*Alternative considered:* right margin (mirrors the setpoint column) — rejected:
-the right side already carries setpoint/symbol/bar; the left is empty.
+An earlier revision of this design placed a single icon in the left margin and
+rejected the right side because it "already carries setpoint/symbol/bar" — but
+that content lives in the footer (y 152..), below the icon block (y 53..112),
+so there is no collision. The mirrored pair was adopted for visibility from
+either side of the room; the 5 px downward shift keeps the triangle visually
+centred between the header band and the humidity line.
+
+*Alternative considered:* right margin (mirrors the setpoint column) —
+superseded by this decision.
 
 ### D3: Threshold config encoding
 

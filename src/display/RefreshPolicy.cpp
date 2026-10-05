@@ -145,7 +145,7 @@ namespace Display {
             changed = true;
         }
 
-        // The warning icon is left-margin content like the footer fields are
+        // The warning icons are margin content like the footer fields are
         // footer content: a token change in either direction (including
         // to/from NONE) is a change worth showing. Onset — the new token not
         // being NONE — additionally bypasses the interval floor below: a

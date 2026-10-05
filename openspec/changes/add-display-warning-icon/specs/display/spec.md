@@ -4,25 +4,27 @@
 
 ### Requirement: Warning icon layout
 
-The e-paper value block SHALL include a warning slot in the left margin: a
-drawn warning triangle (filled, with the panel's existing drawn-symbol
-technique) sized to roughly half the value block's height, with the active
-warning's label in the built-in 5x7 font directly below it.
+The e-paper value block SHALL include warning slots in both margins — the left
+margin and its mirror image in the right margin: a drawn warning triangle
+(filled, with the panel's existing drawn-symbol technique) sized to roughly
+half the value block's height, with the active warning's label in the built-in
+5x7 font directly below it. Both slots SHALL show the same token.
 
-The slot SHALL lie entirely inside the partial-refresh window. The temperature,
-the humidity and the footer SHALL keep their existing geometry and position
-whether or not the warning slot is occupied — the warning is purely additive,
-and showing or clearing it SHALL NOT shift or rescale any other element.
+Each slot SHALL lie entirely inside the partial-refresh window. The
+temperature, the humidity and the footer SHALL keep their existing geometry and
+position whether or not the warning slots are occupied — the warning is purely
+additive, and showing or clearing it SHALL NOT shift or rescale any other
+element.
 
 #### Scenario: Warning shown beside unchanged values
 
 - **WHEN** a warning becomes active while the readings are stable
-- **THEN** the panel SHALL show the triangle and label in the left margin, and the temperature, humidity and footer SHALL remain in their existing positions
+- **THEN** the panel SHALL show the triangle and label in both margins, and the temperature, humidity and footer SHALL remain in their existing positions
 
-#### Scenario: Warning cleared restores the empty margin
+#### Scenario: Warning cleared restores the empty margins
 
 - **WHEN** the active warning clears
-- **THEN** the left margin SHALL be blank again and no other element SHALL have moved
+- **THEN** both margins SHALL be blank again and no other element SHALL have moved
 
 #### Scenario: Warning refresh is partial, not full
 
@@ -115,7 +117,7 @@ Warning clearance SHALL be subject to the floor like any other change.
 #### Scenario: Clearance respects the interval floor
 
 - **WHEN** a warning clears sooner than the configured minimum interval after the previous refresh
-- **THEN** the blank margin SHALL be rendered once the interval has passed, and not before
+- **THEN** the blank margins SHALL be rendered once the interval has passed, and not before
 
 #### Scenario: Unchanged warning triggers nothing
 

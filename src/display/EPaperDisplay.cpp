@@ -137,7 +137,8 @@ namespace Display {
         constexpr int16_t DEGREE_TOP_INSET = 0; // below the cap height of the big font
         constexpr int16_t DEGREE_ADVANCE = DEGREE_GAP + 2 * DEGREE_RADIUS;
 
-        // Warning slot, left margin x 8..55, next to the value block:
+        // Warning slots, both margins next to the value block — x 8..55 and
+        // its mirror image x 145..192. Both show the same token:
         //
         //        ^            <- filled triangle, apex up
         //       /x/
@@ -146,23 +147,26 @@ namespace Display {
         //     /__!!_/       <- base ('!' cut out in white)
         //      FROST        <- built-in 5x7 label
         //
-        // The slot is entirely inside the partial-refresh window (y 30..199)
+        // The slots are entirely inside the partial-refresh window (y 30..199)
         // and clear of the centred values: the 24 pt temperature group tops
         // out near x 60 even with a wide reading, so the values and the
-        // footer keep their geometry whether or not the slot is occupied.
+        // footer keep their geometry whether or not the slots are occupied.
+        // The right slot clears the setpoint/symbol column because that
+        // content lives in the footer (y 152..), below both icons.
         // The triangle is drawn with fillTriangle and the '!' is cut out in
         // white — the same drawn-symbol technique as the degree rings and the
         // control symbol, because the free fonts carry no usable glyph.
-        constexpr int16_t WARN_CX = 31; // centre of the x 8..55 slot
-        constexpr int16_t WARN_APEX_Y = 48;
-        constexpr int16_t WARN_BASE_Y = 90;
+        constexpr int16_t WARN_CX = 31;                      // centre of the x 8..55 slot
+        constexpr int16_t WARN_CX_RIGHT = PANEL_W - WARN_CX; // centre of the mirrored x 145..192 slot
+        constexpr int16_t WARN_APEX_Y = 53;
+        constexpr int16_t WARN_BASE_Y = 95;
         constexpr int16_t WARN_BASE_HALF_W = 21; // 42 px base
         constexpr int16_t WARN_BAR_W = 5;
-        constexpr int16_t WARN_BAR_TOP_Y = 64;
-        constexpr int16_t WARN_BAR_BOTTOM_Y = 78;
-        constexpr int16_t WARN_DOT_TOP_Y = 82;
+        constexpr int16_t WARN_BAR_TOP_Y = 69;
+        constexpr int16_t WARN_BAR_BOTTOM_Y = 83;
+        constexpr int16_t WARN_DOT_TOP_Y = 87;
         constexpr int16_t WARN_DOT_H = 3;
-        constexpr int16_t WARN_LABEL_Y = 100; // built-in font: glyph top
+        constexpr int16_t WARN_LABEL_Y = 105; // built-in font: glyph top
 
         // One fixed label per warning token, indexed by the token's numeric
         // value — WARNING_TOKEN_COUNT below pins the table to the enum, so
@@ -194,21 +198,22 @@ namespace Display {
             display.print(text);
         }
 
-        // Draw the active warning in the left-margin slot: the triangle with
-        // the '!' cutout, then the token's label below it. The bar and the
-        // dot are sized to stay inside the triangle at both heights (the
-        // triangle is ~9 px half-wide at the bar top, 21 px at the base).
-        void drawWarningIcon(Display::WarningToken token) {
-            display.fillTriangle(WARN_CX, WARN_APEX_Y, WARN_CX - WARN_BASE_HALF_W, WARN_BASE_Y,
-                                 WARN_CX + WARN_BASE_HALF_W, WARN_BASE_Y, GxEPD_BLACK);
-            display.fillRect(WARN_CX - WARN_BAR_W / 2, WARN_BAR_TOP_Y, WARN_BAR_W, WARN_BAR_BOTTOM_Y - WARN_BAR_TOP_Y,
+        // Draw one warning icon centred on `cx`: the triangle with the '!'
+        // cutout, then the token's label below it. The bar and the dot are
+        // sized to stay inside the triangle at both heights (the triangle is
+        // ~9 px half-wide at the bar top, 21 px at the base). Called once per
+        // margin slot; both slots always show the same token.
+        void drawWarningIcon(Display::WarningToken token, int16_t cx) {
+            display.fillTriangle(cx, WARN_APEX_Y, cx - WARN_BASE_HALF_W, WARN_BASE_Y, cx + WARN_BASE_HALF_W,
+                                 WARN_BASE_Y, GxEPD_BLACK);
+            display.fillRect(cx - WARN_BAR_W / 2, WARN_BAR_TOP_Y, WARN_BAR_W, WARN_BAR_BOTTOM_Y - WARN_BAR_TOP_Y,
                              GxEPD_WHITE);
-            display.fillRect(WARN_CX - WARN_BAR_W / 2, WARN_DOT_TOP_Y, WARN_BAR_W, WARN_DOT_H, GxEPD_WHITE);
+            display.fillRect(cx - WARN_BAR_W / 2, WARN_DOT_TOP_Y, WARN_BAR_W, WARN_DOT_H, GxEPD_WHITE);
 
             display.setFont(nullptr); // built-in 5x7
             const char* label = WARNING_LABELS[static_cast<uint8_t>(token)];
             const int16_t labelW = static_cast<int16_t>(strlen(label)) * 6;
-            display.setCursor(static_cast<int16_t>(WARN_CX - labelW / 2), WARN_LABEL_Y);
+            display.setCursor(static_cast<int16_t>(cx - labelW / 2), WARN_LABEL_Y);
             display.print(label);
         }
 
@@ -610,10 +615,11 @@ namespace Display {
 
             drawMeasurements(tempStr, humStr);
 
-            // Purely additive: when the slot is empty nothing else moves, and
-            // a cleared warning simply leaves the margin white again.
+            // Purely additive: when the slots are empty nothing else moves,
+            // and a cleared warning simply leaves both margins white again.
             if (warning != WarningToken::NONE) {
-                drawWarningIcon(warning);
+                drawWarningIcon(warning, WARN_CX);
+                drawWarningIcon(warning, WARN_CX_RIGHT);
             }
 
             drafFooter(footerName, footerDateTime, controlState, setpointStr, demandSegments);

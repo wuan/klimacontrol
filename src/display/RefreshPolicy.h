@@ -110,8 +110,8 @@ namespace Display {
          * @param demandBucket Filled segments of the demand bar, 0..DEMAND_BUCKETS.
          *                     Already hysteretic — see nextDemandBucket() — so
          *                     this is a plain comparison, not another threshold.
-         * @param warning      Warning token currently shown in the left-margin
-         *                     icon slot. A change of token — including to and
+         * @param warning      Warning token currently shown in the margin
+         *                     icon slots. A change of token — including to and
          *                     from NONE — is a change worth showing. Warning
          *                     onset additionally bypasses the minimum-interval
          *                     floor (a late warning is the dangerous kind);

@@ -75,15 +75,16 @@ def parse_constants(src_path: Path) -> dict:
 # parse. Kept here only as fallbacks if the parse misses a constant.
 WARN_DEFAULTS = {
     "WARN_CX": 31,
-    "WARN_APEX_Y": 48,
-    "WARN_BASE_Y": 90,
+    "PANEL_W": 200,  # mirrored right icon: WARN_CX_RIGHT = PANEL_W - WARN_CX
+    "WARN_APEX_Y": 53,
+    "WARN_BASE_Y": 95,
     "WARN_BASE_HALF_W": 21,
     "WARN_BAR_W": 5,
-    "WARN_BAR_TOP_Y": 64,
-    "WARN_BAR_BOTTOM_Y": 78,
-    "WARN_DOT_TOP_Y": 82,
+    "WARN_BAR_TOP_Y": 69,
+    "WARN_BAR_BOTTOM_Y": 83,
+    "WARN_DOT_TOP_Y": 87,
     "WARN_DOT_H": 3,
-    "WARN_LABEL_Y": 100,
+    "WARN_LABEL_Y": 105,
 }
 
 WARNING_LABELS = {
@@ -125,25 +126,26 @@ def draw_panel(consts: dict, warning: str, temp: str, hum: str) -> Image.Image:
     hw = d.textlength(hum_line, font=font_hum)
     d.text(((c["PANEL_W"] - hw) / 2, c["HUMIDITY_BASELINE_Y"] - 14), hum_line, font=font_hum, fill=BLACK)
 
-    # Warning slot (left margin)
+    # Warning slots (both margins, same token)
     if warning != "NONE":
-        apex = (c["WARN_CX"], c["WARN_APEX_Y"])
-        base_l = (c["WARN_CX"] - c["WARN_BASE_HALF_W"], c["WARN_BASE_Y"])
-        base_r = (c["WARN_CX"] + c["WARN_BASE_HALF_W"], c["WARN_BASE_Y"])
-        d.polygon([apex, base_l, base_r], fill=BLACK)
-        d.rectangle(
-            [c["WARN_CX"] - c["WARN_BAR_W"] // 2, c["WARN_BAR_TOP_Y"],
-             c["WARN_CX"] + c["WARN_BAR_W"] // 2, c["WARN_BAR_BOTTOM_Y"]],
-            fill=WHITE,
-        )
-        d.rectangle(
-            [c["WARN_CX"] - c["WARN_BAR_W"] // 2, c["WARN_DOT_TOP_Y"],
-             c["WARN_CX"] + c["WARN_BAR_W"] // 2, c["WARN_DOT_TOP_Y"] + c["WARN_DOT_H"] - 1],
-            fill=WHITE,
-        )
-        label = WARNING_LABELS[warning]
-        lw = d.textlength(label, font=font_builtin)
-        d.text((c["WARN_CX"] - lw / 2, c["WARN_LABEL_Y"]), label, font=font_builtin, fill=BLACK)
+        for cx in (c["WARN_CX"], c["PANEL_W"] - c["WARN_CX"]):
+            apex = (cx, c["WARN_APEX_Y"])
+            base_l = (cx - c["WARN_BASE_HALF_W"], c["WARN_BASE_Y"])
+            base_r = (cx + c["WARN_BASE_HALF_W"], c["WARN_BASE_Y"])
+            d.polygon([apex, base_l, base_r], fill=BLACK)
+            d.rectangle(
+                [cx - c["WARN_BAR_W"] // 2, c["WARN_BAR_TOP_Y"],
+                 cx + c["WARN_BAR_W"] // 2, c["WARN_BAR_BOTTOM_Y"]],
+                fill=WHITE,
+            )
+            d.rectangle(
+                [cx - c["WARN_BAR_W"] // 2, c["WARN_DOT_TOP_Y"],
+                 cx + c["WARN_BAR_W"] // 2, c["WARN_DOT_TOP_Y"] + c["WARN_DOT_H"] - 1],
+                fill=WHITE,
+            )
+            label = WARNING_LABELS[warning]
+            lw = d.textlength(label, font=font_builtin)
+            d.text((cx - lw / 2, c["WARN_LABEL_Y"]), label, font=font_builtin, fill=BLACK)
 
     # Footer
     d.line(
