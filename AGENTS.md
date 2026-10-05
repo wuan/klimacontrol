@@ -44,6 +44,9 @@ must do; the code is the implementation.
   is freed at handler return. The document object itself MUST NOT be
   heap-allocated (`make_unique<JsonDocument>` / `new JsonDocument` are
   forbidden in route handlers).
+- **Commits:** follow Conventional Commits (`type(scope): summary`) — types
+  include `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `build`;
+  scope is the touched capability or module (e.g. `fix(ota):`, `feat(sensors):`).
 - **Formatting:** a `.clang-format` config matches the existing style (4-space
   indent, K&R-ish braces, pointer/reference left). Run `pre-commit install`
   once after cloning; `git commit` then fails if staged C/C++ under
