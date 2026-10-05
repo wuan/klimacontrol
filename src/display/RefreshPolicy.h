@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "display/WarningPolicy.h"
+
 // Refresh scheduling for the e-paper display.
 //
 // Deliberately free of Arduino and FreeRTOS dependencies so the whole decision
@@ -108,11 +110,18 @@ namespace Display {
          * @param demandBucket Filled segments of the demand bar, 0..DEMAND_BUCKETS.
          *                     Already hysteretic — see nextDemandBucket() — so
          *                     this is a plain comparison, not another threshold.
+         * @param warning      Warning token currently shown in the left-margin
+         *                     icon slot. A change of token — including to and
+         *                     from NONE — is a change worth showing. Warning
+         *                     onset additionally bypasses the minimum-interval
+         *                     floor (a late warning is the dangerous kind);
+         *                     clearance is subject to the floor like any
+         *                     other change.
          * @return What kind of refresh to perform, if any
          */
         RefreshKind evaluate(float temperature, float humidity, bool valid, uint32_t nowMs, uint32_t clockMinute = 0,
                              float setpoint = NAN, ControlState controlState = ControlState::INACTIVE,
-                             uint8_t demandBucket = 0);
+                             uint8_t demandBucket = 0, WarningToken warning = WarningToken::NONE);
 
         /**
          * Forget all history, as if the device had just booted. The next
@@ -143,13 +152,15 @@ namespace Display {
         float lastSetpoint = NAN;     // setpoint at the last refresh
         ControlState lastControlState = ControlState::INACTIVE;
         uint8_t lastDemandBucket = 0;
+        WarningToken lastWarning = WarningToken::NONE;
         uint8_t partialsSinceFull = 0;
 
         // Records the values a refresh is about to render and returns `kind`.
         // Only called when a refresh actually happens, so a change suppressed
         // by the interval floor stays outstanding and fires on a later tick.
         RefreshKind commit(RefreshKind kind, float temperature, float humidity, bool valid, uint32_t nowMs,
-                           uint32_t clockMinute, float setpoint, ControlState controlState, uint8_t demandBucket);
+                           uint32_t clockMinute, float setpoint, ControlState controlState, uint8_t demandBucket,
+                           WarningToken warning);
     };
 
     /**

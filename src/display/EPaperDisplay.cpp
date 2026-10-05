@@ -137,6 +137,50 @@ namespace Display {
         constexpr int16_t DEGREE_TOP_INSET = 0; // below the cap height of the big font
         constexpr int16_t DEGREE_ADVANCE = DEGREE_GAP + 2 * DEGREE_RADIUS;
 
+        // Warning slot, left margin x 8..55, next to the value block:
+        //
+        //        ^            <- filled triangle, apex up
+        //       /x/
+        //      / !!/
+        //     /  !!
+        //     /__!!_/       <- base ('!' cut out in white)
+        //      FROST        <- built-in 5x7 label
+        //
+        // The slot is entirely inside the partial-refresh window (y 30..199)
+        // and clear of the centred values: the 24 pt temperature group tops
+        // out near x 60 even with a wide reading, so the values and the
+        // footer keep their geometry whether or not the slot is occupied.
+        // The triangle is drawn with fillTriangle and the '!' is cut out in
+        // white — the same drawn-symbol technique as the degree rings and the
+        // control symbol, because the free fonts carry no usable glyph.
+        constexpr int16_t WARN_CX = 31; // centre of the x 8..55 slot
+        constexpr int16_t WARN_APEX_Y = 48;
+        constexpr int16_t WARN_BASE_Y = 90;
+        constexpr int16_t WARN_BASE_HALF_W = 21; // 42 px base
+        constexpr int16_t WARN_BAR_W = 5;
+        constexpr int16_t WARN_BAR_TOP_Y = 64;
+        constexpr int16_t WARN_BAR_BOTTOM_Y = 78;
+        constexpr int16_t WARN_DOT_TOP_Y = 82;
+        constexpr int16_t WARN_DOT_H = 3;
+        constexpr int16_t WARN_LABEL_Y = 100; // built-in font: glyph top
+
+        // One fixed label per warning token, indexed by the token's numeric
+        // value — WARNING_TOKEN_COUNT below pins the table to the enum, so
+        // adding a token without a label fails the build instead of showing
+        // garbage. The longest label (OVERHEAT, 8 glyphs = 48 px at the 6 px
+        // advance of the built-in font) just fits the 47 px slot.
+        constexpr const char* const WARNING_LABELS[] = {
+            "",         // NONE — the slot stays blank, never drawn
+            "OVERHEAT", // over-temperature safety trip
+            "FROST",    // temperature below the configured threshold
+            "SENSOR",   // sensor snapshot invalid
+            "ACTUATOR", // control state UNCERTAIN
+            "HUMID",    // humidity above the configured limit
+        };
+        constexpr size_t WARNING_TOKEN_COUNT = 6; // must match Display::WarningToken
+        static_assert(sizeof(WARNING_LABELS) / sizeof(WARNING_LABELS[0]) == WARNING_TOKEN_COUNT,
+                      "WARNING_LABELS must have exactly one entry per WarningToken");
+
         // Draw `text` horizontally centred on the panel with its baseline at
         // `baselineY`, using whatever font is currently selected.
         void drawCentered(const char* text, int16_t baselineY) {
@@ -148,6 +192,24 @@ namespace Display {
             const int16_t x = static_cast<int16_t>((PANEL_W - static_cast<int16_t>(w)) / 2 - x1);
             display.setCursor(x, baselineY);
             display.print(text);
+        }
+
+        // Draw the active warning in the left-margin slot: the triangle with
+        // the '!' cutout, then the token's label below it. The bar and the
+        // dot are sized to stay inside the triangle at both heights (the
+        // triangle is ~9 px half-wide at the bar top, 21 px at the base).
+        void drawWarningIcon(Display::WarningToken token) {
+            display.fillTriangle(WARN_CX, WARN_APEX_Y, WARN_CX - WARN_BASE_HALF_W, WARN_BASE_Y,
+                                 WARN_CX + WARN_BASE_HALF_W, WARN_BASE_Y, GxEPD_BLACK);
+            display.fillRect(WARN_CX - WARN_BAR_W / 2, WARN_BAR_TOP_Y, WARN_BAR_W, WARN_BAR_BOTTOM_Y - WARN_BAR_TOP_Y,
+                             GxEPD_WHITE);
+            display.fillRect(WARN_CX - WARN_BAR_W / 2, WARN_DOT_TOP_Y, WARN_BAR_W, WARN_DOT_H, GxEPD_WHITE);
+
+            display.setFont(nullptr); // built-in 5x7
+            const char* label = WARNING_LABELS[static_cast<uint8_t>(token)];
+            const int16_t labelW = static_cast<int16_t>(strlen(label)) * 6;
+            display.setCursor(static_cast<int16_t>(WARN_CX - labelW / 2), WARN_LABEL_Y);
+            display.print(label);
         }
 
         // Draw control state symbol at given position
@@ -539,7 +601,7 @@ namespace Display {
 
     void EPaperDisplay::runPagedDraw(const char* tempStr, const char* humStr, const char* footerName,
                                      const char* footerDateTime, Display::ControlState controlState,
-                                     const char* setpointStr, uint8_t demandSegments) {
+                                     const char* setpointStr, uint8_t demandSegments, WarningToken warning) {
         display.firstPage();
         do {
             display.fillScreen(GxEPD_WHITE);
@@ -548,13 +610,19 @@ namespace Display {
 
             drawMeasurements(tempStr, humStr);
 
+            // Purely additive: when the slot is empty nothing else moves, and
+            // a cleared warning simply leaves the margin white again.
+            if (warning != WarningToken::NONE) {
+                drawWarningIcon(warning);
+            }
+
             drafFooter(footerName, footerDateTime, controlState, setpointStr, demandSegments);
         } while (display.nextPage());
     }
 
     void EPaperDisplay::render(const char* tempStr, const char* humStr, const char* footerName,
                                const char* footerDateTime, Display::ControlState controlState, const char* setpointStr,
-                               uint8_t demandSegments, RefreshKind kind) {
+                               uint8_t demandSegments, WarningToken warning, RefreshKind kind) {
         if (!initialised || faulted || kind == RefreshKind::None) {
             return;
         }
@@ -563,9 +631,9 @@ namespace Display {
         if (full) {
             display.setFullWindow();
         } else {
-            // Everything that changes between refreshes — the values and both
-            // footer lines — lives inside this window. Only the top margin is
-            // excluded, which is blank.
+            // Everything that changes between refreshes — the values, both
+            // footer lines and the warning slot — lives inside this window.
+            // Only the top margin is excluded, which is blank.
             display.setPartialWindow(0, REFRESH_WINDOW_Y, PANEL_W, REFRESH_WINDOW_H);
         }
 
@@ -575,7 +643,7 @@ namespace Display {
         // "blocking external call" requirement.
         const uint32_t start = millis();
         feedWatchdog();
-        runPagedDraw(tempStr, humStr, footerName, footerDateTime, controlState, setpointStr, demandSegments);
+        runPagedDraw(tempStr, humStr, footerName, footerDateTime, controlState, setpointStr, demandSegments, warning);
         feedWatchdog();
         const uint32_t elapsed = millis() - start;
 

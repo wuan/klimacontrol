@@ -2,6 +2,7 @@
 #include "Config.h"
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 void setUp() {}
 void tearDown() {}
@@ -173,6 +174,80 @@ void test_validate_display_config_preserves_enabled() {
     config.interval = 1;
     Config::validateDisplayConfig(config);
     TEST_ASSERT_TRUE(config.enabled);
+}
+
+// --- validateDisplayConfig: warning thresholds ---
+
+void test_display_config_warning_defaults_disabled() {
+    Config::DisplayConfig config;
+    TEST_ASSERT_TRUE(std::isnan(config.warn_frost_c));
+    TEST_ASSERT_EQUAL(0, config.warn_humidity_pct);
+}
+
+void test_validate_display_config_warn_thresholds_valid_unchanged() {
+    Config::DisplayConfig config;
+    config.warn_frost_c = 5.0f;
+    config.warn_humidity_pct = 70;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL_FLOAT(5.0f, config.warn_frost_c);
+    TEST_ASSERT_EQUAL(70, config.warn_humidity_pct);
+}
+
+void test_validate_display_config_warn_frost_at_bounds_unchanged() {
+    Config::DisplayConfig config;
+    config.warn_frost_c = Config::MIN_WARN_FROST_C;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL_FLOAT(Config::MIN_WARN_FROST_C, config.warn_frost_c);
+
+    config.warn_frost_c = Config::MAX_WARN_FROST_C;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL_FLOAT(Config::MAX_WARN_FROST_C, config.warn_frost_c);
+}
+
+void test_validate_display_config_warn_frost_out_of_range_disabled() {
+    Config::DisplayConfig config;
+
+    config.warn_frost_c = Config::MIN_WARN_FROST_C - 0.5f;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_TRUE(std::isnan(config.warn_frost_c));
+
+    config.warn_frost_c = Config::MAX_WARN_FROST_C + 0.5f;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_TRUE(std::isnan(config.warn_frost_c));
+
+    config.warn_frost_c = 999.0f;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_TRUE(std::isnan(config.warn_frost_c));
+}
+
+void test_validate_display_config_warn_frost_nonfinite_disabled() {
+    Config::DisplayConfig config;
+
+    config.warn_frost_c = NAN;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_TRUE(std::isnan(config.warn_frost_c));
+
+    config.warn_frost_c = std::numeric_limits<float>::infinity();
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_TRUE(std::isnan(config.warn_frost_c));
+}
+
+void test_validate_display_config_warn_humidity_out_of_range_disabled() {
+    Config::DisplayConfig config;
+
+    config.warn_humidity_pct = 101;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(0, config.warn_humidity_pct);
+
+    // A negative JSON int wrapping into the uint8_t field must land in the
+    // disable bucket, not become a plausible-looking limit.
+    config.warn_humidity_pct = static_cast<uint8_t>(-5);
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(0, config.warn_humidity_pct);
+
+    config.warn_humidity_pct = 255;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(0, config.warn_humidity_pct);
 }
 
 // --- validateDeviceConfig ---
@@ -776,6 +851,12 @@ int runUnityTests() {
     RUN_TEST(test_validate_display_config_interval_at_bounds_unchanged);
     RUN_TEST(test_validate_display_config_interval_above_ceiling_clamped);
     RUN_TEST(test_validate_display_config_preserves_enabled);
+    RUN_TEST(test_display_config_warning_defaults_disabled);
+    RUN_TEST(test_validate_display_config_warn_thresholds_valid_unchanged);
+    RUN_TEST(test_validate_display_config_warn_frost_at_bounds_unchanged);
+    RUN_TEST(test_validate_display_config_warn_frost_out_of_range_disabled);
+    RUN_TEST(test_validate_display_config_warn_frost_nonfinite_disabled);
+    RUN_TEST(test_validate_display_config_warn_humidity_out_of_range_disabled);
     // DeviceConfig validation
     RUN_TEST(test_validate_device_config_valid_values_unchanged);
     RUN_TEST(test_validate_device_config_nan_temperature_reset);

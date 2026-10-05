@@ -2,6 +2,7 @@
 #define KLIMACONTROL_CONFIG_H
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 
 #ifdef ARDUINO
@@ -233,6 +234,15 @@ namespace Config {
     constexpr uint8_t MAX_DISPLAY_ROTATION = 3;
     constexpr uint16_t DEFAULT_DISPLAY_INTERVAL = 60;
 
+    // Display warning-threshold bounds. A frost threshold outside this range
+    // (or non-finite) means the frost warning is disabled; a humidity limit
+    // above 100 (0 included) means the humidity warning is disabled. The
+    // ceiling is deliberately below any plausible room temperature: a "frost"
+    // threshold of 999 would fire permanently.
+    constexpr float MIN_WARN_FROST_C = -50.0f;
+    constexpr float MAX_WARN_FROST_C = 30.0f;
+    constexpr uint8_t MAX_WARN_HUMIDITY_PCT = 100;
+
     /**
      * E-paper display configuration structure
      */
@@ -240,6 +250,13 @@ namespace Config {
         bool enabled = false;                         // Default off — an unconfigured device behaves as before
         uint8_t rotation = 0;                         // 0..3, mounting orientation
         uint16_t interval = DEFAULT_DISPLAY_INTERVAL; // Minimum seconds between refreshes
+
+        // User warning thresholds for the panel's warning icon. Both default
+        // to disabled: threshold warnings are opt-in, while the always-on
+        // conditions (sensor invalid, over-temperature trip, actuator
+        // uncertain) are evaluated regardless of configuration.
+        float warn_frost_c = NAN;      // Frost threshold in C; NAN = disabled
+        uint8_t warn_humidity_pct = 0; // Humidity limit in %rH; 0 = disabled
 
         DisplayConfig() = default;
     };

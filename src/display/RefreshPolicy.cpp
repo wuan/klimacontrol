@@ -64,12 +64,13 @@ namespace Display {
         lastSetpoint = NAN;
         lastDemandBucket = 0;
         lastControlState = ControlState::INACTIVE;
+        lastWarning = WarningToken::NONE;
         partialsSinceFull = 0;
     }
 
     RefreshKind RefreshPolicy::commit(RefreshKind kind, float temperature, float humidity, bool valid, uint32_t nowMs,
                                       uint32_t clockMinute, float setpoint, ControlState controlState,
-                                      uint8_t demandBucket) {
+                                      uint8_t demandBucket, WarningToken warning) {
         everPainted = true;
         lastValid = valid;
         lastTemperature = temperature;
@@ -79,6 +80,7 @@ namespace Display {
         lastSetpoint = setpoint;
         lastDemandBucket = demandBucket;
         lastControlState = controlState;
+        lastWarning = warning;
 
         if (kind == RefreshKind::Full) {
             partialsSinceFull = 0;
@@ -91,7 +93,7 @@ namespace Display {
 
     RefreshKind RefreshPolicy::evaluate(float temperature, float humidity, bool valid, uint32_t nowMs,
                                         uint32_t clockMinute, float setpoint, ControlState controlState,
-                                        uint8_t demandBucket) {
+                                        uint8_t demandBucket, WarningToken warning) {
         const bool available = readingAvailable(temperature, humidity, valid);
 
         // 1. First paint after boot is always a full refresh: the panel may be
@@ -99,7 +101,7 @@ namespace Display {
         //    retains its contents unpowered.
         if (!everPainted) {
             return commit(RefreshKind::Full, temperature, humidity, available, nowMs, clockMinute, setpoint,
-                          controlState, demandBucket);
+                          controlState, demandBucket, warning);
         }
 
         // 2. Hysteresis. A validity transition in either direction bypasses the
@@ -143,6 +145,19 @@ namespace Display {
             changed = true;
         }
 
+        // The warning icon is left-margin content like the footer fields are
+        // footer content: a token change in either direction (including
+        // to/from NONE) is a change worth showing. Onset — the new token not
+        // being NONE — additionally bypasses the interval floor below: a
+        // warning that appears late is precisely the thing the panel exists
+        // to say, and an extra interval of silence is the one failure mode
+        // that matters. Clearance keeps the floor, because a lingering
+        // warning is harmless and flapping must not pin refreshes there.
+        const bool warningOnset = (warning != lastWarning && warning != WarningToken::NONE);
+        if (warning != lastWarning) {
+            changed = true;
+        }
+
         if (!changed) {
             return RefreshKind::None;
         }
@@ -151,7 +166,7 @@ namespace Display {
         //    stays correct across the millis() rollover at ~49.7 days.
         const uint32_t elapsedMs = nowMs - lastRefreshMs;
         const uint32_t minIntervalMs = static_cast<uint32_t>(minIntervalSec) * 1000u;
-        if (elapsedMs < minIntervalMs) {
+        if (!warningOnset && elapsedMs < minIntervalMs) {
             // Deliberately does NOT record the new values: the change is still
             // outstanding and must fire once the floor passes.
             return RefreshKind::None;
@@ -161,7 +176,8 @@ namespace Display {
         const RefreshKind kind =
             (partialsSinceFull >= FULL_REFRESH_EVERY_N_PARTIALS) ? RefreshKind::Full : RefreshKind::Partial;
 
-        return commit(kind, temperature, humidity, available, nowMs, clockMinute, setpoint, controlState, demandBucket);
+        return commit(kind, temperature, humidity, available, nowMs, clockMinute, setpoint, controlState, demandBucket,
+                      warning);
     }
 
     size_t formatTemperature(char* out, size_t n, float value, bool valid) {

@@ -7,6 +7,7 @@
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
+#include <cmath>
 #include "Log.h"
 #endif
 
@@ -22,6 +23,14 @@ void WebServerManager::setupDisplayRoutes() {
         doc["enabled"] = displayConfig.enabled;
         doc["rotation"] = displayConfig.rotation;
         doc["interval"] = displayConfig.interval;
+        // NAN is the disabled sentinel and does not survive JSON, so it is
+        // reported as null — the same encoding the POST handler accepts.
+        if (std::isnan(displayConfig.warn_frost_c)) {
+            doc["warn_frost_c"] = nullptr;
+        } else {
+            doc["warn_frost_c"] = displayConfig.warn_frost_c;
+        }
+        doc["warn_humidity_pct"] = displayConfig.warn_humidity_pct;
 
         String response;
         serializeJson(doc, response);
@@ -52,6 +61,23 @@ void WebServerManager::setupDisplayRoutes() {
                 if (doc["rotation"].is<int>()) displayConfig.rotation = doc["rotation"];
                 if (doc["interval"].is<int>()) displayConfig.interval = doc["interval"];
 
+                // Warning thresholds. Explicit JSON null disables the frost
+                // warning, while an absent field leaves the stored value
+                // alone — isNull() alone cannot tell the two apart, so the
+                // membership check comes first. A humidity limit of 0
+                // disables the humidity warning. Out-of-range values are
+                // clamped to disabled by validateDisplayConfig() inside
+                // saveDisplayConfig(), never rejected — the same
+                // clamp-don't-reject convention as rotation/interval.
+                if (doc["warn_frost_c"].is<float>()) {
+                    displayConfig.warn_frost_c = doc["warn_frost_c"].as<float>();
+                } else if (doc.containsKey("warn_frost_c")) {
+                    displayConfig.warn_frost_c = NAN; // explicit null
+                }
+                if (doc["warn_humidity_pct"].is<int>()) {
+                    displayConfig.warn_humidity_pct = doc["warn_humidity_pct"].as<uint8_t>();
+                }
+
                 // Turning the display off blanks the panel here and now,
                 // before the restart. e-paper retains its image without
                 // power, so a disabled display has to be actively cleared
@@ -73,8 +99,9 @@ void WebServerManager::setupDisplayRoutes() {
                 // interval 10..3600) before writing.
                 config.saveDisplayConfig(displayConfig);
 
-                ESP_LOGI(TAG, "Display config updated: enabled=%d rotation=%u interval=%u", displayConfig.enabled,
-                         displayConfig.rotation, displayConfig.interval);
+                ESP_LOGI(TAG, "Display config updated: enabled=%d rotation=%u interval=%u frost=%s hum=%u",
+                         displayConfig.enabled, displayConfig.rotation, displayConfig.interval,
+                         std::isnan(displayConfig.warn_frost_c) ? "off" : "on", displayConfig.warn_humidity_pct);
 
                 // The display is brought up during setup() from the
                 // persisted config, so the change takes effect on restart

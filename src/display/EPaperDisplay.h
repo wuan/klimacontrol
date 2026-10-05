@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "display/RefreshPolicy.h"
+#include "display/WarningPolicy.h"
 
 namespace Display {
 
@@ -117,11 +118,15 @@ namespace Display {
          *                    the control symbol, and only while controlState is
          *                    not INACTIVE. Pre-bucketed by the caller so the
          *                    panel repaints on a visible change, not every tick.
+         * @param warning   Warning token for the left-margin icon slot; NONE
+         *                    leaves the margin blank. The values and the
+         *                    footer keep their geometry either way.
          * @param kind        Partial repaints the value+footer window; Full also
          *                    clears ghosting
          */
         void render(const char* tempStr, const char* humStr, const char* footerName, const char* footerDateTime,
-                    ControlState controlState, const char* setpointStr, uint8_t demandSegments, RefreshKind kind);
+                    ControlState controlState, const char* setpointStr, uint8_t demandSegments, WarningToken warning,
+                    RefreshKind kind);
 
         /**
          * Blank the panel to white. Used on the disable path — e-paper retains
@@ -167,7 +172,8 @@ namespace Display {
                         const char* setpointStr, uint8_t demandSegments);
 
         void runPagedDraw(const char* tempStr, const char* humStr, const char* footerName, const char* footerDateTime,
-                          ControlState controlState, const char* setpointStr, uint8_t demandSegments);
+                          ControlState controlState, const char* setpointStr, uint8_t demandSegments,
+                          WarningToken warning);
 
         // Records the duration of a completed panel operation and trips the
         // fault guard when the timeout streak is reached.

@@ -9,6 +9,7 @@
 using Display::ControlState;
 using Display::RefreshKind;
 using Display::RefreshPolicy;
+using Display::WarningToken;
 
 // Default interval used by most tests, matching Config::DEFAULT_DISPLAY_INTERVAL.
 static constexpr uint16_t INTERVAL_SEC = 60;
@@ -19,8 +20,11 @@ void tearDown() {}
 
 // Drives the policy past its first-paint case so a test can start from a
 // settled state. Returns the timestamp of that initial full refresh.
-static uint32_t primeAt(RefreshPolicy& policy, float temp, float hum, uint32_t nowMs) {
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(temp, hum, true, nowMs)));
+static uint32_t primeAt(RefreshPolicy& policy, float temp, float hum, uint32_t nowMs,
+                        WarningToken warning = WarningToken::NONE) {
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Full),
+        static_cast<int>(policy.evaluate(temp, hum, true, nowMs, 0, NAN, ControlState::INACTIVE, 0, warning)));
     return nowMs;
 }
 
@@ -501,6 +505,62 @@ void test_demand_bucket_change_respects_the_interval_floor() {
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
 }
 
+// --- warning token trigger ---
+
+void test_warning_onset_triggers_immediate_refresh_past_the_floor() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
+
+    // One second later a warning appears: onset must bypass the interval
+    // floor — a late warning is the dangerous kind.
+    const RefreshKind kind =
+        policy.evaluate(21.0f, 47.0f, true, t + 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::FROST);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(kind));
+}
+
+void test_warning_clearance_respects_the_interval_floor() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::FROST);
+
+    // Clearance is not urgent: the blank margin waits out the floor.
+    const RefreshKind suppressed =
+        policy.evaluate(21.0f, 47.0f, true, 2000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::NONE);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(suppressed));
+
+    const RefreshKind fired =
+        policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, NAN, ControlState::INACTIVE, 0, WarningToken::NONE);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(fired));
+}
+
+void test_unchanged_warning_triggers_nothing() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000, WarningToken::HUMID);
+
+    const RefreshKind kind = policy.evaluate(21.0f, 47.0f, true, t + 10 * INTERVAL_MS, 0, NAN, ControlState::INACTIVE,
+                                             0, WarningToken::HUMID);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
+}
+
+void test_warning_token_change_triggers_refresh() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::HUMID);
+
+    // HUMID -> SENSOR is a different label in the same slot: the panel must
+    // repaint even though nothing else changed.
+    const RefreshKind kind = policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, NAN, ControlState::INACTIVE, 0,
+                                             WarningToken::SENSOR);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(kind));
+}
+
+void test_warning_onset_increments_the_ghosting_counter() {
+    // Onset bypasses the floor, not the ghosting promotion: the refresh is a
+    // real panel operation and must count toward it.
+    RefreshPolicy policy(INTERVAL_SEC);
+    uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
+    policy.evaluate(21.0f, 47.0f, true, t + 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::FROST);
+    TEST_ASSERT_EQUAL(1, policy.getPartialsSinceFull());
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     // First paint
@@ -563,6 +623,12 @@ int runUnityTests() {
     RUN_TEST(test_demand_bucket_change_triggers_refresh);
     RUN_TEST(test_unchanged_demand_bucket_does_not_trigger_refresh);
     RUN_TEST(test_demand_bucket_change_respects_the_interval_floor);
+    // Warning token
+    RUN_TEST(test_warning_onset_triggers_immediate_refresh_past_the_floor);
+    RUN_TEST(test_warning_clearance_respects_the_interval_floor);
+    RUN_TEST(test_unchanged_warning_triggers_nothing);
+    RUN_TEST(test_warning_token_change_triggers_refresh);
+    RUN_TEST(test_warning_onset_increments_the_ghosting_counter);
     return UNITY_END();
 }
 

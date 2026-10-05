@@ -632,6 +632,22 @@ namespace Config {
         } else if (config.interval > MAX_DISPLAY_INTERVAL) {
             config.interval = MAX_DISPLAY_INTERVAL;
         }
+
+        // Warning thresholds fail to disabled, not to an arbitrary value: a
+        // corrupt or out-of-range stored threshold must never invent a
+        // warning. NAN (the disabled sentinel, also what Preferences hands
+        // back for a corrupted float) and anything outside the plausible
+        // frost range disable; a humidity limit above 100 disables. A
+        // negative humidity cannot be stored in the uint8_t field, but a
+        // negative JSON int wrapping into it lands above 100 and is caught
+        // here too.
+        if (!std::isfinite(config.warn_frost_c) || config.warn_frost_c < MIN_WARN_FROST_C ||
+            config.warn_frost_c > MAX_WARN_FROST_C) {
+            config.warn_frost_c = NAN;
+        }
+        if (config.warn_humidity_pct > MAX_WARN_HUMIDITY_PCT) {
+            config.warn_humidity_pct = 0;
+        }
     }
 
     DisplayConfig ConfigManager::loadDisplayConfig() {
@@ -643,6 +659,8 @@ namespace Config {
         displayConfig.enabled = guard.get().getBool(PrefsKeys::DISPLAY_ENABLED, false);
         displayConfig.rotation = guard.get().getUChar(PrefsKeys::DISPLAY_ROTATION, 0);
         displayConfig.interval = guard.get().getUShort(PrefsKeys::DISPLAY_INTERVAL, DEFAULT_DISPLAY_INTERVAL);
+        displayConfig.warn_frost_c = guard.get().getFloat(PrefsKeys::DISPLAY_WARN_FROST, NAN);
+        displayConfig.warn_humidity_pct = guard.get().getUChar(PrefsKeys::DISPLAY_WARN_HUM, 0);
 
         ESP_LOGD(TAG, "Loaded display config from NVS: enabled=%d rotation=%u interval=%u", displayConfig.enabled,
                  displayConfig.rotation, displayConfig.interval);
@@ -665,6 +683,11 @@ namespace Config {
         guard.get().putBool(PrefsKeys::DISPLAY_ENABLED, validated.enabled);
         guard.get().putUChar(PrefsKeys::DISPLAY_ROTATION, validated.rotation);
         guard.get().putUShort(PrefsKeys::DISPLAY_INTERVAL, validated.interval);
+        // putFloat round-trips NaN payloads on ESP32; validateDisplayConfig()
+        // treats any non-finite read as disabled, so a corrupted value
+        // degrades to "off", which is the safe direction.
+        guard.get().putFloat(PrefsKeys::DISPLAY_WARN_FROST, validated.warn_frost_c);
+        guard.get().putUChar(PrefsKeys::DISPLAY_WARN_HUM, validated.warn_humidity_pct);
 
         ESP_LOGD(TAG, "Saved display configuration: enabled=%d rotation=%u interval=%u", validated.enabled,
                  validated.rotation, validated.interval);

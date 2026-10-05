@@ -53,6 +53,9 @@ namespace PrefsKeys {
     constexpr const char* DISPLAY_ENABLED = "disp_enabled";
     constexpr const char* DISPLAY_ROTATION = "disp_rot";
     constexpr const char* DISPLAY_INTERVAL = "disp_intv";
+    // Warning thresholds for the panel's warning icon.
+    constexpr const char* DISPLAY_WARN_FROST = "warn_frost";
+    constexpr const char* DISPLAY_WARN_HUM = "warn_hum";
 
     // Syslog configuration
     constexpr const char* SYSLOG_ENABLED = "syslog_enabled";
@@ -67,6 +70,8 @@ namespace PrefsKeys {
     static_assert(Config::nvsKeyFits(SYSLOG_ENABLED), "NVS key too long");
     static_assert(Config::nvsKeyFits(SYSLOG_HOST), "NVS key too long");
     static_assert(Config::nvsKeyFits(SYSLOG_PORT), "NVS key too long");
+    static_assert(Config::nvsKeyFits(DISPLAY_WARN_FROST), "NVS key too long");
+    static_assert(Config::nvsKeyFits(DISPLAY_WARN_HUM), "NVS key too long");
 }
 
 #endif // KLIMACONTROL_PREFS_KEYS_H

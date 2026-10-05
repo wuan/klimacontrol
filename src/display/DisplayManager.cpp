@@ -86,6 +86,7 @@ namespace Display {
         strlcpy(deviceName, deviceNameIn != nullptr ? deviceNameIn : "", sizeof(deviceName));
 
         policy = RefreshPolicy(config.interval);
+        warningPolicy = WarningPolicy(config.warn_frost_c, config.warn_humidity_pct);
 
         if (!panel.begin(config.rotation)) {
             ESP_LOGE(TAG, "Display initialisation faulted");
@@ -281,8 +282,26 @@ namespace Display {
             const float demandFraction = (control.getControlOutput() - outLo) / span;
             demandBucket = Display::nextDemandBucket(demandFraction, demandBucket);
 
+            // Reduce the tick's readings and states to the single warning
+            // token the panel's icon slot should show. The policy owns the
+            // threshold hysteresis and the anti-flap clear dwell; the
+            // always-on conditions (safety trip, sensor loss, actuator
+            // uncertainty) are evaluated regardless of configuration.
+            //
+            // Note the safety trip is only observed here once per second and
+            // the controller only updates it on control ticks — the warning
+            // icon is a second indicator, not a safety mechanism; the shutoff
+            // itself acts at the actuator immediately.
+            Display::WarningConditions warnConditions;
+            warnConditions.overheat = control.isSafetyShutoffEngaged();
+            warnConditions.sensorInvalid = !snapshot.valid;
+            warnConditions.actuatorUncertain = (controlState == Display::ControlState::UNCERTAIN);
+            warnConditions.temperature = temperature;
+            warnConditions.humidity = humidity;
+            const WarningToken warning = warningPolicy.evaluate(warnConditions, millis());
+
             const RefreshKind kind = policy.evaluate(temperature, humidity, snapshot.valid, millis(), clockMinute,
-                                                     target, controlState, demandBucket);
+                                                     target, controlState, demandBucket, warning);
             if (kind != RefreshKind::None) {
                 const bool available = snapshot.valid && !std::isnan(temperature) && !std::isnan(humidity);
 
@@ -305,7 +324,8 @@ namespace Display {
                 // Bare numbers: EPaperDisplay owns the unit decoration, because
                 // the degree mark has to be drawn geometrically (the GFX fonts
                 // only carry glyphs 0x20-0x7E) rather than printed.
-                panel.render(tempStr, humStr, deviceName, dateTime, controlState, setpointStr, demandBucket, kind);
+                panel.render(tempStr, humStr, deviceName, dateTime, controlState, setpointStr, demandBucket, warning,
+                             kind);
             }
         }
 

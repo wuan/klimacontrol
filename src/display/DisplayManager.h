@@ -9,6 +9,7 @@
 #include "Config.h"
 #include "display/EPaperDisplay.h"
 #include "display/RefreshPolicy.h"
+#include "display/WarningPolicy.h"
 
 class SensorController;
 class Network;
@@ -142,6 +143,12 @@ namespace Display {
 
         EPaperDisplay panel;
         RefreshPolicy policy;
+
+        // Warning-icon decision state (threshold hysteresis, clear dwell).
+        // Rebuilt from the persisted DisplayConfig in begin(); with both
+        // thresholds disabled it still evaluates the always-on conditions
+        // (over-temperature trip, sensor loss, actuator uncertain).
+        WarningPolicy warningPolicy;
 
         // Currently displayed demand bar segments. Held here rather than in
         // RefreshPolicy because nextDemandBucket() needs the previous value to

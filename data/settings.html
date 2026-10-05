@@ -277,6 +277,20 @@
                     the displayed time lag. Lower values shorten the panel's service life.</small>
             </div>
 
+            <div class="form-group">
+                <label for="displayWarnFrost">Frost Warning Threshold (&deg;C)</label>
+                <input type="number" id="displayWarnFrost" placeholder="disabled" step="0.5" min="-50" max="30" style="width: 120px;">
+                <small class="form-hint">Shows a FROST warning icon on the panel when the temperature
+                    falls to this value. Leave empty to disable.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="displayWarnHumidity">Humidity Warning Limit (%rH)</label>
+                <input type="number" id="displayWarnHumidity" placeholder="disabled" min="0" max="100" style="width: 120px;">
+                <small class="form-hint">Shows a HUMID warning icon on the panel when humidity rises to
+                    this level. 0 or empty disables.</small>
+            </div>
+
             <button class="btn btn-primary" onclick="updateDisplay()">Save Display Settings</button>
 
             <div class="info-box" style="margin-top: 15px;">
@@ -1416,16 +1430,24 @@
             document.getElementById('displayEnabled').checked = data.enabled;
             document.getElementById('displayRotation').value = data.rotation || 0;
             document.getElementById('displayInterval').value = data.interval || 60;
+            document.getElementById('displayWarnFrost').value =
+                (data.warn_frost_c === null || data.warn_frost_c === undefined) ? '' : data.warn_frost_c;
+            document.getElementById('displayWarnHumidity').value = data.warn_humidity_pct || 0;
         } catch (error) {
             console.error('Failed to load display config:', error);
         }
     }
 
     async function updateDisplay() {
+        const frostRaw = document.getElementById('displayWarnFrost').value.trim();
+        const frostVal = parseFloat(frostRaw);
+        const humVal = parseInt(document.getElementById('displayWarnHumidity').value, 10);
         const config = {
             enabled: document.getElementById('displayEnabled').checked,
             rotation: parseInt(document.getElementById('displayRotation').value) || 0,
-            interval: parseInt(document.getElementById('displayInterval').value) || 60
+            interval: parseInt(document.getElementById('displayInterval').value) || 60,
+            warn_frost_c: Number.isFinite(frostVal) ? frostVal : null,
+            warn_humidity_pct: Number.isFinite(humVal) ? humVal : 0
         };
 
         if (!confirm('Save display settings?\n\nThe device will restart to apply changes.')) {
