@@ -318,7 +318,7 @@ the single icon slot (overheat → frost → sensor → actuator → humid).
 - **Zero idle power**: e-paper keeps its image with no power between refreshes
 - **Paged rendering**: 625-byte page buffer rather than a 5 KB framebuffer, to
   keep internal SRAM above the OTA pre-flight gate
-- **Refresh policy**: value hysteresis (±0.2 °C / ±1 %RH), a configurable
+- **Refresh policy**: value hysteresis (±0.1 °C / ±1 %RH), a configurable
   minimum interval (default 60 s), and a full refresh every 12 partials to clear
   ghosting
 - **Version at a glance**: the header band sits above the partial-refresh
