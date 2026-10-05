@@ -101,6 +101,16 @@ protected:
      */
 #ifdef ARDUINO
     void handleWiFiConfig(AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, size_t total);
+
+    /**
+     * Start the OTA update found by the last check and answer the caller.
+     * Shared exit path for POST /api/ota/update: called from the request
+     * callback for bodyless POSTs (Content-Length: 0 — the ESPAsyncWebServer
+     * parser never invokes the body callback for those) and from the body
+     * callback for requests carrying a JSON body. Implemented in
+     * routes/OTARoutes.cpp.
+     */
+    void handleOtaUpdateStart(AsyncWebServerRequest* request, bool allowReinstall);
 #endif
 
     /**

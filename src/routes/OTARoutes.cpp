@@ -102,11 +102,46 @@ void WebServerManager::setupOTARoutes() {
     //
     // The three-arg form (onRequest / nullptr for onUpload / onBody) is the
     // ESPAsyncWebServer pattern for routes that need to read a small JSON
-    // body: onBody is invoked as the body chunks arrive, and only when there
-    // is a body — so the empty-body case keeps the default allow_reinstall=
-    // false and matches today's behaviour.
+    // body — but onBody is invoked as the body chunks arrive, and ONLY when
+    // there is a body. For a bodyless POST (Content-Length: 0) the parser
+    // jumps straight to PARSE_REQ_END and calls _onRequest instead, which is
+    // why the regular "Install Update" click (no body, allow_reinstall
+    // absent) landed on a no-op handler and was answered with HTTP 501
+    // "Handler did not handle the request". Both cases are therefore handled
+    // explicitly here:
+    //
+    // - onRequest: bodyless POST → start with the default allow_reinstall=
+    //   false. Also covers urlencoded plain-POST bodies (e.g. a curl rescue
+    //   with `allow_reinstall=true`), which the library parses into request
+    //   params instead of routing them through onBody. For a JSON body this
+    //   callback runs AGAIN after the body has been consumed — the fall-
+    //   through at the end does nothing, so the response is not sent twice.
+    // - onBody: JSON body → parse allow_reinstall and start. First chunk
+    //   only (the body is small).
     server.on(
-        "/api/ota/update", HTTP_POST, []([[maybe_unused]] AsyncWebServerRequest* request) {}, nullptr,
+        "/api/ota/update", HTTP_POST,
+        [this](AsyncWebServerRequest* request) {
+            if (!verifyCsrfHeader(request)) {
+                return;
+            }
+
+            if (request->contentLength() == 0) {
+                // Bodyless POST: no JSON can follow, default behaviour applies.
+                handleOtaUpdateStart(request, false);
+                return;
+            }
+
+            if (request->hasParam("allow_reinstall", true)) {
+                // urlencoded plain POST: the library already parsed the body
+                // into request params; onBody below will never fire.
+                handleOtaUpdateStart(request, request->getParam("allow_reinstall", true)->value() == "true");
+                return;
+            }
+
+            // A JSON body is on its way (or was just consumed) — handled by
+            // the onBody callback below.
+        },
+        nullptr,
         [this](AsyncWebServerRequest* request, uint8_t* data, size_t len, size_t index, [[maybe_unused]] size_t total) {
             if (!verifyCsrfHeader(request)) {
                 return;
@@ -128,17 +163,7 @@ void WebServerManager::setupOTARoutes() {
                 allowReinstall = doc["allow_reinstall"].as<bool>();
             }
 
-            ESP_LOGI(TAG, "OTA update requested (allow_reinstall=%s)", allowReinstall ? "true" : "false");
-
-            if (OTAUpdater::startBackgroundUpdateFromLatestCheck(this->config, allowReinstall)) {
-                request->send(200, CONTENT_TYPE_JSON, R"({"status":"starting","message":"OTA update started"})");
-            } else {
-                ESP_LOGW(TAG,
-                         "OTA update not started (no verified update, busy, pending verify, or task creation failed)");
-                request->send(
-                    409, CONTENT_TYPE_JSON,
-                    R"({"status":"error","message":"No verified update available, or update already in progress"})");
-            }
+            handleOtaUpdateStart(request, allowReinstall);
         });
 
     // GET /api/ota/update - Poll the state of a running/finished update.
@@ -368,4 +393,19 @@ void WebServerManager::setupOTARoutes() {
         }
     });
 #endif
+}
+
+void WebServerManager::handleOtaUpdateStart(AsyncWebServerRequest* request, bool allowReinstall) {
+    ESP_LOGI(TAG, "OTA update requested (allow_reinstall=%s)", allowReinstall ? "true" : "false");
+
+    // startBackgroundUpdateFromLatestCheck() only spawns a worker (the actual
+    // multi-minute download runs there), so it returns quickly and is safe to
+    // call inline on the AsyncTCP event task.
+    if (OTAUpdater::startBackgroundUpdateFromLatestCheck(this->config, allowReinstall)) {
+        request->send(200, CONTENT_TYPE_JSON, R"({"status":"starting","message":"OTA update started"})");
+    } else {
+        ESP_LOGW(TAG, "OTA update not started (no verified update, busy, pending verify, or task creation failed)");
+        request->send(409, CONTENT_TYPE_JSON,
+                      R"({"status":"error","message":"No verified update available, or update already in progress"})");
+    }
 }
