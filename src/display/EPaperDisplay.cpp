@@ -133,7 +133,7 @@ namespace Display {
         // glyphs 0x20-0x7E, so U+00B0 (and the Latin-1 0xB0 byte) renders as
         // nothing — the ring has to be drawn, not printed.
         constexpr int16_t DEGREE_RADIUS = 6;
-        constexpr int16_t DEGREE_GAP = 3;       // space between the digits and the ring
+        constexpr int16_t DEGREE_GAP = 4;       // space between the digits and the ring
         constexpr int16_t DEGREE_TOP_INSET = 0; // below the cap height of the big font
         constexpr int16_t DEGREE_ADVANCE = DEGREE_GAP + 2 * DEGREE_RADIUS;
 
@@ -563,7 +563,7 @@ namespace Display {
         drawCentered(humLine, HUMIDITY_BASELINE_Y);
     }
 
-    void EPaperDisplay::drafFooter(const char* footerName, const char* footerDateTime,
+    void EPaperDisplay::drawFooter(const char* footerName, const char* footerDateTime,
                                    Display::ControlState controlState, const char* setpointStr,
                                    uint8_t demandSegments) {
         // Drawn on every refresh, partial included: the footer carries a
@@ -639,7 +639,7 @@ namespace Display {
                 drawWarningIcon(warning, WARN_CX_RIGHT);
             }
 
-            drafFooter(footerName, footerDateTime, controlState, setpointStr, demandSegments);
+            drawFooter(footerName, footerDateTime, controlState, setpointStr, demandSegments);
         } while (display.nextPage());
     }
 
