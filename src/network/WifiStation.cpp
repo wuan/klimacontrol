@@ -6,6 +6,7 @@
 #ifdef ARDUINO
 #include <esp_heap_caps.h>
 #include <esp_task_wdt.h>
+#include <nvs.h>
 #endif
 
 static constexpr auto TAG = "net";
@@ -92,6 +93,35 @@ namespace Net {
         ESP_LOGI(TAG, "WiFi config: TX Power=%d, Sleep Mode=%s", WiFi.getTxPower(), sleepModeStr);
     }
 
+    // Probe NVS health immediately before esp_wifi_init(), because that is
+    // where the radio's PHY calibration load performs its own nvs_open("phy").
+    // A crash inside WiFi mode() has previously left no evidence, so this runs
+    // the *same* NVS paths (stats query, read-only namespace open, blob size
+    // query) with our own return codes on the log first. NOT_FOUND results are
+    // normal (first boot, calibration not stored yet) and still prove the NVS
+    // storage is walkable. Strictly read-only: no writes, nothing perturbed.
+    static void logNvsHealth() {
+        nvs_stats_t stats;
+        const esp_err_t statsErr = nvs_get_stats(nullptr, &stats);
+        if (statsErr != ESP_OK) {
+            ESP_LOGE(TAG, "NVS probe: stats failed err=0x%x", statsErr);
+        } else {
+            ESP_LOGI(TAG, "NVS probe: used=%u free=%u total=%u ns=%u", stats.used_entries, stats.free_entries,
+                     stats.total_entries, stats.namespace_count);
+        }
+
+        nvs_handle_t handle = 0;
+        const esp_err_t openErr = nvs_open("phy", NVS_READONLY, &handle);
+        if (openErr != ESP_OK) {
+            ESP_LOGI(TAG, "NVS probe: phy open err=0x%x", openErr);
+            return;
+        }
+        size_t len = 0;
+        const esp_err_t calErr = nvs_get_blob(handle, "cal_data", nullptr, &len);
+        ESP_LOGI(TAG, "NVS probe: phy cal_data len=%u err=0x%x", len, calErr);
+        nvs_close(handle);
+    }
+
     void WifiStation::logConnectionDetails() {
         ESP_LOGI(TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
         ESP_LOGD(TAG, "WiFi diagnostics: SSID=%s BSSID=%s Ch=%d RSSI=%d dBm MAC=%s", WiFi.SSID().c_str(),
@@ -119,11 +149,14 @@ namespace Net {
         // last one in the log pinpoints esp_wifi_init(), and the numbers say
         // whether memory was the cause (low largest-block) or not (healthy heap
         // => suspect brownout, and the next boot's "Reset reason:" confirms it).
+        logNvsHealth();
         ESP_LOGI(TAG, "Pre-WiFi heap: internal free=%u largest=%u, total free=%u",
                  heap_caps_get_free_size(MALLOC_CAP_INTERNAL), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
                  heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
 
-        WiFiClass::mode(WIFI_STA);
+        ESP_LOGI(TAG, "WiFi: entering STA mode");
+        const bool modeOk = WiFiClass::mode(WIFI_STA);
+        ESP_LOGI(TAG, "WiFi: STA mode %s", modeOk ? "entered" : "FAILED");
         WiFi.setAutoReconnect(true);
 
         // Guarded so a re-entry can't stack duplicate handlers (Arduino appends,
