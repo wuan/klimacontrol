@@ -103,6 +103,22 @@ namespace Config {
     constexpr float TARGET_TEMPERATURE_MAX_C = 30.0f;
     constexpr float TARGET_TEMPERATURE_DEFAULT_C = 22.0f;
 
+    /**
+     * Whether `celsius` is an acceptable setpoint: finite, and within
+     * [TARGET_TEMPERATURE_MIN_C, TARGET_TEMPERATURE_MAX_C].
+     *
+     * Shared by the two inbound paths — `POST /api/temperature/target` and the
+     * MQTT setpoint command — so the range rule cannot drift between them.
+     * Both *reject* rather than clamp: answering "accepted" after quietly
+     * storing a different value tells the caller its request was honoured when
+     * it was not. `std::isfinite()` also screens NaN, which the clamp
+     * downstream (`std::min(30.0f, NAN)` returns 30.0f) would otherwise map to
+     * a valid bound.
+     */
+    inline bool isValidTargetTemperature(float celsius) {
+        return std::isfinite(celsius) && celsius >= TARGET_TEMPERATURE_MIN_C && celsius <= TARGET_TEMPERATURE_MAX_C;
+    }
+
     // PID gains and the control interval.
     //
     // The ranges are a guard against a mistyped order of magnitude, not a
@@ -189,6 +205,7 @@ namespace Config {
         char prefix[64] = "sensors"; // topic prefix, e.g. "sensors/bedroom"
         uint16_t interval = 15;      // publish interval in seconds
         bool enabled = false;
+        bool ha_discovery = false; // publish the Home Assistant device-discovery payload
 
         MqttConfig() = default;
     };

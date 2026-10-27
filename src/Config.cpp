@@ -510,6 +510,10 @@ namespace Config {
         if (config.interval < 1 || config.interval > 3600) {
             config.interval = 15;
         }
+        // `ha_discovery` is deliberately not normalised here: it is a boolean,
+        // so there is no out-of-range value to fall back from, and a missing or
+        // mistyped NVS entry already reads back as the default `false` via
+        // Preferences::getBool().
     }
 
     MqttConfig ConfigManager::loadMqttConfig() {
@@ -525,6 +529,7 @@ namespace Config {
         guard.get().getString("mqtt_pass", mqttConfig.password, sizeof(mqttConfig.password));
         guard.get().getString("mqtt_prefix", mqttConfig.prefix, sizeof(mqttConfig.prefix));
         mqttConfig.interval = guard.get().getUShort("mqtt_interval", 15);
+        mqttConfig.ha_discovery = guard.get().getBool("mqtt_ha_disc", false);
 #endif
 
         // Validate ranges — NVS may hold garbage after flash corruption
@@ -544,6 +549,7 @@ namespace Config {
         guard.get().putString("mqtt_pass", config.password);
         guard.get().putString("mqtt_prefix", config.prefix);
         guard.get().putUShort("mqtt_interval", config.interval);
+        guard.get().putBool("mqtt_ha_disc", config.ha_discovery);
 
         ESP_LOGD(TAG, "Saved MQTT configuration");
 #endif

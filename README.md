@@ -275,6 +275,67 @@ Optional MQTT support for:
 - Subscribing to commands to enable/disable control
 - Remote monitoring and integration with home automation systems
 
+Enable it under *Settings → MQTT* or via `POST /api/mqtt`.
+
+### Topics
+
+With the configured prefix `{prefix}` (default `sensors`):
+
+| Topic | Payload | Retained |
+| --- | --- | --- |
+| `{prefix}/temperature`, `{prefix}/humidity`, `{prefix}/…` | Measurement JSON (`time`, `value`, `unit`, `sensor`, `calculated`) | no |
+| `{prefix}/target_temperature` | Setpoint in °C, e.g. `21.5` | yes |
+| `{prefix}/control_enabled` | `ON` / `OFF` | yes |
+| `{prefix}/control_output` | PID output as a whole-number percent (`0`–`100`) | no |
+| `{prefix}/heating` | Confirmed heating, `ON` / `OFF` | no |
+| `{prefix}/status` | `online` while connected, `offline` otherwise | yes |
+
+The setpoint and control-enabled topics are republished as soon as their value
+changes and once on every (re)connect, independently of the measurement publish
+interval.
+
+### Commands
+
+Publish to these to change the device (no retain — a retained command would be
+re-applied on every connect):
+
+| Topic | Payload |
+| --- | --- |
+| `{prefix}/target_temperature/set` | A number in `[10.0, 30.0]` °C |
+| `{prefix}/control_enabled/set` | `ON` / `OFF` |
+
+A setpoint outside that range, or a non-numeric payload, is **rejected** rather
+than clamped, so a mistyped value never replaces the stored one. Unknown
+control payloads are ignored.
+
+### Availability
+
+The device registers an MQTT Last Will (retained `offline` on `{prefix}/status`),
+publishes a retained `online` when it connects and a retained `offline` before a
+clean disconnect. A broker or subscriber therefore sees `offline` both when the
+device is switched off deliberately and when it drops without warning.
+
+### Home Assistant
+
+Turn on *Settings → MQTT → Home Assistant Discovery* (or `POST /api/mqtt`
+`{"ha_discovery": true}`) to have the device announce itself. It publishes one
+retained Home Assistant **device-discovery** message on
+`homeassistant/device/<device_id>/config` describing:
+
+- a `climate` entity (current temperature, target temperature, off/heat),
+- humidity and dew-point sensors,
+- a PID-output sensor, and
+- a heating binary sensor.
+
+The message is republished after every reconnect, so the entities come back
+after a broker restart without re-toggling the setting. Turning the toggle off
+publishes an empty retained payload to the discovery topic, which removes the
+device from Home Assistant.
+
+MQTT must be enabled for discovery to be published. Retained discovery outlives
+a firmware downgrade: disable discovery (or clear the topic by hand) before
+downgrading.
+
 ## Syslog
 
 Device logs can be forwarded to a remote syslog server via UDP (RFC 3164). Configure the syslog target in the web interface under Settings or via the `/api/syslog` endpoint.

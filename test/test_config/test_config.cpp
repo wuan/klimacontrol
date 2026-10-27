@@ -34,10 +34,24 @@ void test_mqtt_config_defaults() {
     TEST_ASSERT_EQUAL(1883, config.port);
     TEST_ASSERT_EQUAL(15, config.interval);
     TEST_ASSERT_FALSE(config.enabled);
+    TEST_ASSERT_FALSE(config.ha_discovery);
     TEST_ASSERT_EQUAL_STRING("sensors", config.prefix);
     TEST_ASSERT_EQUAL_STRING("", config.host);
     TEST_ASSERT_EQUAL_STRING("", config.username);
     TEST_ASSERT_EQUAL_STRING("", config.password);
+}
+
+// The NVS read/write itself is compiled out on native (no Preferences), so the
+// persistence path is exercised here as a value round-trip through the same
+// validate step loadMqttConfig() applies after reading: the flag has to survive
+// a set/validate/copy cycle, not just default correctly.
+void test_mqtt_config_discovery_round_trip() {
+    Config::MqttConfig saved;
+    saved.ha_discovery = true;
+    Config::validateMqttConfig(saved);
+
+    Config::MqttConfig reloaded = saved; // what loadMqttConfig() returns
+    TEST_ASSERT_TRUE(reloaded.ha_discovery);
 }
 
 // --- SensorConfig defaults ---
@@ -659,6 +673,27 @@ void test_validate_device_config_empty_host_preserved() {
     TEST_ASSERT_EQUAL(Config::ACTUATOR_CHANNEL_UNASSIGNED, config.actuator_channel);
 }
 
+// --- isValidTargetTemperature (shared by the HTTP route and the MQTT command path) ---
+
+void test_target_temperature_predicate_accepts_the_range() {
+    TEST_ASSERT_TRUE(Config::isValidTargetTemperature(Config::TARGET_TEMPERATURE_MIN_C));
+    TEST_ASSERT_TRUE(Config::isValidTargetTemperature(Config::TARGET_TEMPERATURE_MAX_C));
+    TEST_ASSERT_TRUE(Config::isValidTargetTemperature(21.5f));
+}
+
+void test_target_temperature_predicate_rejects_out_of_range() {
+    TEST_ASSERT_FALSE(Config::isValidTargetTemperature(Config::TARGET_TEMPERATURE_MIN_C - 0.1f));
+    TEST_ASSERT_FALSE(Config::isValidTargetTemperature(Config::TARGET_TEMPERATURE_MAX_C + 0.1f));
+    TEST_ASSERT_FALSE(Config::isValidTargetTemperature(40.0f));
+    TEST_ASSERT_FALSE(Config::isValidTargetTemperature(-5.0f));
+}
+
+void test_target_temperature_predicate_rejects_non_finite() {
+    TEST_ASSERT_FALSE(Config::isValidTargetTemperature(std::numeric_limits<float>::quiet_NaN()));
+    TEST_ASSERT_FALSE(Config::isValidTargetTemperature(std::numeric_limits<float>::infinity()));
+    TEST_ASSERT_FALSE(Config::isValidTargetTemperature(-std::numeric_limits<float>::infinity()));
+}
+
 // --- validateMqttConfig ---
 
 void test_validate_mqtt_config_valid_values_unchanged() {
@@ -833,6 +868,7 @@ int runUnityTests() {
     RUN_TEST(test_wifi_config_defaults);
     RUN_TEST(test_device_config_defaults);
     RUN_TEST(test_mqtt_config_defaults);
+    RUN_TEST(test_mqtt_config_discovery_round_trip);
     RUN_TEST(test_sensor_config_defaults);
     RUN_TEST(test_energy_config_defaults);
     RUN_TEST(test_syslog_config_defaults);
@@ -901,6 +937,10 @@ int runUnityTests() {
     RUN_TEST(test_validate_device_config_ipv6_host_cleared);
     RUN_TEST(test_validate_device_config_valid_host_preserved);
     RUN_TEST(test_validate_device_config_empty_host_preserved);
+    // isValidTargetTemperature
+    RUN_TEST(test_target_temperature_predicate_accepts_the_range);
+    RUN_TEST(test_target_temperature_predicate_rejects_out_of_range);
+    RUN_TEST(test_target_temperature_predicate_rejects_non_finite);
     // MqttConfig validation
     RUN_TEST(test_validate_mqtt_config_valid_values_unchanged);
     RUN_TEST(test_validate_mqtt_config_zero_port_reset);

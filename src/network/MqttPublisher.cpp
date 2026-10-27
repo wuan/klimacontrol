@@ -1,11 +1,15 @@
 #include "network/MqttPublisher.h"
 
 #include <cstdio>
+#include <cstring>
 
 #include "DarkModeStatusLed.h"
+#include "DeviceId.h"
 #include "Log.h"
 #include "SensorController.h"
+#include "control/TemperatureController.h"
 #include "network/InternetHealth.h"
+#include "ota/OTAConfig.h" // FIRMWARE_VERSION
 
 #ifdef ARDUINO
 static constexpr auto TAG = "net";
@@ -18,7 +22,13 @@ namespace Net {
     void MqttPublisher::begin() {
 #ifdef ARDUINO
         mqtt = std::make_unique<MqttClient>();
+        wireCommandHandler();
 #endif
+    }
+
+    void MqttPublisher::wireCommandHandler() {
+        if (!mqtt) return;
+        mqtt->setCommandHandler([this](const char* topic, const char* payload) { handleCommand(topic, payload); });
     }
 
     void MqttPublisher::connect(const Config::MqttConfig& config) {
@@ -57,7 +67,26 @@ namespace Net {
 
         mqtt->loop();
 
-        if (!mqtt->isConnected() || !sensors.isDataValid()) {
+        const bool connected = mqtt->isConnected();
+
+        // A fresh (re)connect: refresh everything a subscriber needs, before
+        // (and regardless of) the measurement cadence and settle period. The
+        // retained discovery message is also what makes the entities reappear
+        // after a broker restart without the user re-toggling the setting.
+        if (connected) {
+            const uint32_t connects = mqtt->getConnectCount();
+            if (connects != lastConnectCount) {
+                lastConnectCount = connects;
+                publishDiscovery();
+                publishControlState(true);
+            } else {
+                publishControlState(false);
+            }
+        } else {
+            lastConnectCount = 0;
+        }
+
+        if (!connected || !sensors.isDataValid()) {
             statusLed.setProgress(0.0f);
             return;
         }
@@ -111,6 +140,129 @@ namespace Net {
 
         if (failed > 0) {
             ESP_LOGW(TAG, "MQTT: Published %u/%u measurements (%u failed)", succeeded, succeeded + failed, failed);
+        }
+    }
+
+    void MqttPublisher::publishControlState(const bool force) {
+        if (!mqtt || !mqtt->isConnected()) return;
+
+        const char* prefix = mqtt->getPrefix();
+
+        // Format first, then compare: what is compared is exactly what would
+        // go on the wire, so a setpoint that only changes in its printed form
+        // still counts as a change.
+        char setpoint[sizeof(lastSetpoint)];
+        formatSetpointPayload(setpoint, sizeof(setpoint), control.getTargetTemperature());
+        char enabled[sizeof(lastControlEnabled)];
+        formatControlEnabledPayload(enabled, sizeof(enabled), control.isControlEnabled());
+        char output[sizeof(lastControlOutput)];
+        formatControlOutputPayload(output, sizeof(output), control.getControlOutput());
+        char heating[sizeof(lastHeating)];
+        formatHeatingPayload(heating, sizeof(heating), control.isControlActive());
+
+        // Setpoint and enable flag are retained so a subscriber that connects
+        // later still learns the current value; the demand and the heating
+        // state are transient and would only mislead if retained.
+        struct Entry {
+            const char* suffix;
+            const char* payload;
+            bool retain;
+            char* last;
+            size_t lastSize;
+        };
+        const Entry entries[] = {
+            {"target_temperature", setpoint, true, lastSetpoint, sizeof(lastSetpoint)},
+            {"control_enabled", enabled, true, lastControlEnabled, sizeof(lastControlEnabled)},
+            {"control_output", output, false, lastControlOutput, sizeof(lastControlOutput)},
+            {"heating", heating, false, lastHeating, sizeof(lastHeating)},
+        };
+
+        for (const auto& entry : entries) {
+            if (!force && strcmp(entry.last, entry.payload) == 0) continue;
+
+            char topic[160];
+            snprintf(topic, sizeof(topic), "%s/%s", prefix, entry.suffix);
+
+            if (mqtt->publish(topic, entry.payload, entry.retain)) {
+                // Only a successful publish updates the baseline, so a topic
+                // that failed is retried on the next tick rather than being
+                // remembered as sent.
+                strlcpy(entry.last, entry.payload, entry.lastSize);
+            }
+        }
+    }
+
+    void MqttPublisher::publishDiscovery() {
+#ifdef ARDUINO
+        if (!mqtt || !mqtt->isConnected() || !mqtt->isHaDiscoveryEnabled()) return;
+
+        const String deviceId = DeviceId::getDeviceId();
+        // The stored name falls back to the device id on load, so this is
+        // never empty; the 31-character field is the worst case the size test
+        // pins.
+        const Config::DeviceConfig cfg = config.getDeviceConfigSnapshot();
+
+        char topic[128];
+        formatHaDiscoveryTopic(topic, sizeof(topic), deviceId.c_str());
+
+        // The one payload large enough to matter: sized against the full
+        // requested buffer, not the possibly-degraded actual one, so a
+        // degraded buffer surfaces as a failed publish below rather than as a
+        // silently truncated config that Home Assistant would reject.
+        char payload[MqttClient::MQTT_BUFFER_SIZE];
+        const int length = formatHaDiscoveryPayload(payload, sizeof(payload), deviceId.c_str(), cfg.device_name,
+                                                    mqtt->getPrefix(), FIRMWARE_VERSION);
+        if (length < 0 || static_cast<size_t>(length) >= sizeof(payload)) {
+            ESP_LOGE(TAG, "HA discovery payload truncated: needs %d B, buffer %u B", length, mqtt->getBufferSize());
+            return;
+        }
+
+        // Retained: Home Assistant must receive it even if it subscribes after
+        // this connect. MqttClient::publish() logs the truncation when the
+        // buffer is degraded; restate it so a missing discovery message is
+        // unambiguous.
+        if (!mqtt->publish(topic, payload, true)) {
+            ESP_LOGE(TAG, "HA discovery publish failed (topic=%s, %d B, buffer %u B)", topic, length,
+                     mqtt->getBufferSize());
+        } else {
+            ESP_LOGI(TAG, "HA discovery published (%d B)", length);
+        }
+#endif
+    }
+
+    void MqttPublisher::handleCommand(const char* topic, const char* payload) {
+        if (!mqtt) return;
+
+        const char* prefix = mqtt->getPrefix();
+
+        char setpointTopic[160];
+        snprintf(setpointTopic, sizeof(setpointTopic), "%s/target_temperature/set", prefix);
+        if (strcmp(topic, setpointTopic) == 0) {
+            float setpoint = 0.0f;
+            if (!parseSetpointPayload(payload, setpoint)) {
+                // Reject rather than clamp, exactly as the HTTP route does: a
+                // silently substituted setpoint is indistinguishable from an
+                // accepted one.
+                ESP_LOGW(TAG, "MQTT setpoint command rejected: '%s'", payload);
+                return;
+            }
+            control.setTargetTemperature(setpoint);
+            ESP_LOGI(TAG, "MQTT setpoint command applied: %.1f C", static_cast<double>(setpoint));
+            return;
+        }
+
+        char enableTopic[160];
+        snprintf(enableTopic, sizeof(enableTopic), "%s/control_enabled/set", prefix);
+        if (strcmp(topic, enableTopic) == 0) {
+            if (strcmp(payload, "ON") == 0) {
+                control.setControlEnabled(true);
+                ESP_LOGI(TAG, "MQTT control command applied: ON");
+            } else if (strcmp(payload, "OFF") == 0) {
+                control.setControlEnabled(false);
+                ESP_LOGI(TAG, "MQTT control command applied: OFF");
+            } else {
+                ESP_LOGW(TAG, "MQTT control command ignored: unknown payload '%s'", payload);
+            }
         }
     }
 
