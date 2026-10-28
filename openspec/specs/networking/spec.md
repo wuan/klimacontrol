@@ -433,10 +433,13 @@ the next pass instead of waiting out a fixed interval. `WAKE_MARGIN_MS`
 makes the wake strictly later than the nominal interval so an early RTOS
 wake cannot leave the next iteration's work short of its tick budget.
 
-MQTT publishing within the loop SHALL be gated only by the configured
-publish interval (`now - lastMqttPublish >= intervalMs`), the 60 s
-post-boot settle period, and data validity. The tick cadence SHALL NOT
-by itself trigger a publish.
+Sensor-measurement publishing within the loop SHALL be gated only by the
+configured publish interval (`now - lastMqttPublish >= intervalMs`), the
+60 s post-boot settle period, and data validity. The tick cadence SHALL
+NOT by itself trigger a publish. Event-driven publishes — Home Assistant
+discovery and control-state updates — SHALL NOT be gated by the publish
+interval or the settle period, and SHALL be published as soon as the
+event occurs.
 
 #### Scenario: First iteration sleeps for tick plus margin
 
@@ -478,5 +481,12 @@ by itself trigger a publish.
 - **WHEN** the broker is connected, the device has been up for at least
   60 s, sensor data is valid, and fewer than `intervalMs` milliseconds
   have elapsed since the last publish
-- **THEN** no publish SHALL occur on that iteration, irrespective of the
-  status LED's dark state
+- **THEN** no measurement publish SHALL occur on that iteration,
+  irrespective of the status LED's dark state
+
+#### Scenario: Event-driven publishes are not held to the interval
+
+- **WHEN** a control-state value changes, or the client reconnects, between
+  two measurement publish intervals
+- **THEN** the control-state or discovery publish SHALL still occur on
+  that iteration

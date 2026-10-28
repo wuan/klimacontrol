@@ -135,9 +135,15 @@ root-level `~` — rejected because it does not work.
   The fallback of writing every topic out in full does **not** fit 2048 at
   the longest prefix, so it is not usable; per-component `~` costs ~280 B
   worst-case and leaves ~220 B headroom, pinned by the size test.
-- **+1 kB long-lived buffer may land in internal SRAM.** `malloc` can be
-  served from PSRAM (`CONFIG_SPIRAM_USE_MALLOC=y`) but not guaranteed. ->
-  Check the boot heap log and the `buffer_degraded` flag after flashing.
+- **+1 kB long-lived buffer lands in internal SRAM.** Confirmed on
+  hardware: `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096` sends the 2048-byte
+  PubSubClient buffer to internal SRAM, the pool OTA and the low-heap guard
+  gate on, not to PSRAM. Measured on the running device: 39.6 kB internal
+  free now, 29.0 kB minimum since boot — ~12.6 kB above the low-heap
+  restart guard (16 kB) and ~16.7 kB above the OTA floor (12 kB), and
+  `buffer_degraded` is false with `truncated_publishes` at 0. The extra kB
+  is absorbed; re-check the min-free figure if more long-lived internal
+  allocations are added.
 - **A retained command message is re-applied on every connect.**
   PubSubClient cannot tell a retained delivery from a fresh one. -> HA
   commands are non-retained by default (climate `retain` defaults false);
@@ -157,6 +163,7 @@ root-level `~` — rejected because it does not work.
 
 ## Open Questions
 
-- Does the 2048-byte buffer allocate from PSRAM or internal SRAM on this
-  board? The boot heap log answers it; the sizing decision does not depend
-  on the answer.
+_None outstanding._ The `~` base-topic question was settled from Home
+Assistant's source (decision 10, and confirmed end-to-end on the device) and
+the buffer's memory region was confirmed on hardware (see the internal-SRAM
+risk above).

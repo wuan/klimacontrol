@@ -42,7 +42,7 @@
 - [x] 7.1 Run `pio test -e native` and confirm all suites pass, including the new payload and size tests
 - [x] 7.2 Run `pio run -e adafruit_qtpy_esp32s2` for a clean firmware build; confirm the boot log shows the new buffer size and note whether the allocation used PSRAM or internal SRAM
 - [x] 7.3 Run `openspec validate --all --strict` from the repo root and confirm the change and the main specs pass
-- [ ] 7.4 End-to-end in Home Assistant: confirm the thermostat shows current temperature, target and off/heat, that the humidity/dew-point/PID/heating entities appear, that changing the setpoint and toggling off/heat from HA reach the device, and that cutting power marks the entities unavailable
+- [x] 7.4 End-to-end in Home Assistant: confirm the thermostat shows current temperature, target and off/heat, that the humidity/dew-point/PID/heating entities appear, that changing the setpoint and toggling off/heat from HA reach the device, and that cutting power marks the entities unavailable
 
 ## Workflow follow-up
 
