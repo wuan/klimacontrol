@@ -229,7 +229,9 @@
             <div class="form-group">
                 <label for="mqttPrefix">Topic Prefix</label>
                 <input type="text" id="mqttPrefix" placeholder="e.g. sensors/bedroom" maxlength="63">
-                <small class="form-hint">Topics: {prefix}/temperature, {prefix}/humidity, ...</small>
+                <small class="form-hint">Topics: {prefix}/temperature, {prefix}/humidity, ...
+                    {prefix}/target_temperature and {prefix}/control_enabled are retained;
+                    {prefix}/control_output and {prefix}/heating track the current run.</small>
             </div>
 
             <div class="form-group">
@@ -237,6 +239,16 @@
                 <input type="number" id="mqttInterval" placeholder="15" min="5" max="3600" style="width: 120px;">
                 <small class="form-hint">How often to publish measurements. Default: 15s</small>
             </div>
+
+            <div class="form-group toggle-row">
+                <span class="toggle-label">Home Assistant Discovery</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="mqttHaDiscovery">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <small class="form-hint">Announce this device to Home Assistant over MQTT, so its thermostat
+                and sensors appear automatically. Enable MQTT first.</small>
 
             <button class="btn btn-primary" onclick="updateMqtt()">Save MQTT Settings</button>
 
@@ -1309,6 +1321,7 @@
             document.getElementById('mqttUsername').value = data.username || '';
             document.getElementById('mqttPrefix').value = data.prefix || '';
             document.getElementById('mqttInterval').value = data.interval || 15;
+            document.getElementById('mqttHaDiscovery').checked = data.ha_discovery;
 
             ['mqttHost', 'mqttPort', 'mqttUsername', 'mqttPrefix', 'mqttInterval'].forEach(id => {
                 markUnchanged(document.getElementById(id));
@@ -1331,7 +1344,8 @@
             port: parseInt(document.getElementById('mqttPort').value) || 1883,
             username: document.getElementById('mqttUsername').value.trim(),
             prefix: document.getElementById('mqttPrefix').value.trim(),
-            interval: parseInt(document.getElementById('mqttInterval').value) || 15
+            interval: parseInt(document.getElementById('mqttInterval').value) || 15,
+            ha_discovery: document.getElementById('mqttHaDiscovery').checked
         };
 
         const password = document.getElementById('mqttPassword').value;

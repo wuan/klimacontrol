@@ -21,7 +21,8 @@ Network::Network(Config::ConfigManager& config, SensorController& sensorControll
                  Control::TemperatureController& temperatureController, Task::SensorMonitor& sensorMonitor,
                  DarkModeStatusLed& statusLed, std::optional<std::reference_wrapper<WebServerManager>> webServer)
     : config(config), temperatureController(temperatureController), sensorMonitor(sensorMonitor), statusLed(statusLed),
-      mdns(config), provisioning(config, mdns), wifi(config), mqtt(sensorController, statusLed), webServer(webServer) {
+      mdns(config), provisioning(config, mdns), wifi(config),
+      mqtt(sensorController, statusLed, config, temperatureController), webServer(webServer) {
     if (webServer.has_value()) {
         provisioning.setWebServer(webServer->get());
     }

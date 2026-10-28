@@ -22,6 +22,7 @@ void WebServerManager::setupMqttRoutes() {
         doc["username"] = mqttConfig.username;
         doc["prefix"] = mqttConfig.prefix;
         doc["interval"] = mqttConfig.interval;
+        doc["ha_discovery"] = mqttConfig.ha_discovery;
 
         MqttClient* mqtt = network.getMqttClient();
         doc["connected"] = mqtt ? mqtt->isConnected() : false;
@@ -74,6 +75,7 @@ void WebServerManager::setupMqttRoutes() {
                 if (doc["prefix"].is<const char*>())
                     strlcpy(mqttConfig.prefix, doc["prefix"] | "", sizeof(mqttConfig.prefix));
                 if (doc["interval"].is<int>()) mqttConfig.interval = doc["interval"];
+                if (doc["ha_discovery"].is<bool>()) mqttConfig.ha_discovery = doc["ha_discovery"];
 
                 config.saveMqttConfig(mqttConfig);
                 network.updateMqttConfig(mqttConfig);

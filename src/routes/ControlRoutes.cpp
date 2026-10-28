@@ -242,11 +242,9 @@ void WebServerManager::setupControlRoutes() {
                 // requested tells the caller its request was honoured when
                 // it was not; a UI built on that reports a value the
                 // device is not holding until the next poll corrects it.
-                // isfinite() also screens NaN, which the clamp downstream
-                // would otherwise map to 30.0 — std::min(30.0f, NAN)
-                // returns 30.0f.
-                if (!std::isfinite(targetTemp) || targetTemp < Config::TARGET_TEMPERATURE_MIN_C ||
-                    targetTemp > Config::TARGET_TEMPERATURE_MAX_C) {
+                // The rule itself lives in Config so the MQTT command path
+                // applies exactly the same one.
+                if (!Config::isValidTargetTemperature(targetTemp)) {
                     request->send(400, CONTENT_TYPE_JSON,
                                   R"({"success":false,"error":"Value out of range 10.0-30.0"})");
                     return;
