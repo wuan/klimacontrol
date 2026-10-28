@@ -290,9 +290,11 @@ With the configured prefix `{prefix}` (default `sensors`):
 | `{prefix}/heating` | Confirmed heating, `ON` / `OFF` | no |
 | `{prefix}/status` | `online` while connected, `offline` otherwise | yes |
 
-The setpoint and control-enabled topics are republished as soon as their value
-changes and once on every (re)connect, independently of the measurement publish
-interval.
+Every control-state topic is published as soon as its value changes, once on
+every (re)connect, and again on every control-loop computation — once per
+configured control interval (default 60 s) — independently of the measurement
+publish interval. A subscriber therefore sees the setpoint and demand of each
+control run even when nothing changed.
 
 ### Commands
 

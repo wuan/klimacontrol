@@ -57,6 +57,14 @@ namespace Control {
         // across the millis() rollover.
         uint32_t lastPidComputeMs = 0;
 
+        // Monotonic count of PID computations. The Network task polls it to
+        // republish the control state on every control-loop run, so a
+        // subscriber sees the setpoint and demand of each computation rather
+        // than only when a value changed. Written only by update() (Sensor
+        // Monitor task), read from the Network task — an atomic because it is
+        // genuinely cross-task, unlike the single-writer plain scalars above.
+        std::atomic<uint32_t> controlComputeCount{0};
+
         /**
          * Mark a tick on which the PID deliberately did not compute, and reseat the
          * decimation baseline with it.
@@ -171,6 +179,12 @@ namespace Control {
         // the web task the same way. A value that is one tick stale is exactly what
         // a diagnostic view should show.
         float getControlOutput() const { return lastControlOutput; }
+        /**
+         * Count of PID computations since boot. A value that differs from the
+         * last one observed means the loop computed afresh; it is the signal
+         * the MQTT publisher polls to republish the control state.
+         */
+        uint32_t getControlComputeCount() const { return controlComputeCount.load(std::memory_order_relaxed); }
         Control::PidGains getControlGains() const { return pid.getGains(); }
         float getControlIntegral() const { return pid.getIntegral(); }
         bool isControlRunning() const { return pid.isRunning(); }

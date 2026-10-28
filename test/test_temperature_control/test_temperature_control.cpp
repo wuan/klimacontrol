@@ -342,20 +342,14 @@ namespace {
 
         void setEnabled(bool enabled) { config.updateTemperatureControlEnabled(enabled); }
 
-        // The real class exposes no computation counter, so a computation is
-        // observed as "the loop is running and the returned output moved". A
-        // held tick returns the previous output unchanged; a skipped tick
-        // leaves the loop not running. Callers keep the error small enough
-        // that successive computations produce distinct outputs.
-        float lastSeen = 0.0f;
+        // The loop counts its own computations, so read that rather than
+        // inferring one from the output moving — a saturated or otherwise
+        // unchanged output is still a computation.
         unsigned computations = 0;
 
         float tick(float temperature, bool valid, uint32_t nowMs) {
             const float out = ctrl.update(temperature, valid, nowMs);
-            if (ctrl.isControlRunning() && out != lastSeen) {
-                ++computations;
-            }
-            lastSeen = out;
+            computations = ctrl.getControlComputeCount();
             return out;
         }
     };
@@ -678,6 +672,67 @@ void test_cadence_is_testable_natively() {
     TEST_ASSERT_FLOAT_WITHIN(0.005f, 0.26f, f.ctrl.getControlOutput());
 }
 
+// --- Computation counter ---
+//
+// The counter is what the MQTT publisher polls to republish the control state
+// on every run, so its exact advancement is the contract: one per PID
+// computation, and never on a tick the loop declines to compute.
+
+void test_compute_counter_advances_once_per_interval() {
+    Fixture f(60);
+
+    TEST_ASSERT_EQUAL_UINT(0, f.ctrl.getControlComputeCount());
+
+    // 180 one-second ticks with a 60 s control interval: three computations.
+    for (uint32_t t = 1000; t <= 180000; t += 1000) {
+        f.tick(21.9f, true, t);
+    }
+
+    TEST_ASSERT_EQUAL_UINT(3, f.ctrl.getControlComputeCount());
+}
+
+void test_compute_counter_does_not_advance_on_decimated_tick() {
+    Fixture f(60);
+
+    for (uint32_t t = 1000; t <= 60000; t += 1000) {
+        f.tick(21.9f, true, t);
+    }
+    TEST_ASSERT_EQUAL_UINT(1, f.ctrl.getControlComputeCount());
+
+    // Ticks between computations hold the counter: nothing recomputed.
+    for (uint32_t t = 61000; t <= 119000; t += 1000) {
+        f.tick(21.9f, true, t);
+        TEST_ASSERT_EQUAL_UINT(1, f.ctrl.getControlComputeCount());
+    }
+}
+
+void test_compute_counter_does_not_advance_when_skipped() {
+    Fixture f(1);
+
+    // Control disabled.
+    f.setEnabled(false);
+    for (uint32_t t = 1000; t <= 5000; t += 1000) {
+        f.tick(21.9f, true, t);
+    }
+    TEST_ASSERT_EQUAL_UINT(0, f.ctrl.getControlComputeCount());
+
+    // Enabled, but no valid sensor data.
+    f.setEnabled(true);
+    for (uint32_t t = 6000; t <= 10000; t += 1000) {
+        f.tick(21.9f, false, t);
+    }
+    TEST_ASSERT_EQUAL_UINT(0, f.ctrl.getControlComputeCount());
+
+    // Valid flag, but a NaN reading.
+    f.tick(NAN, true, 11000);
+    TEST_ASSERT_EQUAL_UINT(0, f.ctrl.getControlComputeCount());
+
+    // Over-temperature shutoff engages before the PID can compute.
+    f.tick(40.0f, true, 12000);
+    TEST_ASSERT_TRUE(f.ctrl.isSafetyShutoffEngaged());
+    TEST_ASSERT_EQUAL_UINT(0, f.ctrl.getControlComputeCount());
+}
+
 int runUnityTests() {
     UNITY_BEGIN();
     RUN_TEST(test_pid_proportional_term_only);
@@ -722,6 +777,10 @@ int runUnityTests() {
     RUN_TEST(test_heating_not_permitted_before_first_tick);
     RUN_TEST(test_heating_permission_follows_last_ticks_inputs);
     RUN_TEST(test_cadence_is_testable_natively);
+
+    RUN_TEST(test_compute_counter_advances_once_per_interval);
+    RUN_TEST(test_compute_counter_does_not_advance_on_decimated_tick);
+    RUN_TEST(test_compute_counter_does_not_advance_when_skipped);
     return UNITY_END();
 }
 

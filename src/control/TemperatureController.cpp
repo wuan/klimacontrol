@@ -289,6 +289,10 @@ namespace Control {
         }
         lastPidComputeMs = now;
 
+        // A completed computation: the heartbeat the MQTT publisher watches.
+        // Relaxed is enough — it carries no data, only "the loop ran".
+        controlComputeCount.fetch_add(1, std::memory_order_relaxed);
+
         const bool restarting = !pid.isRunning();
 
         float targetTemperature = cfg.target_temperature;

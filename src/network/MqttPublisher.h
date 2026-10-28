@@ -29,9 +29,9 @@ namespace Net {
     /**
      * Drives the long-lived `MqttClient` from the Network task: keeps the
      * connection alive, publishes the sensor snapshot on the configured
-     * interval, publishes the control/actuator state on change, mirrors
-     * publish progress onto the status LED and bridges connect failures into
-     * `InternetHealth`.
+     * interval, publishes the control/actuator state on change and on every
+     * control-loop computation, mirrors publish progress onto the status LED
+     * and bridges connect failures into `InternetHealth`.
      *
      * The client is constructed once in `begin()` and re-initialised in place
      * on every (re)connect; see spec `memory-management` → "Long-lived
@@ -96,10 +96,11 @@ namespace Net {
     private:
         /**
          * Publish the control/actuator state. `force` republishes every topic
-         * (used once per connect); otherwise only the topics whose payload
-         * changed since the last publish are sent. Not gated by the
-         * measurement interval or the post-boot settle period: a setpoint
-         * change should reach a subscriber within a tick of the loop.
+         * (used once per connect and on every control-loop computation);
+         * otherwise only the topics whose payload changed since the last
+         * publish are sent. Not gated by the measurement interval or the
+         * post-boot settle period: a setpoint change should reach a subscriber
+         * within a tick of the loop.
          */
         void publishControlState(bool force);
 
@@ -127,6 +128,11 @@ namespace Net {
         // counts successful connects so a config change that drops and
         // re-establishes the link is seen as a new connect, not as "unchanged".
         uint32_t lastConnectCount = 0;
+
+        // Last control-loop computation count seen. A value that differs means
+        // the loop computed afresh, which republishes the whole control-state
+        // set even when nothing changed.
+        uint32_t lastControlComputeCount = 0;
 
         // Last published control-state payloads, compared against to publish
         // only on change. Empty until the first (forced) publish.

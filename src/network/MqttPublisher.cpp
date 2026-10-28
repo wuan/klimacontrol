@@ -75,9 +75,19 @@ namespace Net {
         // after a broker restart without the user re-toggling the setting.
         if (connected) {
             const uint32_t connects = mqtt->getConnectCount();
+            const uint32_t computations = control.getControlComputeCount();
             if (connects != lastConnectCount) {
                 lastConnectCount = connects;
+                // Seed the baseline: the forced publish below already carries
+                // the current state, so the same tick must not publish twice.
+                lastControlComputeCount = computations;
                 publishDiscovery();
+                publishControlState(true);
+            } else if (computations != lastControlComputeCount) {
+                // A fresh control-loop computation. Republish the whole
+                // control-state set so a subscriber sees the setpoint and
+                // demand of each run, not only when a value changed.
+                lastControlComputeCount = computations;
                 publishControlState(true);
             } else {
                 publishControlState(false);
