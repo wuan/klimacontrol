@@ -649,9 +649,9 @@
                     <tr><td>Error</td><td>${fmt(d.error, 2, ' K')}</td></tr>
                     <tr><td>Integral term</td><td>${fmt(d.integral, 3)}</td></tr>
                     <tr class="param-group"><td colspan="2">Gains</td></tr>
-                    <tr><td>Kp (proportional)</td><td>${fmt(d.kp, 3)}</td></tr>
-                    <tr><td>Ki (integral)</td><td>${fmt(d.ki, 3)}</td></tr>
-                    <tr><td>Kd (derivative)</td><td>${fmt(d.kd, 3)}</td></tr>`;
+                    <tr><td>Kp (proportional)</td><td>${fmt(d.kp, 4)}</td></tr>
+                    <tr><td>Ki (integral)</td><td>${fmt(d.ki, 4)}</td></tr>
+                    <tr><td>Kd (derivative)</td><td>${fmt(d.kd, 4)}</td></tr>`;
                 table.style.display = 'table';
                 const btn = document.getElementById('clearParamsBtn');
                 if (btn) btn.style.display = 'inline-block';
