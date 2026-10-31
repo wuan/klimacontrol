@@ -19,16 +19,6 @@ static constexpr auto TAG = "net";
 
 namespace Net {
 
-    namespace {
-        // Static, not stack: publishDiscovery() runs on the Network task
-        // (8 KiB stack, measured peak ~3.5 KiB) and the payload can reach
-        // MqttClient::MQTT_BUFFER_SIZE, so a stack copy would roughly double
-        // the task's peak stack use for the duration of one connect. All MQTT
-        // work happens on the Network task, so the buffer is single-threaded
-        // by construction.
-        char discoveryPayload[MqttClient::MQTT_BUFFER_SIZE];
-    } // namespace
-
     void MqttPublisher::begin() {
 #ifdef ARDUINO
         mqtt = std::make_unique<MqttClient>();
@@ -228,11 +218,18 @@ namespace Net {
         // The one payload large enough to matter: sized against the full
         // requested buffer, not the possibly-degraded actual one, so a
         // degraded buffer surfaces as a failed publish below rather than as a
-        // silently truncated config that Home Assistant would reject. The
-        // buffer is the static discoveryPayload, not this task's stack.
-        const int length = formatHaDiscoveryPayload(discoveryPayload, sizeof(discoveryPayload), deviceId,
-                                                    cfg.device_name, mqtt->getPrefix(), FIRMWARE_VERSION);
-        if (length < 0 || static_cast<size_t>(length) >= sizeof(discoveryPayload)) {
+        // silently truncated config that Home Assistant would reject.
+        //
+        // Stack, not static: the ESP32 heap starts at the end of BSS
+        // (`_heap_start` == `_bss_end`), so a 2048 B static buffer permanently
+        // removes 2048 B from `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)`.
+        // This runs only on the STA+MQTT connect path on the Network task,
+        // whose 8 KiB stack has ~4.6 KiB headroom above its measured ~3.5 KiB
+        // peak, so the buffer is transient and free in steady state.
+        char payload[MqttClient::MQTT_BUFFER_SIZE];
+        const int length = formatHaDiscoveryPayload(payload, sizeof(payload), deviceId, cfg.device_name,
+                                                    mqtt->getPrefix(), FIRMWARE_VERSION);
+        if (length < 0 || static_cast<size_t>(length) >= sizeof(payload)) {
             ESP_LOGE(TAG, "HA discovery payload truncated: needs %d B, buffer %u B", length, mqtt->getBufferSize());
             return;
         }
@@ -241,7 +238,7 @@ namespace Net {
         // this connect. MqttClient::publish() logs the truncation when the
         // buffer is degraded; restate it so a missing discovery message is
         // unambiguous.
-        if (!mqtt->publish(topic, discoveryPayload, true)) {
+        if (!mqtt->publish(topic, payload, true)) {
             ESP_LOGE(TAG, "HA discovery publish failed (topic=%s, %d B, buffer %u B)", topic, length,
                      mqtt->getBufferSize());
         } else {

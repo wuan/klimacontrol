@@ -64,8 +64,9 @@ inline void sendGzippedResponse(AsyncWebServerRequest* request, const char* cont
 // and "JSON responses are streamed without an intermediate String".
 inline void sendJson(AsyncWebServerRequest* request, JsonDocument& doc, int code = 200) {
     const size_t len = measureJson(doc);
-    // cbuf keeps one byte to tell full from empty, so capacity must be len + 1.
-    auto* response = new AsyncResponseStream(CONTENT_TYPE_JSON, len + 1);
+    // cbuf already reserves its own byte to tell full from empty, so a buffer
+    // of exactly `len` has room for the whole document with no slack.
+    auto* response = new AsyncResponseStream(CONTENT_TYPE_JSON, len);
     response->setCode(code);
     serializeJson(doc, *response);
     request->send(response);
