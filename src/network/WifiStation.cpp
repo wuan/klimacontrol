@@ -2,6 +2,7 @@
 
 #include "Config.h"
 #include "Log.h"
+#include "support/IpFormat.h"
 
 #ifdef ARDUINO
 #include <esp_heap_caps.h>
@@ -56,10 +57,12 @@ namespace Net {
                 link.onStaConnected(millis());
                 ESP_LOGI(TAG, "WiFi event: STA_CONNECTED ch=%u", info.wifi_sta_connected.channel);
                 break;
-            case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-                ESP_LOGI(TAG, "WiFi event: GOT_IP %s rssi=%d",
-                         IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str(), WiFi.RSSI());
+            case ARDUINO_EVENT_WIFI_STA_GOT_IP: {
+                char ip[16];
+                formatIpv4(IPAddress(info.got_ip.ip_info.ip.addr), ip, sizeof(ip));
+                ESP_LOGI(TAG, "WiFi event: GOT_IP %s rssi=%d", ip, WiFi.RSSI());
                 break;
+            }
             case ARDUINO_EVENT_WIFI_STA_LOST_IP:
                 ESP_LOGW(TAG, "WiFi event: LOST_IP");
                 break;
@@ -123,11 +126,15 @@ namespace Net {
     }
 
     void WifiStation::logConnectionDetails() {
-        ESP_LOGI(TAG, "WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
+        char ip[16], gw[16], dns[16];
+        formatIpv4(WiFi.localIP(), ip, sizeof(ip));
+        formatIpv4(WiFi.gatewayIP(), gw, sizeof(gw));
+        formatIpv4(WiFi.dnsIP(), dns, sizeof(dns));
+        ESP_LOGI(TAG, "WiFi connected, IP: %s", ip);
         ESP_LOGD(TAG, "WiFi diagnostics: SSID=%s BSSID=%s Ch=%d RSSI=%d dBm MAC=%s", WiFi.SSID().c_str(),
                  WiFi.BSSIDstr().c_str(), WiFi.channel(), WiFi.RSSI(), WiFi.macAddress().c_str());
-        ESP_LOGD(TAG, "WiFi network: GW=%s DNS=%s TxPwr=%d Sleep=%d AutoReconn=%d", WiFi.gatewayIP().toString().c_str(),
-                 WiFi.dnsIP().toString().c_str(), WiFi.getTxPower(), WiFi.getSleep(), WiFi.getAutoReconnect());
+        ESP_LOGD(TAG, "WiFi network: GW=%s DNS=%s TxPwr=%d Sleep=%d AutoReconn=%d", gw, dns, WiFi.getTxPower(),
+                 WiFi.getSleep(), WiFi.getAutoReconnect());
     }
 #endif
 
@@ -253,7 +260,9 @@ namespace Net {
         }
 
         if (reconnected) {
-            ESP_LOGI(TAG, "WiFi reconnected (IP: %s)", WiFi.localIP().toString().c_str());
+            char ip[16];
+            formatIpv4(WiFi.localIP(), ip, sizeof(ip));
+            ESP_LOGI(TAG, "WiFi reconnected (IP: %s)", ip);
             return Event::Reconnected;
         }
         return Event::None;

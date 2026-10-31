@@ -88,11 +88,13 @@ public:
     // PubSubClient's compile-time default (256) is far too tight for our
     // publishes. Two payloads shape the size: the sensor measurement JSON
     // (well under 256 B) and, much larger, the retained Home Assistant
-    // device-discovery payload, which is ~1.35 kB typical and ~1.5 kB with the
-    // longest permitted prefix and device name. 1024 truncated that discovery
-    // message; 2048 leaves headroom and is pinned by the worst-case size test
-    // in test/test_mqtt_payload. The allocation is made once per connect, and
-    // getBufferSize() reports what PubSubClient actually ended up with.
+    // device-discovery payload, which measures 1455 B typical and 1787 B
+    // worst case (63-char prefix, 31-char device name, 20-char version) —
+    // 1828 B framed with the topic. 1024 truncated that discovery message;
+    // 2048 is the smallest round size that keeps the >=128 B headroom the
+    // worst-case size test in test/test_mqtt_payload pins. The allocation is
+    // made once per connect, and getBufferSize() reports what PubSubClient
+    // actually ended up with.
     static constexpr uint16_t MQTT_BUFFER_SIZE = 2048;
 
     // PubSubClient rejects a publish when its buffer cannot hold

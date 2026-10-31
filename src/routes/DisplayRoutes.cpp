@@ -32,9 +32,7 @@ void WebServerManager::setupDisplayRoutes() {
         }
         doc["warn_humidity_pct"] = displayConfig.warn_humidity_pct;
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // POST /api/display - Update e-paper display configuration

@@ -142,9 +142,7 @@ void WebServerManager::setupSettingsRoutes() {
         doc["local_time"] = localTime;
         doc["synced"] = epoch != 0;
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // POST /api/settings/timezone - Update the timezone (POSIX TZ string)
@@ -251,9 +249,7 @@ void WebServerManager::setupSettingsRoutes() {
         doc["wifi_sleep_mode"] = energyConfig.wifi_sleep_mode;
         doc["led_dark_after_s"] = energyConfig.led_dark_after_s;
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // POST /api/settings/energy - Update energy configuration. Restarts only

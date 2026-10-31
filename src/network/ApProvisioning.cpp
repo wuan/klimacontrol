@@ -6,6 +6,7 @@
 #include "WebServerManager.h"
 #include "network/MdnsAdvertiser.h"
 #include "support/ApPassword.h"
+#include "support/IpFormat.h"
 
 #ifdef ARDUINO
 #include <WiFi.h>
@@ -20,8 +21,9 @@ namespace Net {
 
     void ApProvisioning::startAP() {
 #ifdef ARDUINO
-        const String deviceId = DeviceId::getDeviceId();
-        const String apSsid = Constants::AP_SSID_PREFIX + deviceId;
+        const char* deviceId = DeviceId::getDeviceId();
+        String apSsid = Constants::AP_SSID_PREFIX;
+        apSsid += deviceId;
 
         bool useWpa2 = false;
         char password[AP_PASSWORD_BUF_SIZE] = "";
@@ -29,7 +31,7 @@ namespace Net {
         if (display.has_value()) {
             Display::DisplayManager& displayManager = display->get();
             if (const Config::DisplayConfig apConfig{}; displayManager.tryBeginForApInfo(apConfig)) {
-                Support::computeApPassword(deviceId.c_str(), password, sizeof(password));
+                Support::computeApPassword(deviceId, password, sizeof(password));
                 useWpa2 = true;
                 ESP_LOGI(TAG, "Display responded at AP-mode entry — using WPA2-PSK");
             } else {
@@ -52,7 +54,7 @@ namespace Net {
             // panel is the one the user actually connects to.
             const IPAddress apIp = WiFi.softAPIP();
             char ipStr[16];
-            snprintf(ipStr, sizeof(ipStr), "%u.%u.%u.%u", apIp[0], apIp[1], apIp[2], apIp[3]);
+            formatIpv4(apIp, ipStr, sizeof(ipStr));
             display->get().showApInfo(apSsid.c_str(), password, ipStr);
             display->get().endApInfo();
         } else {
@@ -60,7 +62,9 @@ namespace Net {
             WiFi.softAP(apSsid.c_str());
         }
 
-        ESP_LOGI(TAG, "AP IP address: %s", WiFi.softAPIP().toString().c_str());
+        char apIpStr[16];
+        formatIpv4(WiFi.softAPIP(), apIpStr, sizeof(apIpStr));
+        ESP_LOGI(TAG, "AP IP address: %s", apIpStr);
 
         mdns.advertise();
 

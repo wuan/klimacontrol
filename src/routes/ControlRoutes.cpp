@@ -110,9 +110,7 @@ void WebServerManager::setupControlRoutes() {
         doc["kd"] = gains.kd;
         doc["control_interval_s"] = config.getDeviceConfig().control_interval_s;
 
-        String payload;
-        serializeJson(doc, payload);
-        request->send(200, CONTENT_TYPE_JSON, payload);
+        sendJson(request, doc);
     });
 
     // POST /api/control/tuning - the PID gains and the control interval.
@@ -304,9 +302,7 @@ void WebServerManager::setupControlRoutes() {
         }
         doc["agreement"] = Actuator::agreementName(act.agreement(now));
 
-        String payload;
-        serializeJson(doc, payload);
-        request->send(200, CONTENT_TYPE_JSON, payload);
+        sendJson(request, doc);
     });
 
     // POST /api/actuator - assign this device to a manifold channel.
@@ -442,9 +438,7 @@ void WebServerManager::setupControlRoutes() {
             // instead of handing it to the body callback.
             o["params"] = r.params;
         }
-        String payload;
-        serializeJson(doc, payload);
-        request->send(200, CONTENT_TYPE_JSON, payload);
+        sendJson(request, doc);
     });
 
     // GET /api/autotune/status - Everything needed to rebuild the view.
@@ -500,9 +494,7 @@ void WebServerManager::setupControlRoutes() {
         // from a missing key.
         doc["gains_persisted"] = true;
 
-        String payload;
-        serializeJson(doc, payload);
-        request->send(200, CONTENT_TYPE_JSON, payload);
+        sendJson(request, doc);
     });
 
     // POST /api/autotune/start

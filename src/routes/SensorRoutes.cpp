@@ -41,9 +41,7 @@ void WebServerManager::setupSensorRoutes() {
             token = strtok(nullptr, ",");
         }
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // GET /api/sensors/registry - Get known sensor types and their I2C addresses
@@ -59,10 +57,7 @@ void WebServerManager::setupSensorRoutes() {
                 addrs.add(registry[i].addresses[j]);
             }
         }
-        String response;
-        serializeJson(doc, response);
-
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // POST /api/sensors/config - Save sensor configuration (triggers restart)
@@ -110,10 +105,9 @@ void WebServerManager::setupSensorRoutes() {
         });
 
     // GET /api/sensors - Get sensor information
-    // Sized to hold up to 10 sensors × 5+ measurements × ~30 bytes each, plus
-    // the per-sensor block. 1024 is the documented cap for this route —
-    // larger than the 512-byte baseline because the sensor list is the largest
-    // fixed-cost output of the API.
+    // The largest fixed-cost output of the API (up to 10 sensors × 5+
+    // measurements × ~30 bytes each, plus the per-sensor block); sendJson()
+    // sizes the response buffer to the measured JSON length.
     server.on("/api/sensors", HTTP_GET, [this](AsyncWebServerRequest* request) {
         JsonDocument doc;
         JsonArray sensors = doc["sensors"].to<JsonArray>();
@@ -163,9 +157,7 @@ void WebServerManager::setupSensorRoutes() {
             mObj["calculated"] = m.calculated;
         }
 
-        String sensorResponse;
-        serializeJson(doc, sensorResponse);
-        request->send(200, CONTENT_TYPE_JSON, sensorResponse);
+        sendJson(request, doc);
     });
 #endif
 }

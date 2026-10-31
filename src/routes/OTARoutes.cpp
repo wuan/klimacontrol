@@ -28,9 +28,7 @@ void WebServerManager::setupOTARoutes() {
         JsonDocument doc;
         doc["status"] = started ? "checking" : "busy";
 
-        String response;
-        serializeJson(doc, response);
-        request->send(started ? 202 : 409, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc, started ? 202 : 409);
     });
 
     // GET /api/ota/check - Poll the state of the background check.
@@ -79,9 +77,7 @@ void WebServerManager::setupOTARoutes() {
                 break;
         }
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // POST /api/ota/update - Install the update found by the last check.
@@ -222,9 +218,7 @@ void WebServerManager::setupOTARoutes() {
                 break;
         }
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // GET /api/ota/status - Get OTA status
@@ -331,9 +325,7 @@ void WebServerManager::setupOTARoutes() {
             }
         }
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // POST /api/ota/confirm - Confirm successful boot after OTA.
@@ -352,9 +344,7 @@ void WebServerManager::setupOTARoutes() {
         doc[JSON_KEY_SUCCESS] = success;
         doc["message"] = success ? "Boot confirmed, rollback disabled" : "Failed to confirm boot";
 
-        String response;
-        serializeJson(doc, response);
-        request->send(success ? 200 : 500, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc, success ? 200 : 500);
     });
 
     // GET /api/ota/rollback - Report the version that would boot after a
@@ -370,9 +360,7 @@ void WebServerManager::setupOTARoutes() {
         } else {
             doc["available"] = false;
         }
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // POST /api/ota/rollback - Switch the boot target to the other partition.

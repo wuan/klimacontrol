@@ -41,9 +41,7 @@ void WebServerManager::setupMqttRoutes() {
             doc["truncated_publishes"] = mqtt->getTruncatedPublishes();
         }
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // POST /api/mqtt - Update MQTT configuration

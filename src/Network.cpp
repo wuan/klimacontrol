@@ -8,6 +8,7 @@
 #include "SyslogOutput.h"
 #include "WebServerManager.h"
 #include "support/WifiBackoff.h"
+#include "support/IpFormat.h"
 
 #ifdef ARDUINO
 #include <esp_heap_caps.h>
@@ -70,8 +71,10 @@ bool Network::startSTA(const char* ssid, const char* password) {
 #ifdef ARDUINO
     ESP_LOGI(TAG, "Configuring mDNS...");
     mdns.advertise();
+    char localIp[16];
+    formatIpv4(WiFi.localIP(), localIp, sizeof(localIp));
     ESP_LOGI(TAG, "%s available at http://%s.local/ or http://%s", Constants::PROJECT_NAME, mdns.hostname().c_str(),
-             WiFi.localIP().toString().c_str());
+             localIp);
 #endif
 
     ntp.begin();

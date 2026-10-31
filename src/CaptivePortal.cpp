@@ -3,6 +3,7 @@
 #ifdef ARDUINO
 #include <Arduino.h>
 #include "Log.h"
+#include "support/IpFormat.h"
 #endif
 
 static constexpr const char* TAG = "portal";
@@ -17,7 +18,9 @@ void CaptivePortal::begin() {
 
     running = true;
 
-    ESP_LOGI(TAG, "Captive portal started, redirecting to: %s", apIP.toString().c_str());
+    char apIpStr[16];
+    formatIpv4(apIP, apIpStr, sizeof(apIpStr));
+    ESP_LOGI(TAG, "Captive portal started, redirecting to: %s", apIpStr);
 #endif
 }
 

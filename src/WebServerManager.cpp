@@ -9,6 +9,7 @@
 #include "Constants.h"
 #include "support/RequestDiag.h"
 #include "support/ApPassword.h"
+#include "support/IpFormat.h"
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
@@ -43,12 +44,15 @@ void AccessLogger::run(AsyncWebServerRequest* request, ArMiddlewareNext next) {
                            static_cast<uint32_t>(request->contentLength()), static_cast<uint16_t>(elapsed),
                            ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), millis(),
                            request->contentType().c_str(), static_cast<uint16_t>(request->params()));
+    // Stack buffer — remoteIP().toString() would allocate a String per request.
+    char remoteIp[16];
+    formatIpv4(request->client()->remoteIP(), remoteIp, sizeof(remoteIp));
     if (response) {
-        ESP_LOGI(TAG, "%s %s %s (%u ms) %u", request->client()->remoteIP().toString().c_str(), request->url().c_str(),
-                 request->methodToString(), elapsed, response->code());
+        ESP_LOGI(TAG, "%s %s %s (%u ms) %u", remoteIp, request->url().c_str(), request->methodToString(), elapsed,
+                 response->code());
     } else {
-        ESP_LOGI(TAG, "%s %s %s (%u ms) (no response)", request->client()->remoteIP().toString().c_str(),
-                 request->url().c_str(), request->methodToString(), elapsed);
+        ESP_LOGI(TAG, "%s %s %s (%u ms) (no response)", remoteIp, request->url().c_str(), request->methodToString(),
+                 elapsed);
     }
 }
 
@@ -180,20 +184,21 @@ void WebServerManager::handleWiFiConfig(AsyncWebServerRequest* request, uint8_t*
 
         ESP_LOGI(TAG, "WiFi configured: SSID=%s", wifiConfig.ssid);
 
-        // Generate mDNS hostname for response
-        String deviceId = DeviceId::getDeviceId();
-        String hostname = Constants::HOSTNAME_PREFIX + deviceId;
-        hostname.toLowerCase();
+        // Generate the mDNS hostname for the response into a stack buffer —
+        // no String temporaries; mDNS hostnames are lowercase.
+        char hostname[24];
+        snprintf(hostname, sizeof(hostname), "%s%s.local", Constants::HOSTNAME_PREFIX, DeviceId::getDeviceId());
+        for (char* p = hostname; *p; ++p) {
+            if (*p >= 'A' && *p <= 'Z') *p = static_cast<char>(*p + ('a' - 'A'));
+        }
 
         // Build the success response on the stack — no heap allocation for the
-        // document. The serialized String is what we hand to AsyncWebServer.
+        // document; sendJson() streams it straight into the response.
         JsonDocument responseDoc;
         responseDoc["success"] = true;
-        responseDoc["hostname"] = hostname + ".local";
+        responseDoc["hostname"] = hostname;
 
-        String response;
-        serializeJson(responseDoc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, responseDoc);
 
         config.requestRestart(1000);
     }

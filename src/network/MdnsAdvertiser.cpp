@@ -18,7 +18,8 @@ namespace Net {
     const String& MdnsAdvertiser::hostname() {
 #ifdef ARDUINO
         if (cachedHostname.isEmpty()) {
-            cachedHostname = Constants::HOSTNAME_PREFIX + DeviceId::getDeviceId();
+            cachedHostname = Constants::HOSTNAME_PREFIX;
+            cachedHostname += DeviceId::getDeviceId();
             cachedHostname.toLowerCase();
         }
 #else

@@ -20,9 +20,7 @@ void WebServerManager::setupI2CRoutes() {
             arr.add(dev.address);
         }
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 #endif
 }

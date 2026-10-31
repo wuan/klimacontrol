@@ -23,9 +23,7 @@ void WebServerManager::setupSyslogRoutes() {
         doc["port"] = syslogConfig.port;
         doc["active"] = SyslogOutput::isActive();
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // POST /api/syslog - Update syslog configuration

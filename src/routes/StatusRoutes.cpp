@@ -7,6 +7,7 @@
 #include "control/TemperatureController.h"
 #include "task/SensorMonitor.h"
 #include "Constants.h"
+#include "support/IpFormat.h"
 
 #ifdef ARDUINO
 #include <ArduinoJson.h>
@@ -59,7 +60,9 @@ void WebServerManager::setupStatusRoutes() {
         // Network info
         doc["wifi_connected"] = WiFiClass::status() == WL_CONNECTED;
         if (WiFiClass::status() == WL_CONNECTED) {
-            doc["ip_address"] = WiFi.localIP().toString();
+            char ip[16];
+            formatIpv4(WiFi.localIP(), ip, sizeof(ip));
+            doc["ip_address"] = ip;
             doc["wifi_ssid"] = WiFi.SSID();
         }
 
@@ -71,16 +74,14 @@ void WebServerManager::setupStatusRoutes() {
         doc["largest_free_block"] = static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
 #endif
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // GET /api/about - Device information
     server.on("/api/about", HTTP_GET, [this](AsyncWebServerRequest* request) {
-        // Bumped to 1024: the about payload is fixed-size but large (chip,
-        // memory, flash, network, sensor stats). The 512-byte baseline is
-        // for the request hot path; /api/about is a one-shot diagnostic.
+        // The about payload is the largest in the API (chip, memory, flash,
+        // network, sensor stats); sendJson() sizes the response buffer to its
+        // measured JSON length, so no fixed per-route cap applies.
         JsonDocument doc;
 
         // Device info
@@ -148,11 +149,15 @@ void WebServerManager::setupStatusRoutes() {
             doc["wifi_ssid"] = WiFi.SSID();
             doc["wifi_rssi"] = WiFi.RSSI();
             doc["wifi_tx_power"] = WiFi.getTxPower();
-            doc["ip_address"] = WiFi.localIP().toString();
+            char ip[16];
+            formatIpv4(WiFi.localIP(), ip, sizeof(ip));
+            doc["ip_address"] = ip;
             doc["mac_address"] = WiFi.macAddress();
         } else if (WiFiClass::getMode() == WIFI_AP) {
             doc["ap_ssid"] = WiFi.softAPgetHostname();
-            doc["ap_ip"] = WiFi.softAPIP().toString();
+            char apIp[16];
+            formatIpv4(WiFi.softAPIP(), apIp, sizeof(apIp));
+            doc["ap_ip"] = apIp;
             doc["ap_clients"] = WiFi.softAPgetStationNum();
         }
 
@@ -169,16 +174,13 @@ void WebServerManager::setupStatusRoutes() {
         doc["net_min_cycle_work_ms"] = netStats.min;
         doc["net_max_cycle_work_ms"] = netStats.max;
 
-        String response;
-        serializeJson(doc, response);
-        request->send(200, CONTENT_TYPE_JSON, response);
+        sendJson(request, doc);
     });
 
     // GET /api/measurements - Get detailed overview of most recent measurements as a table
-    // Sized for the worst case (10 sensors × ~5 measurements × ~80 bytes per
-    // row). 2048 is the documented cap for this route; the 512-byte baseline
-    // is for the request hot path, /api/measurements is the heaviest fixed
-    // route in the API.
+    // The heaviest fixed route in the API (10 sensors × ~5 measurements × ~80
+    // bytes per row); sendJson() sizes the response buffer to the measured
+    // JSON length.
     server.on("/api/measurements", HTTP_GET, [this](AsyncWebServerRequest* request) {
         JsonDocument doc;
 
@@ -201,9 +203,7 @@ void WebServerManager::setupStatusRoutes() {
             }
         }
 
-        String measurementResponse;
-        serializeJson(doc, measurementResponse);
-        request->send(200, CONTENT_TYPE_JSON, measurementResponse);
+        sendJson(request, doc);
     });
 #endif
 }

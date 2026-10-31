@@ -15,13 +15,18 @@ static constexpr const char* const TAG = "mqtt";
 MqttClient* MqttClient::callbackInstance = nullptr;
 
 MqttClient::MqttClient()
-    : config(), clientId("klima-" + DeviceId::getDeviceId()), configured(false)
+    : config(), clientId(), configured(false)
 #ifdef ARDUINO
       ,
       wifiClient(), mqttClient(wifiClient)
 #endif
       ,
       lastConnectAttempt(0) {
+    // Stack buffer, no String temporary: getDeviceId() returns a cached
+    // const char* and "klima-" + ptr is not a valid String expression.
+    char id[24];
+    snprintf(id, sizeof(id), "klima-%s", DeviceId::getDeviceId());
+    clientId = id;
 }
 
 void MqttClient::applyServer() {
@@ -272,7 +277,7 @@ void MqttClient::publishDiscoveryRemoval() {
     if (!mqttClient.connected()) return;
 
     char topic[128];
-    Net::formatHaDiscoveryTopic(topic, sizeof(topic), DeviceId::getDeviceId().c_str());
+    Net::formatHaDiscoveryTopic(topic, sizeof(topic), DeviceId::getDeviceId());
 
     // An empty payload (plength 0), retained: the broker replaces the stored
     // discovery message with nothing, and Home Assistant drops the device.
