@@ -143,7 +143,7 @@ void MqttClient::loop() {
     if (!wifiClient.connect(config.host, config.port, TCP_CONNECT_TIMEOUT_MS)) {
         consecutiveConnectFailures++;
         ESP_LOGW(TAG, "TCP connect to %s:%u failed (failures=%u, next retry in %ums)", config.host, config.port,
-                 consecutiveConnectFailures, backoff);
+                 static_cast<unsigned>(consecutiveConnectFailures), static_cast<unsigned>(backoff));
         return;
     }
 
@@ -207,7 +207,8 @@ void MqttClient::loop() {
         }
     } else {
         consecutiveConnectFailures++;
-        ESP_LOGW(TAG, "MQTT handshake failed, rc=%d (failures=%u)", mqttClient.state(), consecutiveConnectFailures);
+        ESP_LOGW(TAG, "MQTT handshake failed, rc=%d (failures=%u)", mqttClient.state(),
+                 static_cast<unsigned>(consecutiveConnectFailures));
         wifiClient.stop();
     }
 #endif

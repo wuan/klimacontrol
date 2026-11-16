@@ -4,7 +4,7 @@
 #include <cstring>
 
 #include "Config.h"
-#include "Network.h"
+#include "network/Network.h"
 #include "support/LocalTime.h"
 
 #ifdef ARDUINO

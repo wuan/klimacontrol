@@ -2,7 +2,7 @@
 #include "routes/RouteHelpers.h"
 
 #include "Config.h"
-#include "Network.h"
+#include "network/Network.h"
 #include "SensorController.h"
 #include "control/TemperatureController.h"
 #include "task/SensorMonitor.h"
@@ -58,8 +58,8 @@ void WebServerManager::setupStatusRoutes() {
         doc["control_state"] = Actuator::reportedStateName(temperatureController.getReportedState());
 
         // Network info
-        doc["wifi_connected"] = WiFiClass::status() == WL_CONNECTED;
-        if (WiFiClass::status() == WL_CONNECTED) {
+        doc["wifi_connected"] = WiFi.status() == WL_CONNECTED;
+        if (WiFi.status() == WL_CONNECTED) {
             char ip[16];
             formatIpv4(WiFi.localIP(), ip, sizeof(ip));
             doc["ip_address"] = ip;
@@ -145,7 +145,7 @@ void WebServerManager::setupStatusRoutes() {
         doc["uptime_ms"] = millis();
 
         // Network info
-        if (WiFiClass::status() == WL_CONNECTED) {
+        if (WiFi.status() == WL_CONNECTED) {
             doc["wifi_ssid"] = WiFi.SSID();
             doc["wifi_rssi"] = WiFi.RSSI();
             doc["wifi_tx_power"] = WiFi.getTxPower();

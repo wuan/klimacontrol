@@ -31,7 +31,7 @@ namespace Actuator {
         constexpr uint16_t HTTP_TIMEOUT_MS = 3000;
 
         bool httpGet(const char* host, const char* path, String& body) {
-            if (WiFiClass::status() != WL_CONNECTED) {
+            if (WiFi.status() != WL_CONNECTED) {
                 return false;
             }
             char url[192];

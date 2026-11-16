@@ -183,7 +183,7 @@ namespace Net {
             WiFi.begin(ssid, password);
 
             int slots = 0;
-            while (WiFiClass::status() != WL_CONNECTED && slots < MAX_WAIT_SLOTS) {
+            while (WiFi.status() != WL_CONNECTED && slots < MAX_WAIT_SLOTS) {
                 vTaskDelay(500 / portTICK_PERIOD_MS);
                 esp_task_wdt_reset();
                 slots++;
@@ -192,7 +192,7 @@ namespace Net {
                 }
             }
 
-            if (WiFiClass::status() == WL_CONNECTED) break;
+            if (WiFi.status() == WL_CONNECTED) break;
 
             const uint8_t reason = link.disconnectReason();
             ESP_LOGW(TAG, "Connect attempt %d failed (last reason=%u %s), backing off %d ms", tryNum, reason,
@@ -202,7 +202,7 @@ namespace Net {
             esp_task_wdt_reset();
         }
 
-        if (WiFiClass::status() != WL_CONNECTED) {
+        if (WiFi.status() != WL_CONNECTED) {
             ESP_LOGE(TAG, "WiFi connection failed");
             return false;
         }
@@ -219,7 +219,7 @@ namespace Net {
 
     bool WifiStation::isConnected() {
 #ifdef ARDUINO
-        return WiFiClass::status() == WL_CONNECTED;
+        return WiFi.status() == WL_CONNECTED;
 #else
         return false;
 #endif
