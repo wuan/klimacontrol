@@ -51,7 +51,7 @@
 - [x] 5.1 Build both environments in CI, verify the workflow is green, and verify the native test job is unchanged
 - [x] 5.2 Point the release workflow at the chosen firmware environment and verify the published asset is still named `firmware.bin` and the size is reported
   - Done 2026-11-17: `release.yml` builds `adafruit_qtpy_esp32s2_idf` and refuses images above 1856 KiB. The `v0.1.30` release published `firmware.bin` (1,520,640 B) and `firmware.elf`; `/api/ota/check` on `v0.1.29-8-ge63eab8` reports `update_available=true`, `latest_version=v0.1.30`, `size_bytes=1520640`.
-- [ ] 5.3 Run the full regression on a release candidate — native tests, `openspec validate --all --strict`, OTA update from the previous release — and verify all three pass
+- [x] 5.3 Run the full regression on a release candidate — native tests, `openspec validate --all --strict`, OTA update from the previous release — and verify all three pass
 
 ## Workflow follow-up
 
