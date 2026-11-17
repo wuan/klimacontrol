@@ -35,11 +35,16 @@
 ## 4. Enable the capabilities that motivated the port
 
 - [ ] 4.1 Enable `CONFIG_PM_ENABLE` and call `esp_pm_configure()` in `setup()`, then verify the device still boots, associates, and serves HTTP, and record idle current against the baseline
-- [ ] 4.2 Enable tickless idle, measure whether light sleep actually engages with USB CDC attached and WiFi associated, and verify the result is recorded as kept or reverted
+  - Progress 2026-11-17: enabled and flashed with `max_freq_mhz=80`, `min_freq_mhz=40`, `light_sleep_enable=false`; boots and serves HTTP/MQTT, and `Network::logDiagnostics()` records PM mode counters (54% at 40 MHz over 213 s). **Idle current is still unmeasured** — no meter is connected to the capture host — so this task stays open until a reading exists. Evidence: `docs/BUILD_PARITY_BASELINE.md` §Phase 4.1.
+- [x] 4.2 Enable tickless idle, measure whether light sleep actually engages with USB CDC attached and WiFi associated, and verify the result is recorded as kept or reverted
+  - Result 2026-11-17: tickless idle + `light_sleep_enable=true` stopped USB CDC output while HTTP/MQTT stayed alive, and the next boot reported a Network-task panic (`heap_caps_malloc_prefer`). **Reverted**; tickless idle is off. Evidence: `docs/BUILD_PARITY_BASELINE.md` §Phase 4.2.
 - [ ] 4.3 Run the WiFi power-save experiment for its declared observation window, verify stability over that window, and record keep/revert with evidence
+  - Not started. The test unit already stores `wifi_sleep_mode=2` (`MAX_MODEM`); no observation window has elapsed.
 - [ ] 4.4 Make and record the brownout-threshold decision in coordination with the display brownout work, and verify the `Reset reason:` behaviour remains diagnosable
+  - Still deferred with `assess-display-brownout-risk`; no threshold change was made.
 - [x] 4.5 Tune WiFi/lwIP buffer and heap settings if the measurements justify it, and verify `/api/status` heap fields and the low-heap guard still behave correctly
-- [ ] 4.6 Update `POWER_OPTIMIZATION.md` with the measured outcomes, replacing the Arduino-framework limitation statements with what the IDF build actually achieved, and verify every claim names its measurement
+- [x] 4.6 Update `POWER_OPTIMIZATION.md` with the measured outcomes, replacing the Arduino-framework limitation statements with what the IDF build actually achieved, and verify every claim names its measurement
+  - Done 2026-11-17: the guide separates Arduino from IDF, records DFS as kept and light sleep as reverted with the mode-counter evidence, and labels every mA figure as an estimate rather than a measurement. WiFi power-save and brownout outcomes remain tracked by tasks 4.3/4.4.
 
 ## 5. Integration and release
 

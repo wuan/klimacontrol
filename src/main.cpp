@@ -42,6 +42,36 @@
 
 static constexpr const char* const TAG = "main";
 
+#if defined(KLIMA_IDF_BUILD) && defined(CONFIG_PM_ENABLE)
+// Dynamic frequency scaling for the ESP-IDF build only. The precompiled
+// Arduino 2.0.17 SDK had CONFIG_PM_ENABLE off, so esp_pm_configure() could
+// only fail there; the IDF environment owns sdkconfig and enables it.
+//
+// Phase 4 experiment result: light sleep is off. With USB CDC attached, the
+// console stopped delivering output once the chip entered automatic light
+// sleep, while WiFi/HTTP/MQTT kept running (see docs/BUILD_PARITY_BASELINE.md).
+// The USB-only test unit needs its console for recovery, so this setting is
+// reverted; the 40 MHz floor is kept because DFS is the part that works.
+// WiFi holds an APB_FREQ_MAX lock while its modem is awake, so the CPU only
+// drops to 40 MHz in the gaps between beacons; that is the behaviour the
+// measurement is meant to capture, and it requires WiFi power save to widen
+// those gaps (Phase 4 task 4.3).
+static void configurePowerManagement() {
+    esp_pm_config_esp32s2_t pmConfig = {};
+    pmConfig.max_freq_mhz = 80;
+    pmConfig.min_freq_mhz = 40;
+    pmConfig.light_sleep_enable = false;
+
+    const esp_err_t err = esp_pm_configure(&pmConfig);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Power management: DFS %d-%d MHz, light sleep disabled", pmConfig.min_freq_mhz,
+                 pmConfig.max_freq_mhz);
+    } else {
+        ESP_LOGE(TAG, "Power management: esp_pm_configure failed (err 0x%x)", err);
+    }
+}
+#endif
+
 #ifdef ARDUINO
 // Map esp_reset_reason() to a short string for boot diagnostics. A
 // ESP_RST_BROWNOUT here means the 3.3V rail sagged below the brownout
@@ -308,10 +338,10 @@ void setup() {
     temperatureController.setTargetTemperature(deviceConfig.target_temperature);
     temperatureController.setControlEnabled(deviceConfig.temperature_control_enabled);
 
-#ifdef ARDUINO
-    // Power management API conflicts with WIFI_PS_NONE configuration
-    // DFS doesn't work in Arduino+WiFi_PS_NONE. Focus on reducing Serial logging instead.
-    // See: POWER_OPTIMIZATION.md - "Why it's not working"
+#if defined(KLIMA_IDF_BUILD) && defined(CONFIG_PM_ENABLE)
+    // Opt in explicitly: CONFIG_PM_ENABLE only makes the API available, it does
+    // not change the clock tree on its own.
+    configurePowerManagement();
 #endif
 
     // Configure the task watchdog timer (30s timeout, panic on trigger) BEFORE

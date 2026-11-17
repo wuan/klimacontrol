@@ -16,6 +16,12 @@
 #include "display/DisplayManager.h"
 #endif
 
+#if defined(KLIMA_IDF_BUILD) && defined(CONFIG_PM_PROFILING)
+#include <cstdio>
+#include <cstring>
+#include <esp_pm.h>
+#endif
+
 static constexpr auto TAG = "net";
 
 namespace Net {
@@ -107,6 +113,20 @@ namespace Net {
             ESP_LOGI(TAG, "Network task stack HWM: %u bytes",
                      uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
         }
+#if defined(KLIMA_IDF_BUILD) && defined(CONFIG_PM_PROFILING)
+        // Mode statistics are the evidence that DFS actually left CPU_MAX:
+        // APB_MAX is what WiFi/display/I2C transactions hold, APB_MIN is the
+        // idle frequency, and LIGHT_SLEEP appears only when tickless idle is on.
+        char pmStats[1024];
+        if (FILE* stream = fmemopen(pmStats, sizeof(pmStats), "w")) {
+            esp_pm_dump_locks(stream);
+            fclose(stream);
+            ESP_LOGI(TAG, "Power management stats:");
+            for (char* line = strtok(pmStats, "\n"); line != nullptr; line = strtok(nullptr, "\n")) {
+                ESP_LOGI(TAG, "  %s", line);
+            }
+        }
+#endif
 #else
         (void)now;
 #endif

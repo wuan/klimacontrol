@@ -386,6 +386,94 @@ SDK's `-Os` build and stack protector. That reduced flash from 1,788,992 B to
 The low-heap guard threshold is unchanged at 16,384 B and is no longer close to
 the observed minimum. `pio test -e native` remains green.
 
+## Phase 4 power-management experiments (2026-11-17)
+
+Test unit: QT Py ESP32-S2 MAC `48:27:e2:46:c4:e4` (device ID `46C4E4`), firmware
+`v0.1.29-7-gff21681` plus the experiments below. This is not the baseline unit
+from §1: the display is enabled, and the stored energy configuration is
+`wifi_power=8`, `wifi_sleep_mode=2` (`MAX_MODEM`), `led_dark_after_s=60`.
+Its display refreshes about once per minute; every figure below is from this
+unit and build.
+
+### 4.1 Dynamic frequency scaling (kept)
+
+`sdkconfig.defaults` enables `CONFIG_PM_ENABLE=y` and `CONFIG_PM_PROFILING=y`;
+`setup()` calls `esp_pm_configure()` with `max_freq_mhz=80`,
+`min_freq_mhz=40`, `light_sleep_enable=false`. The boot log confirms the call:
+
+```text
+00002452 I     main Power management: DFS 40-80 MHz, light sleep disabled
+```
+
+The PM lock/mode counters were emitted after 213 s (the diagnostics interval
+was temporarily 60 s for this measurement):
+
+```text
+Time since bootup: 213945716 us
+Lock stats:
+wifi            APB_FREQ_MAX    0      1         435            6163760         3  %
+i2c_driver      APB_FREQ_MAX    0      0         20             9863            1  %
+rtos0           CPU_FREQ_MAX    0      1         128695         7706159         4  %
+Mode stats:
+APB_MIN   40 M        117618351   54%
+APB_MAX   80 M        5009738     2 %
+CPU_MAX   80 M        7707218     3 %
+```
+
+This is evidence that DFS reaches the 40 MHz step for more than half of the
+attributed window; it is not a current measurement. The dump leaves ~83 s
+unattributed (the interval before the first mode switch), so the percentages
+are deliberately not converted into a mA estimate.
+
+**Idle/transmit current was not measured**: no meter or shunt is connected to
+the capture host. The ~80–120 mA / ~200–250 mA figures in
+`POWER_OPTIMIZATION.md` remain dated planning estimates, not measurements of
+this build. The experiment is **kept** because HTTP, MQTT, mDNS, the display and
+the status LED all remain functional with DFS enabled.
+
+### 4.2 Automatic light sleep (reverted)
+
+`CONFIG_FREERTOS_USE_TICKLESS_IDLE=y` plus `light_sleep_enable=true` was built
+and flashed separately. Observations on the same unit:
+
+- The USB CDC console stopped delivering output. The port remained enumerated
+  (`/dev/cu.usbmodem2101`), but reads returned no bytes while the firmware was
+  running.
+- HTTP stayed alive: `/api/about` answered every 5 s for 100 s during the
+  experiment, so WiFi, HTTP and MQTT were not lost.
+- The next boot reported a panic core dump:
+  `task='Network' PC=0x40027ba6 cause=29 vaddr=0x00000000`; `addr2line` maps
+  the PC to `heap_caps_malloc_prefer`. The dump is consistent with a broken
+  USB CDC/TinyUSB path after light sleep, but it does not by itself prove the
+  causal chain.
+- Recovery required a software restart (HTTP) followed by a 1200 bps touch
+  during the boot window; esptool then connected and reflashed the reverted
+  build.
+
+**Result: reverted.** Tickless idle is off and `light_sleep_enable=false` in the
+kept build. The USB-only test unit cannot lose its console, and the observed
+crash is a regression, not a saving.
+
+### 4.3 WiFi power-save observation (not run)
+
+The test unit already stores `MAX_MODEM`; no declared observation window has
+elapsed, so there is no keep/revert decision and no stability claim. The
+`assess-display-brownout-risk` observation is also still deferred.
+
+### 4.4 Brownout threshold (unchanged)
+
+No brownout threshold was changed. The decision remains coordinated with
+`assess-display-brownout-risk`, which is deferred until it can be run on the
+IDF build before the remaining power-save experiment.
+
+### 4.6 POWER_OPTIMIZATION.md status
+
+The guide now distinguishes the Arduino environment (PM unavailable) from the
+IDF environment (PM enabled, DFS kept, light sleep reverted) and names the
+measurements above. It no longer presents the Arduino-framework limitation as
+the current state of the build.
+
+
 
 
 ### Early bisect note
