@@ -336,7 +336,7 @@ power-cycled. USB CDC enumerated and the boot log was readable:
 | MQTT / HA discovery | connected, discovery published | connected, discovery published (1,498 B) | match; discovery topic present |
 | HTTP/UI | 200 | `/api/status` 200, `/` 200 (8,558 B) | match |
 | CSRF | header required | POST without header 403, with header 200 | match |
-| OTA check | n/a | `/api/ota/check` starts; no newer release found | check path reachable; update not tested |
+| OTA check/update/rollback | n/a | `/api/ota/check` reachable; OTA update and rollback-confirm verified on the test device | match; published asset remains `firmware.bin` |
 | Display | disabled | display and LED verified working after board-variant init fix (`initVariant` must drive `NEOPIXEL_POWER`) | match |
 | Flash core dump | stale/unreadable (`err 0x104`) | deliberate panic produced a readable summary: `task='loopTask' PC=0x40026232 cause=29` with 6-frame backtrace | match in kind; summary path works |
 

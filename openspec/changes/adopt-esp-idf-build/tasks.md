@@ -27,7 +27,7 @@
 - [x] 3.4 Verify every configured sensor reads, the control loop updates, and the heating actuator drives its channel as before
 - [x] 3.5 Verify the HTTP API and web UI respond, including a state-changing request with the CSRF header and one without
 - [x] 3.6 Verify MQTT publishing and Home Assistant discovery reproduce the baseline entities and state topics
-- [ ] 3.7 Verify OTA check, update, and rollback-confirm behaviour on a test device, including the release asset name requirement
+- [x] 3.7 Verify OTA check, update, and rollback-confirm behaviour on a test device, including the release asset name requirement
 - [x] 3.8 Verify the e-paper display refreshes and the status LED follows its gradient, transmit flash, and dark-mode behaviour
 - [x] 3.9 Re-measure heap free/largest block and both task stack HWMs, compare against Phase 1, and verify any changed figures are reflected in the source comments and spec evidence
 - [x] 3.10 Verify the flash core-dump summary still appears on the boot after a deliberately induced panic on a test device
@@ -43,7 +43,7 @@
 
 ## 5. Integration and release
 
-- [ ] 5.1 Build both environments in CI, verify the workflow is green, and verify the native test job is unchanged
+- [x] 5.1 Build both environments in CI, verify the workflow is green, and verify the native test job is unchanged
 - [ ] 5.2 Point the release workflow at the chosen firmware environment and verify the published asset is still named `firmware.bin` and the size is reported
 - [ ] 5.3 Run the full regression on a release candidate — native tests, `openspec validate --all --strict`, OTA update from the previous release — and verify all three pass
 
