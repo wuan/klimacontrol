@@ -47,11 +47,14 @@ static constexpr const char* const TAG = "main";
 // Arduino 2.0.17 SDK had CONFIG_PM_ENABLE off, so esp_pm_configure() could
 // only fail there; the IDF environment owns sdkconfig and enables it.
 //
-// Phase 4 experiment result: light sleep is off. With USB CDC attached, the
-// console stopped delivering output once the chip entered automatic light
-// sleep, while WiFi/HTTP/MQTT kept running (see docs/BUILD_PARITY_BASELINE.md).
-// The USB-only test unit needs its console for recovery, so this setting is
-// reverted; the 40 MHz floor is kept because DFS is the part that works.
+// Phase 4 experiment result: light sleep is off. It was tested twice: first
+// with USB CDC logging, then with syslog-only logging (console removed from the
+// task path). Both builds entered sleep for most of the runtime but eventually
+// panicked in the idle task:
+//   prvIdleTask -> vApplicationSleep -> vTaskStepTick -> __assert_func
+// The assertion is (xTickCount + xTicksToJump) <= xNextTaskUnblockTime, so
+// this is a tickless-idle/PM bug in the pinned IDF 4.4.7, not a logging or
+// console problem. DFS at 40 MHz is kept because it is stable and measurable.
 // WiFi holds an APB_FREQ_MAX lock while its modem is awake, so the CPU only
 // drops to 40 MHz in the gaps between beacons; that is the behaviour the
 // measurement is meant to capture, and it requires WiFi power save to widen

@@ -431,28 +431,60 @@ the capture host. The ~80–120 mA / ~200–250 mA figures in
 this build. The experiment is **kept** because HTTP, MQTT, mDNS, the display and
 the status LED all remain functional with DFS enabled.
 
-### 4.2 Automatic light sleep (reverted)
+### 4.2 Automatic light sleep (reverted: idle-task assertion)
 
 `CONFIG_FREERTOS_USE_TICKLESS_IDLE=y` plus `light_sleep_enable=true` was built
-and flashed separately. Observations on the same unit:
+and flashed separately. The first run used USB CDC logging. Observations:
 
 - The USB CDC console stopped delivering output. The port remained enumerated
   (`/dev/cu.usbmodem2101`), but reads returned no bytes while the firmware was
-  running.
-- HTTP stayed alive: `/api/about` answered every 5 s for 100 s during the
-  experiment, so WiFi, HTTP and MQTT were not lost.
-- The next boot reported a panic core dump:
-  `task='Network' PC=0x40027ba6 cause=29 vaddr=0x00000000`; `addr2line` maps
-  the PC to `heap_caps_malloc_prefer`. The dump is consistent with a broken
-  USB CDC/TinyUSB path after light sleep, but it does not by itself prove the
-  causal chain.
+  running. This is expected when light sleep stops the USB peripheral and is
+  **not** the reason for the revert.
+- HTTP stayed alive: `/api/about` answered every 5 s for 100 s, so WiFi, HTTP
+  and MQTT were not lost.
+- The next boot reported a panic dump: `task='Network' PC=0x40027ba6
+  cause=29`. That dump was read against the wrong ELF at the time and was
+  initially attributed to `heap_caps_malloc_prefer`; it was not a reliable
+  symbolication.
 - Recovery required a software restart (HTTP) followed by a 1200 bps touch
   during the boot window; esptool then connected and reflashed the reverted
   build.
 
-**Result: reverted.** Tickless idle is off and `light_sleep_enable=false` in the
-kept build. The USB-only test unit cannot lose its console, and the observed
-crash is a regression, not a saving.
+Because the console is development-only, the experiment was repeated with a
+**console-independent** build: a temporary syslog-only logging macro removed USB
+CDC writes from the task path, tickless idle was enabled, and light sleep was
+enabled. The PM counters were exposed over `/api/about` for observation. The
+unit ran for ~29 minutes:
+
+- HTTP `/api/about` was polled every 30 s: 59/60 succeeded; the single timeout
+  was followed by a reboot.
+- It slept for ~93% of the window (`SLEEP` mode), with `APB_MAX`/`CPU_MAX`
+  around 2–3%.
+- MQTT stayed connected with zero failed publishes during the run.
+- At 20:17 the HTTP request timed out, and the next poll showed a reset with
+  reason `PANIC` (4). The boot core dump then reported `task='IDLE'
+  PC=0x40027ba6` with a coherent backtrace:
+
+```text
+prvIdleTask        tasks.c:4146
+vApplicationSleep  pm_impl.c:672
+vTaskStepTick      tasks.c:3063
+__assert_func      assert.c:85
+esp_system_abort   esp_system.c:137
+panic_abort        panic.c:408
+```
+
+`vTaskStepTick()` asserts
+`(xTickCount + xTicksToJump) <= xNextTaskUnblockTime`. The sleep accounting in
+`vApplicationSleep()` advanced the tick count past the next unblock time, so
+this is a **tickless-idle/PM assertion in the pinned IDF 4.4.7**, not a USB CDC
+or logging failure. Removing the console only changed how long it took to
+surface; it did not remove the failure.
+
+**Result: reverted.** `CONFIG_FREERTOS_USE_TICKLESS_IDLE` is off and
+`light_sleep_enable=false` in the kept build. DFS at 40 MHz remains enabled.
+Light sleep should not be re-enabled until this assertion is fixed (for example
+by an IDF update or a reviewed tickless-idle workaround).
 
 ### 4.3 WiFi power-save observation (not run)
 

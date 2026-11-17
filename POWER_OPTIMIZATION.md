@@ -13,10 +13,11 @@ ceiling:
   ESP-IDF environment in the first place.
 - **ESP-IDF environment (`adafruit_qtpy_esp32s2_idf`)**: owns `sdkconfig.defaults`
   and has `CONFIG_PM_ENABLE=y`. DFS at 80/40 MHz is enabled in `setup()` and
-  **kept**. Automatic light sleep was tried and **reverted**: the USB CDC console
-  stopped delivering output and a Network-task panic followed
-  (`heap_caps_malloc_prefer`). WiFi/HTTP/MQTT survived, but the USB-only test
-  unit needs its console for recovery.
+  **kept**. Automatic light sleep was tested twice (including a console-free
+  syslog-only build) and **reverted**: it slept ~93% of a 29-minute window, then
+  panicked in the idle task at the tickless-idle assertion
+  `(xTickCount + xTicksToJump) <= xNextTaskUnblockTime` in `vTaskStepTick()`.
+  This is an IDF 4.4.7 tickless/PM bug, not a USB CDC logging issue.
 
 Measured evidence lives in `docs/BUILD_PARITY_BASELINE.md` §"Phase 4
 power-management experiments". The PM mode counters show 40 MHz (`APB_MIN`) for
@@ -38,7 +39,7 @@ measurement of this build.
    - Brownout-threshold decision, coordinated with the display observation
 
 ❌ REVERTED:
-   - Automatic light sleep with USB CDC attached: console lost, Network panic
+   - Automatic light sleep: idle-task panic in vTaskStepTick (IDF 4.4.7)
    - esp_pm_configure() in the Arduino environment: CONFIG_PM_ENABLE is off
 ```
 
@@ -52,7 +53,9 @@ attached; do not quote the old 20–40 mA estimate as a result.
 The Arduino environment cannot use `esp_pm_configure()` because its precompiled
 SDK has `CONFIG_PM_ENABLE` off. The ESP-IDF environment removes that blocker:
 DFS is enabled and measured, while automatic light sleep was tried and reverted
-because it broke the USB CDC console and was followed by a Network-task panic.
+after an idle-task `vTaskStepTick()` assertion panic; the failure persisted even
+with USB CDC logging removed from the task path, which rules out the console as
+the cause.
 The remaining savings must come from WiFi power save, radio power and read
 intervals, not from Arduino-side PM tricks.
 
@@ -145,10 +148,18 @@ window; the WiFi APB lock was held for about 3% and `rtos0` for about 4%, with
 the remainder unattributed before the first mode switch. That is **kept**.
 
 Automatic light sleep (`CONFIG_FREERTOS_USE_TICKLESS_IDLE=y`,
-`light_sleep_enable=true`) was tried separately and **reverted**: the USB CDC
-console stopped delivering bytes, HTTP/MQTT stayed alive, and the next boot
-reported a Network-task panic (`heap_caps_malloc_prefer`). Recovery needed a
-1200 bps touch during boot. See
+`light_sleep_enable=true`) was tried twice: once with USB CDC logging, and once
+with a console-free syslog-only build. The second build slept ~93% of a
+29-minute window, kept HTTP/MQTT alive, then panicked in the idle task:
+
+```text
+prvIdleTask -> vApplicationSleep -> vTaskStepTick -> __assert_func
+(xTickCount + xTicksToJump) <= xNextTaskUnblockTime
+```
+
+That is a tickless-idle/PM assertion in the pinned IDF 4.4.7, not a console or
+logging failure. Light sleep is **reverted** and should stay off until the
+assertion is fixed (IDF update or a reviewed workaround). See
 `docs/BUILD_PARITY_BASELINE.md` §"Phase 4 power-management experiments".
 
 **Status:** DFS kept; light sleep off. The old "leave it commented out" advice
@@ -362,7 +373,8 @@ before adding `-O3` pragmas or changing queue depth.
 **CPU modes with DFS (IDF build):**
 - `CPU_MAX`/`APB_MAX`: 80 MHz (WiFi/display/I2C transactions hold the APB lock)
 - `APB_MIN`: 40 MHz (idle); measured 54% of a 213 s window
-- `SLEEP`: automatic light sleep — tried, reverted (USB CDC console lost)
+- `SLEEP`: automatic light sleep — tried twice, reverted on an idle-task
+  `vTaskStepTick()` assertion panic
 
 ---
 
@@ -380,7 +392,7 @@ before adding `-O3` pragmas or changing queue depth.
 | Change | Where | Effect | Status |
 |--------|-------|--------|--------|
 | DFS 80/40 MHz | `sdkconfig.defaults`, `main.cpp` | 54% of a 213 s window at 40 MHz | ✅ IDF only, kept |
-| Automatic light sleep | `CONFIG_FREERTOS_USE_TICKLESS_IDLE` | USB CDC console lost; Network panic | ❌ IDF only, reverted |
+| Automatic light sleep | `CONFIG_FREERTOS_USE_TICKLESS_IDLE` | ~93% sleep, then idle-task `vTaskStepTick` panic | ❌ IDF only, reverted |
 | WiFi sleep mode | `WifiStation::applyEnergyConfig()` | configurable; observation pending | ⚠️ 4.3 open |
 | TX power adaptation | not implemented | −5–20 mA estimate | ⏳ open |
 | Sensor interval | `SensorController` | 15 s system phase (SGP40 1 Hz) | ✅ done |
