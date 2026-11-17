@@ -100,11 +100,21 @@ unread input is harmless.
 - The panel draws a few milliamps idle and peaks around **25 mA** for the ~2.6 s
   of a full refresh, driven by its on-board charge pump. Between refreshes it
   draws essentially nothing, and e-paper keeps its image with no power at all.
-- **Add a 100 µF bulk capacitor across the module's `VCC`/`GND`.** This board
-  has a history of `ESP_RST_BROWNOUT` resets from WiFi TX inrush (see
-  `resetReasonStr()` in `src/main.cpp`); a refresh transient landing on top of a
-  WiFi burst stacks two current spikes on the same rail. The capacitor is cheap
-  insurance.
+- **A 100 µF bulk capacitor across the module's `VCC`/`GND` is not required.**
+  Around eight units have run continuously in normal service — display enabled,
+  WiFi associated and MQTT publishing, no bulk capacitor fitted — for at least a
+  month at the default 60 s refresh interval, where every twelfth update is a
+  full refresh (roughly five full refreshes an hour). None of them logged a
+  `Reset reason: BROWNOUT` line.
+
+  That line is the only signal a brownout leaves: the chip resets instantly,
+  without a backtrace, and `resetReasonStr()` in `src/main.cpp` prints it on
+  every boot. So the conclusion can be checked against your own unit.
+
+  The claim is bounded by those conditions: mains/USB power, this board's
+  regulator, and that refresh cadence. A marginal USB supply or cable is exactly
+  where the capacitor can still earn its place. If your unit logs
+  `Reset reason: BROWNOUT`, check the supply first, then fit the capacitor.
 
 **Driver HAT variant only:** if you are using a bare panel with Waveshare's
 e-Paper Driver HAT carrier, set its two jumpers before applying power:
@@ -164,7 +174,7 @@ placeholder, not a fault.
 | Image appears then fades or is very faint | Wrong panel variant (tri-colour module) | See §1 — B/C modules are not supported |
 | Faint shadow of the previous reading | Normal ghosting between full refreshes | Clears on the next full refresh; lower the refresh interval or check that the panel is a V2 |
 | Text upside-down or sideways | Rotation setting | *Settings → E-Paper Display → Rotation* |
-| Device reboots during a refresh | Brownout | `Reset reason: BROWNOUT` in the boot log — add the 100 µF cap from §4 |
+| Device reboots during a refresh | Brownout, or a marginal supply/cable | `Reset reason: BROWNOUT` in the boot log. Not expected on a mains-powered unit at the default cadence (§4), so check the supply and cable first, and fit the 100 µF cap only if it persists |
 | Panel keeps showing an old reading after disabling | Blanking failed | It should be cleared during the save, before the restart. Check the console for `Display disabled and blanked`; if absent, the panel had already faulted (see below) and could not be driven |
 
 ### The fault guard
