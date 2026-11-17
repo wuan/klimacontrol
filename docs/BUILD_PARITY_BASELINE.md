@@ -337,7 +337,7 @@ power-cycled. USB CDC enumerated and the boot log was readable:
 | HTTP/UI | 200 | `/api/status` 200, `/` 200 (8,558 B) | match |
 | CSRF | header required | POST without header 403, with header 200 | match |
 | OTA check | n/a | `/api/ota/check` starts; no newer release found | check path reachable; update not tested |
-| Display | disabled | disabled | no refresh path exercised |
+| Display | disabled | display and LED verified working after board-variant init fix (`initVariant` must drive `NEOPIXEL_POWER`) | match |
 | Flash core dump | stale/unreadable (`err 0x104`) | deliberate panic produced a readable summary: `task='loopTask' PC=0x40026232 cause=29` with 6-frame backtrace | match in kind; summary path works |
 
 The IDF build uses ~14 KB more internal SRAM at boot and ~7 KB less at

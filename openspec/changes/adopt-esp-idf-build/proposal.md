@@ -25,6 +25,8 @@ rewriting the application.
 - Vendor a CDC-only `arduino_tinyusb` IDF component: PlatformIO's Arduino
   2.0.17 package ships only the precompiled library, and Arduino core needs the
   source component for its ESP32-S2 USB CDC `Serial` under the mixed build.
+- Add the IDF-only board-variant `initVariant()` override for the QT Py's
+  `NEOPIXEL_POWER` rail, which the Arduino component build does not compile.
 - Transcribe the settings the precompiled SDK supplied implicitly into explicit
   configuration: target, 4 MB flash, 80 MHz CPU, PSRAM malloc policy, custom
   partition table, rollback enable, flash core dump, Arduino variant/autostart,

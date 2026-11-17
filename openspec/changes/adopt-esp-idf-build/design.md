@@ -60,6 +60,12 @@ links the component only if it exists. A CDC-only copy is therefore vendored in
 `components/arduino_tinyusb`; the other USB classes are not enabled because the
 firmware uses only the CDC console.
 
+The Arduino CMake component also does not compile the board variant's
+`variant.cpp`, so its `initVariant()` remains the core's empty weak stub and the
+QT Py's `NEOPIXEL_POWER` pin never goes high. `src/board_variant.cpp` supplies
+the strong override for the IDF build only (`KLIMA_IDF_BUILD`), restoring the
+onboard NeoPixel and display power rail.
+
 Alternatives considered:
 
 - **Pure `framework = espidf`** — requires replacing every Arduino library now.

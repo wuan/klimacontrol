@@ -28,7 +28,7 @@
 - [x] 3.5 Verify the HTTP API and web UI respond, including a state-changing request with the CSRF header and one without
 - [x] 3.6 Verify MQTT publishing and Home Assistant discovery reproduce the baseline entities and state topics
 - [ ] 3.7 Verify OTA check, update, and rollback-confirm behaviour on a test device, including the release asset name requirement
-- [ ] 3.8 Verify the e-paper display refreshes and the status LED follows its gradient, transmit flash, and dark-mode behaviour
+- [x] 3.8 Verify the e-paper display refreshes and the status LED follows its gradient, transmit flash, and dark-mode behaviour
 - [x] 3.9 Re-measure heap free/largest block and both task stack HWMs, compare against Phase 1, and verify any changed figures are reflected in the source comments and spec evidence
 - [x] 3.10 Verify the flash core-dump summary still appears on the boot after a deliberately induced panic on a test device
 
