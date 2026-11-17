@@ -237,8 +237,12 @@ and updating the e-paper display configuration, implemented in
 `GET /api/display` SHALL return the user-facing fields only:
 
 ```json
-{"enabled": false, "rotation": 0, "interval": 60}
+{"enabled": false, "rotation": 0, "interval": 60,
+ "warn_frost_c": null, "warn_humidity_pct": 0}
 ```
+
+A `null` `warn_frost_c` SHALL mean the frost warning is disabled; a
+`warn_humidity_pct` of `0` SHALL mean the humidity warning is disabled.
 
 `POST /api/display` SHALL require the CSRF header
 `X-Requested-With: KlimaControl` via `verifyCsrfHeader()`, SHALL validate the
@@ -254,12 +258,22 @@ a further refresh if the Network task is mid-repaint.
 #### Scenario: Reading the display configuration
 
 - **WHEN** a client GETs `/api/display` on a device that has never configured the display
-- **THEN** the response SHALL be `200` with `enabled: false`, `rotation: 0`, and `interval: 60`
+- **THEN** the response SHALL be `200` with `enabled: false`, `rotation: 0`, `interval: 60`, `warn_frost_c: null`, and `warn_humidity_pct: 0`
 
 #### Scenario: Enabling the display
 
 - **WHEN** a client POSTs `/api/display` with `{"enabled": true, "rotation": 2, "interval": 120}` and the CSRF header
 - **THEN** the configuration SHALL be persisted and a restart SHALL be scheduled
+
+#### Scenario: Setting warning thresholds
+
+- **WHEN** a client POSTs `/api/display` with `{"warn_frost_c": 5, "warn_humidity_pct": 70}` and the CSRF header
+- **THEN** the configuration SHALL be persisted with both thresholds enabled and a restart SHALL be scheduled
+
+#### Scenario: Disabling a threshold warning
+
+- **WHEN** a client POSTs `/api/display` with `{"warn_frost_c": null, "warn_humidity_pct": 0}` and the CSRF header
+- **THEN** both threshold warnings SHALL be disabled in the persisted configuration
 
 #### Scenario: Disabling the display blanks the panel inline
 
@@ -273,12 +287,12 @@ a further refresh if the Network task is mid-repaint.
 
 #### Scenario: Out-of-range values are clamped, not rejected
 
-- **WHEN** a client POSTs `/api/display` with `{"enabled": true, "rotation": 9, "interval": 1}`
-- **THEN** the persisted configuration SHALL contain a `rotation` in 0..3 and an `interval` in 10..3600
+- **WHEN** a client POSTs `/api/display` with `{"enabled": true, "rotation": 9, "interval": 1, "warn_frost_c": 999, "warn_humidity_pct": -5}`
+- **THEN** the persisted configuration SHALL contain a `rotation` in 0..3, an `interval` in 10..3600, and warning thresholds that are either in their valid range or disabled
 
 #### Scenario: Enabling or reconfiguring does not drive the panel
 
-- **WHEN** a `POST /api/display` request enables the display or changes only rotation or interval
+- **WHEN** a `POST /api/display` request enables the display or changes only rotation, interval or warning thresholds
 - **THEN** the handler SHALL return without driving the panel; only the disable transition performs a blanking refresh
 
 ### Requirement: Timezone endpoints
