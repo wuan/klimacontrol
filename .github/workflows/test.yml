@@ -87,17 +87,12 @@ jobs:
 
       - name: Build for ESP32
         run: |
-          echo "Building firmware for ESP32-S3 with build-wrapper..."
+          echo "Building firmware for ESP32-S2 with build-wrapper..."
           build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} pio run -e adafruit_qtpy_esp32s2
-
-      - name: Build ESP-IDF parity firmware
-        run: |
-          echo "Building the ESP-IDF parity environment..."
-          pio run -e adafruit_qtpy_esp32s2_idf
 
       - name: Check Firmware Size
         run: |
-          SIZE=$(stat -c%s .pio/build/adafruit_qtpy_esp32s2/firmware.bin 2>/dev/null || stat -f%z .pio/build/adafruit_qtpy_esp32s3_nopsram/firmware.bin)
+          SIZE=$(wc -c < .pio/build/adafruit_qtpy_esp32s2/firmware.bin)
           SIZE_KB=$((SIZE / 1024))
           SIZE_MB=$((SIZE / 1024 / 1024))
 
@@ -115,9 +110,14 @@ jobs:
             echo "✅ Firmware fits! Using ${PERCENT}% of partition (${REMAINING_KB}KB remaining)"
           fi
 
+      - name: Build ESP-IDF parity firmware
+        run: |
+          echo "Building the ESP-IDF parity environment..."
+          pio run -e adafruit_qtpy_esp32s2_idf
+
       - name: Check IDF Firmware Size
         run: |
-          SIZE=$(stat -c%s .pio/build/adafruit_qtpy_esp32s2_idf/firmware.bin)
+          SIZE=$(wc -c < .pio/build/adafruit_qtpy_esp32s2_idf/firmware.bin)
           SIZE_KB=$((SIZE / 1024))
           echo "📦 IDF Firmware Size: ${SIZE_KB}KB"
           MAX_SIZE=$((1856 * 1024))
