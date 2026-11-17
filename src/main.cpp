@@ -187,7 +187,7 @@ WebServerManager webServer(config, network, sensorController, temperatureControl
 // E-paper display. Constructed unconditionally (its 625 B page buffer is in BSS
 // either way), but only initialized when enabled in configuration — see
 // setupDisplay() below.
-Display::DisplayManager displayManager(sensorController, temperatureController);
+Display::DisplayManager displayManager(sensorController, config, temperatureController);
 #endif
 
 #ifdef ARDUINO

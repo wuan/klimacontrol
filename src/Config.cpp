@@ -3,6 +3,7 @@
 #include "support/HostValidation.h"
 #include "PrefsKeys.h"
 #include <cmath>
+#include <cstring>
 
 #ifdef ARDUINO
 #include <esp_system.h>
@@ -12,6 +13,39 @@
 [[maybe_unused]] static constexpr const char* TAG = "config";
 
 namespace Config {
+    namespace {
+        // Indexed by DisplayField's stable persisted value. `None` is last so
+        // existing values never shift when a future field is appended.
+        constexpr const char* DISPLAY_FIELD_TOKENS[] = {
+            "humidity",  "dew_point", "pressure", "sea_level_pressure", "co2", "illuminance",
+            "voc_index", "pm25",      "none",
+        };
+        constexpr size_t DISPLAY_FIELD_TOKEN_COUNT = sizeof(DISPLAY_FIELD_TOKENS) / sizeof(DISPLAY_FIELD_TOKENS[0]);
+        static_assert(DISPLAY_FIELD_TOKEN_COUNT == static_cast<size_t>(DisplayField::None) + 1,
+                      "DISPLAY_FIELD_TOKENS must have exactly one entry per DisplayField");
+    } // namespace
+
+    const char* displayFieldToken(DisplayField field) {
+        const size_t index = static_cast<size_t>(field);
+        if (index >= DISPLAY_FIELD_TOKEN_COUNT) {
+            return nullptr;
+        }
+        return DISPLAY_FIELD_TOKENS[index];
+    }
+
+    bool displayFieldFromToken(const char* token, DisplayField& field) {
+        if (token == nullptr || token[0] == '\0') {
+            return false;
+        }
+        for (size_t i = 0; i < DISPLAY_FIELD_TOKEN_COUNT; ++i) {
+            if (std::strcmp(token, DISPLAY_FIELD_TOKENS[i]) == 0) {
+                field = static_cast<DisplayField>(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
     ConfigManager::ConfigManager() = default;
 
     void ConfigManager::requestRestart([[maybe_unused]] uint32_t delayMs) {
@@ -654,6 +688,16 @@ namespace Config {
         if (config.warn_humidity_pct > MAX_WARN_HUMIDITY_PCT) {
             config.warn_humidity_pct = 0;
         }
+
+        // A corrupt/unknown persisted enum byte is not a trustworthy selection:
+        // the documented defaults keep the panel useful (humidity second, no
+        // third line) rather than rendering a value the vocabulary cannot map.
+        if (!isValidSecondField(config.second_field)) {
+            config.second_field = DEFAULT_SECOND_FIELD;
+        }
+        if (!isValidThirdField(config.third_field)) {
+            config.third_field = DEFAULT_THIRD_FIELD;
+        }
     }
 
     DisplayConfig ConfigManager::loadDisplayConfig() {
@@ -667,6 +711,10 @@ namespace Config {
         displayConfig.interval = guard.get().getUShort(PrefsKeys::DISPLAY_INTERVAL, DEFAULT_DISPLAY_INTERVAL);
         displayConfig.warn_frost_c = guard.get().getFloat(PrefsKeys::DISPLAY_WARN_FROST, NAN);
         displayConfig.warn_humidity_pct = guard.get().getUChar(PrefsKeys::DISPLAY_WARN_HUM, 0);
+        displayConfig.second_field = static_cast<DisplayField>(
+            guard.get().getUChar(PrefsKeys::DISPLAY_FIELD_SECOND, static_cast<uint8_t>(DEFAULT_SECOND_FIELD)));
+        displayConfig.third_field = static_cast<DisplayField>(
+            guard.get().getUChar(PrefsKeys::DISPLAY_FIELD_THIRD, static_cast<uint8_t>(DEFAULT_THIRD_FIELD)));
 
         ESP_LOGD(TAG, "Loaded display config from NVS: enabled=%d rotation=%u interval=%u", displayConfig.enabled,
                  displayConfig.rotation, displayConfig.interval);
@@ -674,6 +722,11 @@ namespace Config {
 
         // Validate ranges — NVS may hold garbage after flash corruption
         validateDisplayConfig(displayConfig);
+
+#ifdef ARDUINO
+        ESP_LOGD(TAG, "Display value fields: second=%s third=%s", displayFieldToken(displayConfig.second_field),
+                 displayFieldToken(displayConfig.third_field));
+#endif
 
         return displayConfig;
     }
@@ -694,9 +747,12 @@ namespace Config {
         // degrades to "off", which is the safe direction.
         guard.get().putFloat(PrefsKeys::DISPLAY_WARN_FROST, validated.warn_frost_c);
         guard.get().putUChar(PrefsKeys::DISPLAY_WARN_HUM, validated.warn_humidity_pct);
+        guard.get().putUChar(PrefsKeys::DISPLAY_FIELD_SECOND, static_cast<uint8_t>(validated.second_field));
+        guard.get().putUChar(PrefsKeys::DISPLAY_FIELD_THIRD, static_cast<uint8_t>(validated.third_field));
 
-        ESP_LOGD(TAG, "Saved display configuration: enabled=%d rotation=%u interval=%u", validated.enabled,
-                 validated.rotation, validated.interval);
+        ESP_LOGD(TAG, "Saved display configuration: enabled=%d rotation=%u interval=%u second=%s third=%s",
+                 validated.enabled, validated.rotation, validated.interval, displayFieldToken(validated.second_field),
+                 displayFieldToken(validated.third_field));
 #endif
     }
 } // namespace Config

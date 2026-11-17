@@ -354,13 +354,22 @@ Device logs can be forwarded to a remote syslog server via UDP (RFC 3164). Confi
 ## E-Paper Display
 
 An optional Waveshare 1.54" e-paper module (200×200, SSD1681) shows the current
-temperature and relative humidity. Disabled by default; enable it under
+temperature plus two configurable values. Disabled by default; enable it under
 *Settings → E-Paper Display* or via the `/api/display` endpoint.
 
+The second value defaults to relative humidity; the third value defaults to
+none (two-line layout). Supported values are humidity, dew point, pressure,
+sea-level pressure, CO₂, illuminance, VOC index and PM2.5. Selecting any third
+value switches the panel to the three-line layout. Sea-level pressure needs a
+configured elevation greater than zero, and a selected value whose sensor is
+absent renders a placeholder in its configured position rather than a stale
+reading. The local pressure line carries a `P` marker; sea-level pressure is
+identified by its `hPa` unit alone.
+
 The layout is a header band in a small font (`KlimaControl` top left, the
-running firmware version top right), the temperature and humidity, then a
-two-line footer carrying the device name, the wall clock, the setpoint, the
-controller demand bar and the control-state symbol.
+running firmware version top right), the temperature and configured values,
+then a two-line footer carrying the device name, the wall clock, the setpoint,
+the controller demand bar and the control-state symbol.
 
 ### Mock Display Examples
 
@@ -371,12 +380,19 @@ margin:
 
 | Example | Description |
 | --- | --- |
-| ![Normal operation on the e-paper mock: 21.4 °C, 45 %RH, heating active with demand bar at 3 segments](docs/images/display/display_normal.png) | **Normal** — current readings, heating active, demand bar and control-state symbol in the footer |
+| ![Normal operation on the e-paper mock: 21.4 °C, 45 %RH, heating active with demand bar at 3 segments](docs/images/display/display_normal.png) | **Normal** — default two-line layout with humidity second, heating active, demand bar and control-state symbol in the footer |
 | ![Frost warning on the e-paper mock: 2.8 °C with the frost icon in the left margin](docs/images/display/display_frost.png) | **Frost** — temperature at or below the configured frost threshold; warning icon in the margin |
 | ![Overheat warning on the e-paper mock: 31.6 °C with the overheat icon](docs/images/display/display_overheat.png) | **Overheat** — the over-temperature safety shutoff has engaged |
 | ![Sensor warning on the e-paper mock: value placeholders --.- and -- with the sensor icon](docs/images/display/display_sensor.png) | **Sensor** — the sensor snapshot is invalid, so value placeholders are shown |
 | ![Actuator warning on the e-paper mock: control state uncertain, empty demand bar](docs/images/display/display_actuator.png) | **Actuator** — control state UNCERTAIN: the device cannot vouch for the valve, demand bar is empty |
 | ![Humidity warning on the e-paper mock: 78 %RH with the humidity icon](docs/images/display/display_humid.png) | **Humid** — humidity at or above the configured limit |
+| ![Dew point as the second value on the e-paper mock: 21.4 °C and DP 12.4 with a drawn degree ring](docs/images/display/display_dew_point.png) | **Dew point** — dew point selected second, with the degree ring drawn rather than printed |
+| ![Pressure as a wide two-line value on the e-paper mock: 21.4 °C and P 1013 hPa](docs/images/display/display_pressure.png) | **Pressure** — pressure selected second |
+| ![Sea-level pressure as a wide two-line value on the e-paper mock: 21.4 °C and 1016 hPa](docs/images/display/display_sea_level.png) | **Sea-level pressure** — shown second, identified by its `hPa` unit alone; requires a configured elevation greater than zero |
+| ![Three-line layout on the e-paper mock: 21.4 °C, 45 %RH and P 1013 hPa](docs/images/display/display_three_line.png) | **Three-line layout** — humidity second and pressure third |
+| ![VOC index second and pressure third on the e-paper mock](docs/images/display/display_three_line_voc.png) | **VOC index** — VOC index second and pressure third; VOC needs temperature and humidity for compensation |
+| ![Missing readings in the three-line layout on the e-paper mock: -- %RH and -- hPa](docs/images/display/display_three_line_missing.png) | **Missing readings** — configured slots keep their positions and render placeholders |
+| ![Overheat warning with a wide three-line second value on the e-paper mock](docs/images/display/display_overheat_three_line.png) | **Warning with a long second line** — the 34 px temperature-anchored warning stays above `PM2.5 8 ug/m3` |
 
 When several conditions are active at once, the highest-priority warning wins
 the single icon slot (overheat → frost → sensor → actuator → humid).
@@ -384,9 +400,10 @@ the single icon slot (overheat → frost → sensor → actuator → humid).
 - **Zero idle power**: e-paper keeps its image with no power between refreshes
 - **Paged rendering**: 625-byte page buffer rather than a 5 KB framebuffer, to
   keep internal SRAM above the OTA pre-flight gate
-- **Refresh policy**: value hysteresis (±0.1 °C / ±1 %RH), a configurable
-  minimum interval (default 60 s), and a full refresh every 12 partials to clear
-  ghosting
+- **Refresh policy**: independent per-slot hysteresis (±0.1 °C temperature,
+  ±1 %RH humidity, and field-specific thresholds for dew point, pressure, CO₂,
+  illuminance, VOC index and PM2.5), a configurable minimum interval (default
+  60 s), and a full refresh every 12 partials to clear ghosting
 - **Version at a glance**: the header band sits above the partial-refresh
   window, so it is repainted only by a full refresh — and therefore holds only
   compile-time-constant content. After an OTA update the first paint on the new

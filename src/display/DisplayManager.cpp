@@ -13,6 +13,7 @@
 #include "network/Network.h"
 #include "SensorController.h"
 #include "control/TemperatureController.h"
+#include "display/DisplayField.h"
 #include "support/LocalTime.h"
 
 static constexpr const char* const TAG = "display";
@@ -34,8 +35,9 @@ namespace Display {
         }
     } // namespace
 
-    DisplayManager::DisplayManager(SensorController& controller, Control::TemperatureController& control)
-        : controller(controller), control(control), policy(Config::DEFAULT_DISPLAY_INTERVAL) {
+    DisplayManager::DisplayManager(SensorController& controller, Config::ConfigManager& config,
+                                   Control::TemperatureController& control)
+        : controller(controller), config(config), control(control), policy(Config::DEFAULT_DISPLAY_INTERVAL) {
         // Created here rather than lazily: this object is a file-scope
         // singleton, and on this core FreeRTOS is already running by the time
         // static constructors execute (SensorController does the same).
@@ -87,6 +89,8 @@ namespace Display {
 
         policy = RefreshPolicy(config.interval);
         warningPolicy = WarningPolicy(config.warn_frost_c, config.warn_humidity_pct);
+        secondField = config.second_field;
+        thirdField = config.third_field;
 
         if (!panel.begin(config.rotation)) {
             ESP_LOGE(TAG, "Display initialisation faulted");
@@ -96,7 +100,8 @@ namespace Display {
 
         panel.showSplash(deviceName);
         enabled = true;
-        ESP_LOGI(TAG, "Display enabled (rotation=%u, min interval=%u s)", config.rotation, config.interval);
+        ESP_LOGI(TAG, "Display enabled (rotation=%u, min interval=%u s, second=%s, third=%s)", config.rotation,
+                 config.interval, Config::displayFieldToken(secondField), Config::displayFieldToken(thirdField));
         return true;
     }
 
@@ -232,9 +237,21 @@ namespace Display {
         }
 
         if (enabled) {
+            // One snapshot per update: the primary temperature, both configured
+            // secondary values and the validity flag describe the same instant.
             const SensorController::Snapshot snapshot = controller.getSnapshot();
             const float temperature = floatFrom(snapshot.measurements, Sensor::MeasurementType::Temperature);
             const float humidity = floatFrom(snapshot.measurements, Sensor::MeasurementType::RelativeHumidity);
+
+            const float elevation = config.getDeviceConfigSnapshot().elevation;
+            const FieldReading secondReading =
+                readDisplayField(secondField, snapshot.measurements, snapshot.valid, elevation);
+            const FieldReading thirdReading =
+                readDisplayField(thirdField, snapshot.measurements, snapshot.valid, elevation);
+
+            const ValueSlot temperatureSlot{temperature, snapshot.valid && !std::isnan(temperature), TEMP_HYSTERESIS_C};
+            const ValueSlot secondSlot{secondReading.value, secondReading.available, fieldHysteresis(secondField)};
+            const ValueSlot thirdSlot{thirdReading.value, thirdReading.available, fieldHysteresis(thirdField)};
 
             // Wall-clock minute drives the footer, so the panel keeps a live
             // clock. epoch/60 ticks at the same instant in every timezone (all
@@ -300,15 +317,17 @@ namespace Display {
             warnConditions.humidity = humidity;
             const WarningToken warning = warningPolicy.evaluate(warnConditions, millis());
 
-            const RefreshKind kind = policy.evaluate(temperature, humidity, snapshot.valid, millis(), clockMinute,
+            const RefreshKind kind = policy.evaluate(temperatureSlot, secondSlot, thirdSlot, millis(), clockMinute,
                                                      target, controlState, demandBucket, warning);
             if (kind != RefreshKind::None) {
-                const bool available = snapshot.valid && !std::isnan(temperature) && !std::isnan(humidity);
-
                 char tempStr[16];
-                char humStr[16];
-                formatTemperature(tempStr, sizeof(tempStr), temperature, available);
-                formatHumidity(humStr, sizeof(humStr), humidity, available);
+                formatTemperature(tempStr, sizeof(tempStr), temperatureSlot.value, temperatureSlot.available);
+
+                char secondStr[32];
+                formatDisplayFieldLine(secondStr, sizeof(secondStr), secondField, secondReading);
+
+                char thirdStr[32];
+                formatDisplayFieldLine(thirdStr, sizeof(thirdStr), thirdField, thirdReading);
 
                 char dateTime[16];
                 formatDateTime(dateTime, sizeof(dateTime));
@@ -321,11 +340,13 @@ namespace Display {
                     snprintf(setpointStr, sizeof(setpointStr), "%.1f", static_cast<double>(target));
                 }
 
-                // Bare numbers: EPaperDisplay owns the unit decoration, because
-                // the degree mark has to be drawn geometrically (the GFX fonts
-                // only carry glyphs 0x20-0x7E) rather than printed.
-                panel.render(tempStr, humStr, deviceName, dateTime, controlState, setpointStr, demandBucket, warning,
-                             kind);
+                // EPaperDisplay owns the unit decoration and drawn degree
+                // rings: the GFX fonts only carry glyphs 0x20-0x7E, so the
+                // degree mark cannot be printed. A dew-point placeholder keeps
+                // its ring, matching a real reading's line shape.
+                panel.render(tempStr, secondStr, thirdStr, fieldNeedsDegreeRing(secondField),
+                             fieldNeedsDegreeRing(thirdField), deviceName, dateTime, controlState, setpointStr,
+                             demandBucket, warning, kind);
             }
         }
 

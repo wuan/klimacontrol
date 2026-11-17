@@ -23,6 +23,7 @@ set(srcs
     control/TemperatureController.cpp
     control/TimeProportionalOutput.cpp
 
+    display/DisplayField.cpp
     display/DisplayManager.cpp
     display/EPaperDisplay.cpp
     display/RefreshPolicy.cpp

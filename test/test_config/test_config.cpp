@@ -1,5 +1,6 @@
 #include "unity.h"
 #include "Config.h"
+#include "PrefsKeys.h"
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -85,6 +86,121 @@ void test_display_config_defaults() {
     TEST_ASSERT_FALSE(config.enabled);
     TEST_ASSERT_EQUAL(0, config.rotation);
     TEST_ASSERT_EQUAL(60, config.interval);
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::Humidity), static_cast<int>(config.second_field));
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::None), static_cast<int>(config.third_field));
+}
+
+// --- Display value field configuration ---
+
+void test_display_field_values_are_stable() {
+    // Persisted enum values must never be reordered; append new fields instead.
+    TEST_ASSERT_EQUAL(0, static_cast<int>(Config::DisplayField::Humidity));
+    TEST_ASSERT_EQUAL(1, static_cast<int>(Config::DisplayField::DewPoint));
+    TEST_ASSERT_EQUAL(2, static_cast<int>(Config::DisplayField::Pressure));
+    TEST_ASSERT_EQUAL(3, static_cast<int>(Config::DisplayField::SeaLevelPressure));
+    TEST_ASSERT_EQUAL(4, static_cast<int>(Config::DisplayField::CO2));
+    TEST_ASSERT_EQUAL(5, static_cast<int>(Config::DisplayField::Illuminance));
+    TEST_ASSERT_EQUAL(6, static_cast<int>(Config::DisplayField::VocIndex));
+    TEST_ASSERT_EQUAL(7, static_cast<int>(Config::DisplayField::PM25));
+    TEST_ASSERT_EQUAL(8, static_cast<int>(Config::DisplayField::None));
+}
+
+void test_display_config_fields_round_trip_through_validation() {
+    Config::DisplayConfig saved;
+    saved.second_field = Config::DisplayField::DewPoint;
+    saved.third_field = Config::DisplayField::Pressure;
+    Config::validateDisplayConfig(saved);
+
+    // What loadDisplayConfig() hands back after reading the same NVS bytes.
+    Config::DisplayConfig reloaded = saved;
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::DewPoint), static_cast<int>(reloaded.second_field));
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::Pressure), static_cast<int>(reloaded.third_field));
+}
+
+void test_validate_display_config_unknown_second_falls_back_to_humidity() {
+    Config::DisplayConfig config;
+    config.second_field = static_cast<Config::DisplayField>(200);
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::Humidity), static_cast<int>(config.second_field));
+}
+
+void test_validate_display_config_unknown_third_falls_back_to_none() {
+    Config::DisplayConfig config;
+    config.third_field = static_cast<Config::DisplayField>(200);
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::None), static_cast<int>(config.third_field));
+}
+
+void test_validate_display_config_none_second_falls_back_to_humidity() {
+    // None is a valid third-field token but never a valid second field.
+    Config::DisplayConfig config;
+    config.second_field = Config::DisplayField::None;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::Humidity), static_cast<int>(config.second_field));
+}
+
+void test_validate_display_config_none_third_is_preserved() {
+    Config::DisplayConfig config;
+    config.third_field = Config::DisplayField::None;
+    Config::validateDisplayConfig(config);
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::None), static_cast<int>(config.third_field));
+}
+
+void test_display_field_token_mapping_all_fields() {
+    struct Case {
+        Config::DisplayField field;
+        const char* token;
+    };
+    const Case cases[] = {
+        {Config::DisplayField::Humidity, "humidity"},
+        {Config::DisplayField::DewPoint, "dew_point"},
+        {Config::DisplayField::Pressure, "pressure"},
+        {Config::DisplayField::SeaLevelPressure, "sea_level_pressure"},
+        {Config::DisplayField::CO2, "co2"},
+        {Config::DisplayField::Illuminance, "illuminance"},
+        {Config::DisplayField::VocIndex, "voc_index"},
+        {Config::DisplayField::PM25, "pm25"},
+        {Config::DisplayField::None, "none"},
+    };
+    for (const Case& c : cases) {
+        TEST_ASSERT_EQUAL_STRING(c.token, Config::displayFieldToken(c.field));
+
+        Config::DisplayField parsed = Config::DisplayField::Humidity;
+        TEST_ASSERT_TRUE(Config::displayFieldFromToken(c.token, parsed));
+        TEST_ASSERT_EQUAL(static_cast<int>(c.field), static_cast<int>(parsed));
+    }
+}
+
+void test_display_field_token_parser_rejects_unknown_and_empty() {
+    Config::DisplayField parsed = Config::DisplayField::Pressure;
+    TEST_ASSERT_FALSE(Config::displayFieldFromToken("bogus", parsed));
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::Pressure), static_cast<int>(parsed));
+
+    TEST_ASSERT_FALSE(Config::displayFieldFromToken("", parsed));
+    TEST_ASSERT_FALSE(Config::displayFieldFromToken(nullptr, parsed));
+}
+
+void test_display_field_none_is_not_a_valid_second_field() {
+    Config::DisplayField parsed = Config::DisplayField::Humidity;
+    TEST_ASSERT_TRUE(Config::displayFieldFromToken("none", parsed));
+    TEST_ASSERT_EQUAL(static_cast<int>(Config::DisplayField::None), static_cast<int>(parsed));
+    TEST_ASSERT_FALSE(Config::isValidSecondField(parsed));
+    TEST_ASSERT_TRUE(Config::isValidThirdField(parsed));
+}
+
+void test_display_field_supported_slots() {
+    for (uint8_t value = 0; value <= 7; ++value) {
+        TEST_ASSERT_TRUE(Config::isValidSecondField(static_cast<Config::DisplayField>(value)));
+        TEST_ASSERT_TRUE(Config::isValidThirdField(static_cast<Config::DisplayField>(value)));
+    }
+    TEST_ASSERT_FALSE(Config::isValidSecondField(Config::DisplayField::None));
+    TEST_ASSERT_FALSE(Config::isValidSecondField(static_cast<Config::DisplayField>(9)));
+    TEST_ASSERT_FALSE(Config::isValidThirdField(static_cast<Config::DisplayField>(9)));
+}
+
+void test_display_field_nvs_keys_fit() {
+    TEST_ASSERT_TRUE(Config::nvsKeyFits(PrefsKeys::DISPLAY_FIELD_SECOND));
+    TEST_ASSERT_TRUE(Config::nvsKeyFits(PrefsKeys::DISPLAY_FIELD_THIRD));
 }
 
 void test_device_config_timezone_default() {
@@ -873,6 +989,18 @@ int runUnityTests() {
     RUN_TEST(test_energy_config_defaults);
     RUN_TEST(test_syslog_config_defaults);
     RUN_TEST(test_display_config_defaults);
+    // Display value fields
+    RUN_TEST(test_display_field_values_are_stable);
+    RUN_TEST(test_display_config_fields_round_trip_through_validation);
+    RUN_TEST(test_validate_display_config_unknown_second_falls_back_to_humidity);
+    RUN_TEST(test_validate_display_config_unknown_third_falls_back_to_none);
+    RUN_TEST(test_validate_display_config_none_second_falls_back_to_humidity);
+    RUN_TEST(test_validate_display_config_none_third_is_preserved);
+    RUN_TEST(test_display_field_token_mapping_all_fields);
+    RUN_TEST(test_display_field_token_parser_rejects_unknown_and_empty);
+    RUN_TEST(test_display_field_none_is_not_a_valid_second_field);
+    RUN_TEST(test_display_field_supported_slots);
+    RUN_TEST(test_display_field_nvs_keys_fit);
     // DeviceConfig timezone
     RUN_TEST(test_device_config_timezone_default);
     RUN_TEST(test_validate_device_config_empty_timezone_reset);

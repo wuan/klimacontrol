@@ -9,6 +9,7 @@
 using Display::ControlState;
 using Display::RefreshKind;
 using Display::RefreshPolicy;
+using Display::ValueSlot;
 using Display::WarningToken;
 
 // Default interval used by most tests, matching Config::DEFAULT_DISPLAY_INTERVAL.
@@ -18,13 +19,38 @@ static constexpr uint32_t INTERVAL_MS = INTERVAL_SEC * 1000u;
 void setUp() {}
 void tearDown() {}
 
+namespace {
+    Display::ValueSlot tempSlot(float value, bool valid = true) {
+        return {value, valid && !std::isnan(value), Display::TEMP_HYSTERESIS_C};
+    }
+
+    Display::ValueSlot humiditySlot(float value, bool valid = true) {
+        return {value, valid && !std::isnan(value), 1.0f};
+    }
+
+    Display::ValueSlot unavailableSlot(float hysteresis = 0.0f) {
+        return {NAN, false, hysteresis};
+    }
+
+    // The long-standing two-line cases drive the policy through this helper:
+    // temperature plus humidity second, no third value. New slot-specific
+    // cases call evaluate() directly with explicit ValueSlot values.
+    RefreshKind evalValues(RefreshPolicy& policy, float temp, float hum, bool valid, uint32_t nowMs,
+                           uint32_t clockMinute = 0, float setpoint = NAN,
+                           ControlState controlState = ControlState::INACTIVE, uint8_t demandBucket = 0,
+                           WarningToken warning = WarningToken::NONE) {
+        return policy.evaluate(tempSlot(temp, valid), humiditySlot(hum, valid), unavailableSlot(), nowMs, clockMinute,
+                               setpoint, controlState, demandBucket, warning);
+    }
+} // namespace
+
 // Drives the policy past its first-paint case so a test can start from a
 // settled state. Returns the timestamp of that initial full refresh.
 static uint32_t primeAt(RefreshPolicy& policy, float temp, float hum, uint32_t nowMs,
                         WarningToken warning = WarningToken::NONE) {
     TEST_ASSERT_EQUAL(
         static_cast<int>(RefreshKind::Full),
-        static_cast<int>(policy.evaluate(temp, hum, true, nowMs, 0, NAN, ControlState::INACTIVE, 0, warning)));
+        static_cast<int>(evalValues(policy, temp, hum, true, nowMs, 0, NAN, ControlState::INACTIVE, 0, warning)));
     return nowMs;
 }
 
@@ -32,21 +58,23 @@ static uint32_t primeAt(RefreshPolicy& policy, float temp, float hum, uint32_t n
 
 void test_first_evaluation_is_full() {
     RefreshPolicy policy(INTERVAL_SEC);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(21.4f, 47.0f, true, 1000)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(evalValues(policy, 21.4f, 47.0f, true, 1000)));
 }
 
 void test_first_evaluation_is_full_even_when_invalid() {
     // A booting device with no sensor still needs its placeholder painted, and
     // the panel may be holding an arbitrary retained image.
     RefreshPolicy policy(INTERVAL_SEC);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(NAN, NAN, false, 0)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(evalValues(policy, NAN, NAN, false, 0)));
 }
 
 void test_reset_restores_first_paint_behaviour() {
     RefreshPolicy policy(INTERVAL_SEC);
     primeAt(policy, 21.4f, 47.0f, 1000);
     policy.reset();
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(21.4f, 47.0f, true, 2000)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(evalValues(policy, 21.4f, 47.0f, true, 2000)));
 }
 
 // --- hysteresis ---
@@ -55,7 +83,7 @@ void test_unchanged_values_return_none() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.4f, 47.0f, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.4f, 47.0f, true, t + 10 * INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.4f, 47.0f, true, t + 10 * INTERVAL_MS)));
 }
 
 void test_sub_hysteresis_temperature_noise_returns_none() {
@@ -63,14 +91,14 @@ void test_sub_hysteresis_temperature_noise_returns_none() {
     uint32_t t = primeAt(policy, 21.44f, 47.0f, 1000);
     // 0.02 C of dither, far past the interval floor so only hysteresis can block it.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.46f, 47.0f, true, t + 10 * INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.46f, 47.0f, true, t + 10 * INTERVAL_MS)));
 }
 
 void test_sub_hysteresis_humidity_noise_returns_none() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.4f, 47.0f, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.4f, 47.5f, true, t + 10 * INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.4f, 47.5f, true, t + 10 * INTERVAL_MS)));
 }
 
 void test_temperature_change_at_threshold_refreshes() {
@@ -78,7 +106,7 @@ void test_temperature_change_at_threshold_refreshes() {
     uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
     // Exactly at the 0.1 C threshold.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.1f, 47.0f, true, t + INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.1f, 47.0f, true, t + INTERVAL_MS)));
 }
 
 void test_temperature_change_below_threshold_suppressed() {
@@ -86,21 +114,21 @@ void test_temperature_change_below_threshold_suppressed() {
     uint32_t t = primeAt(policy, 21.00f, 47.0f, 1000);
     // 0.05 C is under the 0.1 C threshold and invisible at one decimal place.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.05f, 47.0f, true, t + 10 * INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.05f, 47.0f, true, t + 10 * INTERVAL_MS)));
 }
 
 void test_humidity_change_at_threshold_refreshes() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.0f, 48.0f, true, t + INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.0f, 48.0f, true, t + INTERVAL_MS)));
 }
 
 void test_temperature_change_is_direction_agnostic() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(20.5f, 47.0f, true, t + INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 20.5f, 47.0f, true, t + INTERVAL_MS)));
 }
 
 // --- minimum interval floor ---
@@ -111,21 +139,21 @@ void test_change_inside_interval_is_suppressed_then_fires() {
 
     // 20 s in: real change, but the floor blocks it.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.5f, 47.0f, true, t + 20000)));
+                      static_cast<int>(evalValues(policy, 21.5f, 47.0f, true, t + 20000)));
 
     // The change must still be outstanding once the floor passes — this is the
     // regression guard for recording values on a suppressed evaluation.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.5f, 47.0f, true, t + INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.5f, 47.0f, true, t + INTERVAL_MS)));
 }
 
 void test_interval_boundary_is_inclusive() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.5f, 47.0f, true, t + INTERVAL_MS - 1)));
+                      static_cast<int>(evalValues(policy, 21.5f, 47.0f, true, t + INTERVAL_MS - 1)));
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.5f, 47.0f, true, t + INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.5f, 47.0f, true, t + INTERVAL_MS)));
 }
 
 void test_zero_interval_allows_immediate_refresh() {
@@ -133,7 +161,8 @@ void test_zero_interval_allows_immediate_refresh() {
     // underflow on a zero interval.
     RefreshPolicy policy(0);
     uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(policy.evaluate(21.5f, 47.0f, true, t)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(evalValues(policy, 21.5f, 47.0f, true, t)));
 }
 
 // --- ghosting / periodic full refresh ---
@@ -147,27 +176,28 @@ void test_twelfth_partial_is_promoted_to_full() {
         temp += 0.5f;
         t += INTERVAL_MS;
         TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                          static_cast<int>(policy.evaluate(temp, 47.0f, true, t)));
+                          static_cast<int>(evalValues(policy, temp, 47.0f, true, t)));
     }
     TEST_ASSERT_EQUAL(Display::FULL_REFRESH_EVERY_N_PARTIALS, policy.getPartialsSinceFull());
 
     // The next due refresh clears the accumulated ghosting.
     temp += 0.5f;
     t += INTERVAL_MS;
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(temp, 47.0f, true, t)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(evalValues(policy, temp, 47.0f, true, t)));
     TEST_ASSERT_EQUAL(0, policy.getPartialsSinceFull());
 
     // ...and the cycle starts over.
     temp += 0.5f;
     t += INTERVAL_MS;
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(policy.evaluate(temp, 47.0f, true, t)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(evalValues(policy, temp, 47.0f, true, t)));
 }
 
 void test_suppressed_evaluations_do_not_advance_the_partial_counter() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 20.0f, 47.0f, 1000);
     for (int i = 0; i < 50; i++) {
-        policy.evaluate(25.0f, 47.0f, true, t + 100 * i); // all inside the floor
+        evalValues(policy, 25.0f, 47.0f, true, t + 100 * i); // all inside the floor
     }
     TEST_ASSERT_EQUAL(0, policy.getPartialsSinceFull());
 }
@@ -178,21 +208,21 @@ void test_valid_to_invalid_forces_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.4f, 47.0f, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.4f, 47.0f, false, t + INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.4f, 47.0f, false, t + INTERVAL_MS)));
 }
 
 void test_invalid_to_valid_forces_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
-    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(policy.evaluate(NAN, NAN, false, 1000)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full), static_cast<int>(evalValues(policy, NAN, NAN, false, 1000)));
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.4f, 47.0f, true, 1000 + INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.4f, 47.0f, true, 1000 + INTERVAL_MS)));
 }
 
 void test_staying_invalid_returns_none() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(NAN, NAN, false, 1000);
+    evalValues(policy, NAN, NAN, false, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(NAN, NAN, false, 1000 + 10 * INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, NAN, NAN, false, 1000 + 10 * INTERVAL_MS)));
 }
 
 void test_nan_temperature_is_treated_as_invalid() {
@@ -201,14 +231,14 @@ void test_nan_temperature_is_treated_as_invalid() {
     // valid==true but the value is NAN: must be treated as unavailable, which
     // is a validity transition and therefore forces a refresh.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(NAN, 47.0f, true, t + INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, NAN, 47.0f, true, t + INTERVAL_MS)));
 }
 
 void test_nan_humidity_is_treated_as_invalid() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.4f, 47.0f, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.4f, NAN, true, t + INTERVAL_MS)));
+                      static_cast<int>(evalValues(policy, 21.4f, NAN, true, t + INTERVAL_MS)));
 }
 
 // --- millis() rollover ---
@@ -224,7 +254,7 @@ void test_rollover_does_not_suppress_refreshes() {
     // would compute a huge negative elapsed time.
     const uint32_t afterWrap = 30000u - 1u; // nearMax + 60000 wraps to this
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.5f, 47.0f, true, afterWrap)));
+                      static_cast<int>(evalValues(policy, 21.5f, 47.0f, true, afterWrap)));
 }
 
 void test_rollover_still_enforces_the_floor() {
@@ -234,7 +264,7 @@ void test_rollover_still_enforces_the_floor() {
 
     // 10 s past the wrap = 40 s elapsed, still inside the 60 s floor.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.5f, 47.0f, true, 10000u)));
+                      static_cast<int>(evalValues(policy, 21.5f, 47.0f, true, 10000u)));
 }
 
 // --- formatting ---
@@ -297,17 +327,17 @@ void test_minute_rollover_triggers_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
     // Prime with a known clock minute.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000, 1000)));
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000, 1000)));
     // Values unchanged, but the minute has rolled over: the footer must repaint.
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 1001)));
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 1001)));
 }
 
 void test_same_minute_does_not_trigger_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 1000);
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + 10 * INTERVAL_MS, 1000)));
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + 10 * INTERVAL_MS, 1000)));
 }
 
 void test_clock_refresh_still_respects_the_interval_floor() {
@@ -315,36 +345,36 @@ void test_clock_refresh_still_respects_the_interval_floor() {
     // budget: with a 300 s interval the clock updates every 5 minutes, not
     // every one.
     RefreshPolicy policy(300);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 1000);
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 1000);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + 60000, 1001)));
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + 60000, 1001)));
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + 300000, 1005)));
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + 300000, 1005)));
 }
 
 void test_ntp_sync_populates_the_clock() {
     // 0 -> non-zero is the unsynced-to-synced transition; the footer gains a
     // time and must repaint to show it.
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0);
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 29000000)));
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 29000000)));
 }
 
 void test_clock_trigger_advances_the_ghosting_counter() {
     // Clock-driven refreshes are real refreshes, so they must count toward the
     // periodic full refresh that clears ghosting.
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 1000);
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 1000);
     uint32_t t = 1000;
     for (int i = 1; i <= Display::FULL_REFRESH_EVERY_N_PARTIALS; i++) {
         t += INTERVAL_MS;
         TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
-                          static_cast<int>(policy.evaluate(21.0f, 47.0f, true, t, 1000 + i)));
+                          static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, t, 1000 + i)));
     }
     t += INTERVAL_MS;
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, t, 1013)));
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, t, 1013)));
 }
 
 // --- setpoint / control symbol ---
@@ -354,64 +384,64 @@ void test_setpoint_change_triggers_refresh() {
     // it as an input, a stable sensor with an unsynced clock would keep showing
     // the old target indefinitely.
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
-    TEST_ASSERT_EQUAL(
-        static_cast<int>(RefreshKind::Partial),
-        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 22.5f, ControlState::ACTIVE_OFF)));
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 22.5f,
+                                                  ControlState::ACTIVE_OFF)));
 }
 
 void test_unchanged_setpoint_does_not_trigger_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
-    TEST_ASSERT_EQUAL(
-        static_cast<int>(RefreshKind::None),
-        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.5f, ControlState::ACTIVE_OFF)));
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.5f,
+                                                  ControlState::ACTIVE_OFF)));
 }
 
 void test_setpoint_change_below_rendered_precision_is_suppressed() {
     // Rendered with one decimal, so a 0.01 K move is the same picture.
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
-    TEST_ASSERT_EQUAL(
-        static_cast<int>(RefreshKind::None),
-        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.51f, ControlState::ACTIVE_OFF)));
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.51f,
+                                                  ControlState::ACTIVE_OFF)));
 }
 
 void test_control_state_change_triggers_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
-    TEST_ASSERT_EQUAL(
-        static_cast<int>(RefreshKind::Partial),
-        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.5f, ControlState::ACTIVE_ON)));
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.5f,
+                                                  ControlState::ACTIVE_ON)));
 }
 
 void test_setpoint_nan_transition_triggers_refresh() {
     // NAN renders as a placeholder; gaining or losing a real value is visible.
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE);
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE);
     TEST_ASSERT_EQUAL(
         static_cast<int>(RefreshKind::Partial),
-        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.5f, ControlState::INACTIVE)));
+        static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 21.5f, ControlState::INACTIVE)));
 }
 
 void test_setpoint_nan_to_nan_does_not_trigger_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE);
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE);
     TEST_ASSERT_EQUAL(
         static_cast<int>(RefreshKind::None),
-        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, NAN, ControlState::INACTIVE)));
+        static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, NAN, ControlState::INACTIVE)));
 }
 
 void test_setpoint_change_still_respects_the_interval_floor() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0, 21.5f, ControlState::ACTIVE_OFF);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
-                      static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS - 1, 0, 22.5f,
-                                                       ControlState::ACTIVE_OFF)));
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS - 1, 0, 22.5f,
+                                                  ControlState::ACTIVE_OFF)));
     // Still outstanding: it fires once the floor passes.
-    TEST_ASSERT_EQUAL(
-        static_cast<int>(RefreshKind::Partial),
-        static_cast<int>(policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 22.5f, ControlState::ACTIVE_OFF)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial),
+                      static_cast<int>(evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, 22.5f,
+                                                  ControlState::ACTIVE_OFF)));
 }
 
 // --- demand bar bucketing ---
@@ -472,35 +502,35 @@ void test_demand_bucket_moves_once_hysteresis_is_cleared() {
 
 void test_demand_bucket_change_triggers_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 1);
+    evalValues(policy, 21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 1);
 
     // Same readings, same setpoint, same state — only the bar moved.
     const RefreshKind kind =
-        policy.evaluate(21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f, ControlState::ACTIVE_ON, 3);
+        evalValues(policy, 21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f, ControlState::ACTIVE_ON, 3);
 
     TEST_ASSERT_NOT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
 }
 
 void test_unchanged_demand_bucket_does_not_trigger_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 3);
+    evalValues(policy, 21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 3);
 
     // Nothing visible changed, so the panel must stay put even though the
     // interval floor has passed. This is the property that keeps the bar from
     // costing refreshes.
     const RefreshKind kind =
-        policy.evaluate(21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f, ControlState::ACTIVE_ON, 3);
+        evalValues(policy, 21.0f, 50.0f, true, 1000 + INTERVAL_MS, 0, 22.0f, ControlState::ACTIVE_ON, 3);
 
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
 }
 
 void test_demand_bucket_change_respects_the_interval_floor() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 1);
+    evalValues(policy, 21.0f, 50.0f, true, 1000, 0, 22.0f, ControlState::ACTIVE_ON, 1);
 
     // Too soon: the change is real but the floor still applies, exactly as it
     // does for a setpoint change.
-    const RefreshKind kind = policy.evaluate(21.0f, 50.0f, true, 1500, 0, 22.0f, ControlState::ACTIVE_ON, 4);
+    const RefreshKind kind = evalValues(policy, 21.0f, 50.0f, true, 1500, 0, 22.0f, ControlState::ACTIVE_ON, 4);
 
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
 }
@@ -514,21 +544,21 @@ void test_warning_onset_triggers_immediate_refresh_past_the_floor() {
     // One second later a warning appears: onset must bypass the interval
     // floor — a late warning is the dangerous kind.
     const RefreshKind kind =
-        policy.evaluate(21.0f, 47.0f, true, t + 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::FROST);
+        evalValues(policy, 21.0f, 47.0f, true, t + 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::FROST);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(kind));
 }
 
 void test_warning_clearance_respects_the_interval_floor() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::FROST);
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::FROST);
 
     // Clearance is not urgent: the blank margin waits out the floor.
     const RefreshKind suppressed =
-        policy.evaluate(21.0f, 47.0f, true, 2000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::NONE);
+        evalValues(policy, 21.0f, 47.0f, true, 2000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::NONE);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(suppressed));
 
-    const RefreshKind fired =
-        policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, NAN, ControlState::INACTIVE, 0, WarningToken::NONE);
+    const RefreshKind fired = evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, NAN, ControlState::INACTIVE,
+                                         0, WarningToken::NONE);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(fired));
 }
 
@@ -536,19 +566,19 @@ void test_unchanged_warning_triggers_nothing() {
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000, WarningToken::HUMID);
 
-    const RefreshKind kind = policy.evaluate(21.0f, 47.0f, true, t + 10 * INTERVAL_MS, 0, NAN, ControlState::INACTIVE,
-                                             0, WarningToken::HUMID);
+    const RefreshKind kind = evalValues(policy, 21.0f, 47.0f, true, t + 10 * INTERVAL_MS, 0, NAN,
+                                        ControlState::INACTIVE, 0, WarningToken::HUMID);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None), static_cast<int>(kind));
 }
 
 void test_warning_token_change_triggers_refresh() {
     RefreshPolicy policy(INTERVAL_SEC);
-    policy.evaluate(21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::HUMID);
+    evalValues(policy, 21.0f, 47.0f, true, 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::HUMID);
 
     // HUMID -> SENSOR is a different label in the same slot: the panel must
     // repaint even though nothing else changed.
-    const RefreshKind kind = policy.evaluate(21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, NAN, ControlState::INACTIVE, 0,
-                                             WarningToken::SENSOR);
+    const RefreshKind kind = evalValues(policy, 21.0f, 47.0f, true, 1000 + INTERVAL_MS, 0, NAN, ControlState::INACTIVE,
+                                        0, WarningToken::SENSOR);
     TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Partial), static_cast<int>(kind));
 }
 
@@ -557,8 +587,119 @@ void test_warning_onset_increments_the_ghosting_counter() {
     // real panel operation and must count toward it.
     RefreshPolicy policy(INTERVAL_SEC);
     uint32_t t = primeAt(policy, 21.0f, 47.0f, 1000);
-    policy.evaluate(21.0f, 47.0f, true, t + 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::FROST);
+    evalValues(policy, 21.0f, 47.0f, true, t + 1000, 0, NAN, ControlState::INACTIVE, 0, WarningToken::FROST);
     TEST_ASSERT_EQUAL(1, policy.getPartialsSinceFull());
+}
+
+// --- per-slot availability and field hysteresis ---
+
+void test_pressure_only_snapshot_repaints_the_pressure_slot() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    const ValueSlot noTemperature = unavailableSlot(Display::TEMP_HYSTERESIS_C);
+    const ValueSlot noSecond = unavailableSlot(1.0f);
+    const ValueSlot pressure{1013.0f, true, 0.5f};
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(noTemperature, noSecond, pressure, 1000)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(noTemperature, noSecond, ValueSlot{1014.0f, true, 0.5f}, 1000 + INTERVAL_MS)));
+}
+
+void test_voc_jitter_below_threshold_is_suppressed() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    const ValueSlot temperature = tempSlot(21.4f);
+    const ValueSlot humidity = humiditySlot(47.0f);
+    const ValueSlot voc{120.0f, true, 5.0f};
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(temperature, humidity, voc, 1000)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::None),
+        static_cast<int>(policy.evaluate(temperature, humidity, ValueSlot{123.0f, true, 5.0f}, 1000 + INTERVAL_MS)));
+}
+
+void test_voc_decisive_change_triggers_refresh() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    const ValueSlot temperature = tempSlot(21.4f);
+    const ValueSlot humidity = humiditySlot(47.0f);
+    const ValueSlot voc{120.0f, true, 5.0f};
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(temperature, humidity, voc, 1000)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(temperature, humidity, ValueSlot{125.0f, true, 5.0f}, 1000 + INTERVAL_MS)));
+}
+
+void test_slot_availability_transition_is_a_change_subject_to_the_floor() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    const ValueSlot temperature = tempSlot(21.4f);
+    const ValueSlot humidity = humiditySlot(47.0f);
+    const ValueSlot noThird = unavailableSlot();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(temperature, humidity, noThird, 1000)));
+
+    // Becoming available is a change, but it does not bypass the interval floor.
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(temperature, humidity, ValueSlot{1013.0f, true, 0.5f}, 2000)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(temperature, humidity, ValueSlot{1013.0f, true, 0.5f}, 1000 + INTERVAL_MS)));
+}
+
+void test_slot_becoming_unavailable_is_a_change() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    const ValueSlot temperature = tempSlot(21.4f);
+    const ValueSlot humidity = humiditySlot(47.0f);
+    const ValueSlot third{1013.0f, true, 0.5f};
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(temperature, humidity, third, 1000)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(temperature, humidity, unavailableSlot(0.5f), 1000 + INTERVAL_MS)));
+}
+
+void test_unchanged_unavailable_slot_triggers_nothing() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    const ValueSlot temperature = tempSlot(21.4f);
+    const ValueSlot humidity = humiditySlot(47.0f);
+    const ValueSlot noThird = unavailableSlot();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(temperature, humidity, noThird, 1000)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(temperature, humidity, noThird, 1000 + 10 * INTERVAL_MS)));
+}
+
+void test_slot_change_respects_the_interval_floor_and_stays_outstanding() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    const ValueSlot temperature = tempSlot(21.4f);
+    const ValueSlot humidity = humiditySlot(47.0f);
+    const ValueSlot third{1013.0f, true, 0.5f};
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(temperature, humidity, third, 1000)));
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::None),
+                      static_cast<int>(policy.evaluate(temperature, humidity, ValueSlot{1014.0f, true, 0.5f}, 20000)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(temperature, humidity, ValueSlot{1014.0f, true, 0.5f}, 1000 + INTERVAL_MS)));
+}
+
+void test_one_missing_slot_does_not_suppress_another_slot() {
+    RefreshPolicy policy(INTERVAL_SEC);
+    const ValueSlot temperature = tempSlot(21.4f);
+    const ValueSlot noSecond = unavailableSlot(1.0f);
+    const ValueSlot third{1013.0f, true, 0.5f};
+
+    TEST_ASSERT_EQUAL(static_cast<int>(RefreshKind::Full),
+                      static_cast<int>(policy.evaluate(temperature, noSecond, third, 1000)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(RefreshKind::Partial),
+        static_cast<int>(policy.evaluate(temperature, noSecond, ValueSlot{1014.0f, true, 0.5f}, 1000 + INTERVAL_MS)));
 }
 
 int runUnityTests() {
@@ -629,6 +770,15 @@ int runUnityTests() {
     RUN_TEST(test_unchanged_warning_triggers_nothing);
     RUN_TEST(test_warning_token_change_triggers_refresh);
     RUN_TEST(test_warning_onset_increments_the_ghosting_counter);
+    // Per-slot availability and field hysteresis
+    RUN_TEST(test_pressure_only_snapshot_repaints_the_pressure_slot);
+    RUN_TEST(test_voc_jitter_below_threshold_is_suppressed);
+    RUN_TEST(test_voc_decisive_change_triggers_refresh);
+    RUN_TEST(test_slot_availability_transition_is_a_change_subject_to_the_floor);
+    RUN_TEST(test_slot_becoming_unavailable_is_a_change);
+    RUN_TEST(test_unchanged_unavailable_slot_triggers_nothing);
+    RUN_TEST(test_slot_change_respects_the_interval_floor_and_stays_outstanding);
+    RUN_TEST(test_one_missing_slot_does_not_suppress_another_slot);
     return UNITY_END();
 }
 

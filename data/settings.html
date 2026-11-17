@@ -259,8 +259,8 @@
 
         <div class="section">
             <h2>E-Paper Display</h2>
-            <p>Show the current temperature and humidity on a Waveshare 1.54" e-paper module
-                (200&times;200, SSD1681) wired to the SPI pins. Changes require a restart.</p>
+            <p>Show the current temperature and two configurable values on a Waveshare 1.54" e-paper
+                module (200&times;200, SSD1681) wired to the SPI pins. Changes require a restart.</p>
 
             <div class="form-group toggle-row">
                 <span class="toggle-label">Enable Display</span>
@@ -287,6 +287,44 @@
                 <small class="form-hint">Shortest time between panel refreshes. Default: 60s.
                     The footer clock also refreshes on this budget, so values above 60s make
                     the displayed time lag. Lower values shorten the panel's service life.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="displaySecondField">Second value</label>
+                <select id="displaySecondField" style="width: 200px;">
+                    <option value="humidity">Humidity</option>
+                    <option value="dew_point">Dew point</option>
+                    <option value="pressure">Pressure</option>
+                    <option value="sea_level_pressure">Sea-level pressure</option>
+                    <option value="co2">CO&#8322;</option>
+                    <option value="illuminance">Illuminance</option>
+                    <option value="voc_index">VOC index</option>
+                    <option value="pm25">PM2.5</option>
+                </select>
+                <small class="form-hint">Shown below the temperature. Default: humidity.</small>
+            </div>
+
+            <div class="form-group">
+                <label for="displayThirdField">Third value</label>
+                <select id="displayThirdField" style="width: 200px;">
+                    <option value="none">None (two-line layout)</option>
+                    <option value="humidity">Humidity</option>
+                    <option value="dew_point">Dew point</option>
+                    <option value="pressure">Pressure</option>
+                    <option value="sea_level_pressure">Sea-level pressure</option>
+                    <option value="co2">CO&#8322;</option>
+                    <option value="illuminance">Illuminance</option>
+                    <option value="voc_index">VOC index</option>
+                    <option value="pm25">PM2.5</option>
+                </select>
+                <small class="form-hint">Optional third line. Default: none. Selecting a value switches
+                    the panel to the three-line layout.</small>
+            </div>
+
+            <div class="info-box" style="margin-top: 10px;">
+                Sea-level pressure requires a configured elevation greater than zero. A selected value
+                without a matching sensor renders a placeholder (<code>--</code>) in its configured
+                position rather than a stale reading.
             </div>
 
             <div class="form-group">
@@ -1447,6 +1485,8 @@
             document.getElementById('displayWarnFrost').value =
                 (data.warn_frost_c === null || data.warn_frost_c === undefined) ? '' : data.warn_frost_c;
             document.getElementById('displayWarnHumidity').value = data.warn_humidity_pct || 0;
+            document.getElementById('displaySecondField').value = data.second_field || 'humidity';
+            document.getElementById('displayThirdField').value = data.third_field || 'none';
         } catch (error) {
             console.error('Failed to load display config:', error);
         }
@@ -1461,7 +1501,9 @@
             rotation: parseInt(document.getElementById('displayRotation').value) || 0,
             interval: parseInt(document.getElementById('displayInterval').value) || 60,
             warn_frost_c: Number.isFinite(frostVal) ? frostVal : null,
-            warn_humidity_pct: Number.isFinite(humVal) ? humVal : 0
+            warn_humidity_pct: Number.isFinite(humVal) ? humVal : 0,
+            second_field: document.getElementById('displaySecondField').value,
+            third_field: document.getElementById('displayThirdField').value
         };
 
         if (!confirm('Save display settings?\n\nThe device will restart to apply changes.')) {

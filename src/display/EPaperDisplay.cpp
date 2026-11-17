@@ -48,8 +48,19 @@ namespace Display {
         constexpr int16_t PANEL_H = GxEPD2_154_D67::HEIGHT;
         constexpr int16_t REFRESH_WINDOW_Y = 30;
         constexpr int16_t REFRESH_WINDOW_H = PANEL_H - REFRESH_WINDOW_Y; // y 30..199
-        constexpr int16_t TEMP_BASELINE_Y = 85;
-        constexpr int16_t HUMIDITY_BASELINE_Y = 128;
+
+        // Value block, y 30..139. Two layouts selected by configuration:
+        //
+        //   two-line:  temperature 81, second 124
+        //   three-line: temperature 73, second 107, third 135
+        //
+        // The third baseline is 135 rather than 139 so descenders such as the
+        // 'p' in "hPa" reach 139 without crossing the value-block boundary.
+        constexpr int16_t TEMP_BASELINE_TWO_LINE_Y = 81;
+        constexpr int16_t SECOND_BASELINE_TWO_LINE_Y = 124;
+        constexpr int16_t TEMP_BASELINE_THREE_LINE_Y = 73;
+        constexpr int16_t SECOND_BASELINE_THREE_LINE_Y = 107;
+        constexpr int16_t THIRD_BASELINE_THREE_LINE_Y = 135;
 
         // Header band, y 0..29: the strip above the partial-refresh window.
         //
@@ -142,36 +153,44 @@ namespace Display {
         // read as sitting slightly left of the panel axis.
         constexpr int16_t TEMP_GROUP_SHIFT_X = 5;
 
-        // Warning slots, both margins next to the value block — x 8..55 and
-        // its mirror image x 145..192. Both show the same token:
+        // Degree mark for the 12 pt secondary lines (dew point). Smaller than
+        // the 24 pt temperature ring but anchored the same way: at the digits'
+        // cap height, not centred on them, or it reads as a lowercase 'o'.
+        constexpr int16_t SECOND_DEGREE_RADIUS = 2;
+        constexpr int16_t SECOND_DEGREE_GAP = 4;
+        constexpr int16_t SECOND_DEGREE_ADVANCE = SECOND_DEGREE_GAP + 2 * SECOND_DEGREE_RADIUS;
+
+        // Warning slots, both margins next to the value block. The 34 px
+        // triangle is anchored to the temperature baseline, so it moves up
+        // with the temperature in the three-line layout:
         //
         //        ^            <- filled triangle, apex up
         //       /x/
         //      / !!/
-        //     /  !!
         //     /__!!_/       <- base ('!' cut out in white)
         //      FROST        <- built-in 5x7 label
         //
-        // The slots are entirely inside the partial-refresh window (y 30..199)
-        // and clear of the centred values: the 24 pt temperature group tops
-        // out near x 60 even with a wide reading, so the values and the
-        // footer keep their geometry whether or not the slots are occupied.
-        // The right slot clears the setpoint/symbol column because that
-        // content lives in the footer (y 152..), below both icons.
-        // The triangle is drawn with fillTriangle and the '!' is cut out in
-        // white — the same drawn-symbol technique as the degree rings and the
-        // control symbol, because the free fonts carry no usable glyph.
-        constexpr int16_t WARN_CX = 31;                      // centre of the x 8..55 slot
-        constexpr int16_t WARN_CX_RIGHT = PANEL_W - WARN_CX; // centre of the mirrored x 145..192 slot
-        constexpr int16_t WARN_APEX_Y = 53;
-        constexpr int16_t WARN_BASE_Y = 95;
-        constexpr int16_t WARN_BASE_HALF_W = 21; // 42 px base
+        //   two-line:   triangle 47..81, label top 87, second line top 108
+        //   three-line: triangle 39..73, label top 79, second line top 90
+        //
+        // The label sits above the second value line so a long second value
+        // such as "PM2.5 8 ug/m3" cannot collide with it. The slots are
+        // entirely inside the partial-refresh window (y 30..199) and clear of
+        // the centred values: the values and footer keep their geometry
+        // whether or not the slots are occupied. The triangle is drawn with
+        // fillTriangle and the '!' is cut out in white — the same drawn-symbol
+        // technique as the degree rings and the control symbol, because the
+        // free fonts carry no usable glyph.
+        constexpr int16_t WARN_CX = 31;
+        constexpr int16_t WARN_CX_RIGHT = PANEL_W - WARN_CX; // mirror image
+        constexpr int16_t WARN_HEIGHT = 34;
+        constexpr int16_t WARN_BASE_HALF_W = WARN_HEIGHT / 2; // 34 px base
         constexpr int16_t WARN_BAR_W = 5;
-        constexpr int16_t WARN_BAR_TOP_Y = 69;
-        constexpr int16_t WARN_BAR_BOTTOM_Y = 83;
-        constexpr int16_t WARN_DOT_TOP_Y = 87;
+        constexpr int16_t WARN_BAR_TOP_OFFSET = 11;   // below the apex
+        constexpr int16_t WARN_BAR_BOTTOM_OFFSET = 8; // above the base
+        constexpr int16_t WARN_DOT_TOP_OFFSET = 5;    // above the base
         constexpr int16_t WARN_DOT_H = 3;
-        constexpr int16_t WARN_LABEL_Y = 105; // built-in font: glyph top
+        constexpr int16_t WARN_LABEL_OFFSET = 6; // below the baseline
 
         // One fixed label per warning token, indexed by the token's numeric
         // value — WARNING_TOKEN_COUNT below pins the table to the enum, so
@@ -203,22 +222,29 @@ namespace Display {
             display.print(text);
         }
 
-        // Draw one warning icon centred on `cx`: the triangle with the '!'
-        // cutout, then the token's label below it. The bar and the dot are
-        // sized to stay inside the triangle at both heights (the triangle is
-        // ~9 px half-wide at the bar top, 21 px at the base). Called once per
-        // margin slot; both slots always show the same token.
-        void drawWarningIcon(Display::WarningToken token, int16_t cx) {
-            display.fillTriangle(cx, WARN_APEX_Y, cx - WARN_BASE_HALF_W, WARN_BASE_Y, cx + WARN_BASE_HALF_W,
-                                 WARN_BASE_Y, GxEPD_BLACK);
-            display.fillRect(cx - WARN_BAR_W / 2, WARN_BAR_TOP_Y, WARN_BAR_W, WARN_BAR_BOTTOM_Y - WARN_BAR_TOP_Y,
-                             GxEPD_WHITE);
-            display.fillRect(cx - WARN_BAR_W / 2, WARN_DOT_TOP_Y, WARN_BAR_W, WARN_DOT_H, GxEPD_WHITE);
+        // Draw one warning icon centred on `cx`: the 34 px triangle with the
+        // '!' cutout, then the token's label below it. Anchored to the
+        // temperature baseline so each layout moves the whole warning block
+        // with the temperature. The bar and dot stay inside the triangle at
+        // both heights (the triangle is ~6 px half-wide at the bar top,
+        // 17 px at the base). Called once per margin slot; both slots always
+        // show the same token.
+        void drawWarningIcon(Display::WarningToken token, int16_t cx, int16_t tempBaselineY) {
+            const int16_t apexY = static_cast<int16_t>(tempBaselineY - WARN_HEIGHT);
+            const int16_t baseY = tempBaselineY;
+            const int16_t barTopY = static_cast<int16_t>(apexY + WARN_BAR_TOP_OFFSET);
+            const int16_t barBottomY = static_cast<int16_t>(baseY - WARN_BAR_BOTTOM_OFFSET);
+            const int16_t dotTopY = static_cast<int16_t>(baseY - WARN_DOT_TOP_OFFSET);
+
+            display.fillTriangle(cx, apexY, cx - WARN_BASE_HALF_W, baseY, cx + WARN_BASE_HALF_W, baseY, GxEPD_BLACK);
+            display.fillRect(cx - WARN_BAR_W / 2, barTopY, WARN_BAR_W, barBottomY - barTopY, GxEPD_WHITE);
+            display.fillRect(cx - WARN_BAR_W / 2, dotTopY, WARN_BAR_W, WARN_DOT_H, GxEPD_WHITE);
 
             display.setFont(nullptr); // built-in 5x7
             const char* label = WARNING_LABELS[static_cast<uint8_t>(token)];
             const int16_t labelW = static_cast<int16_t>(strlen(label)) * 6;
-            display.setCursor(static_cast<int16_t>(cx - labelW / 2), WARN_LABEL_Y);
+            display.setCursor(static_cast<int16_t>(cx - labelW / 2),
+                              static_cast<int16_t>(tempBaselineY + WARN_LABEL_OFFSET));
             display.print(label);
         }
 
@@ -286,6 +312,35 @@ namespace Display {
             // outer radius DEGREE_RADIUS + 1, band 3 px, hole radius 4.
             display.fillCircle(ringCx, ringCy, DEGREE_RADIUS + 1, GxEPD_BLACK);
             display.fillCircle(ringCx, ringCy, DEGREE_RADIUS - 2, GxEPD_WHITE);
+        }
+
+        // Draw a 12 pt secondary value followed by a small drawn degree ring.
+        // Used for dew point; the GFX font has no degree glyph, so the ring is
+        // drawn. The text-plus-ring group is centred as a whole and the ring
+        // is anchored to the digits' cap height (measured on "0", not on the
+        // line, which may be a "--" placeholder with no ascenders).
+        void drawSecondaryWithDegree(const char* text, int16_t baselineY) {
+            int16_t x1 = 0;
+            int16_t y1 = 0;
+            uint16_t w = 0;
+            uint16_t h = 0;
+            display.getTextBounds(text, 0, baselineY, &x1, &y1, &w, &h);
+
+            const int16_t groupW = static_cast<int16_t>(w) + SECOND_DEGREE_ADVANCE;
+            const int16_t x = static_cast<int16_t>((PANEL_W - groupW) / 2 - x1);
+            display.setCursor(x, baselineY);
+            display.print(text);
+
+            const int16_t ringCx =
+                static_cast<int16_t>(x + x1 + static_cast<int16_t>(w) + SECOND_DEGREE_GAP + SECOND_DEGREE_RADIUS);
+
+            int16_t refX1 = 0;
+            int16_t refY1 = 0;
+            uint16_t refW = 0;
+            uint16_t refH = 0;
+            display.getTextBounds("0", 0, baselineY, &refX1, &refY1, &refW, &refH);
+            const int16_t ringCy = static_cast<int16_t>(refY1 + SECOND_DEGREE_RADIUS);
+            display.drawCircle(ringCx, ringCy, SECOND_DEGREE_RADIUS, GxEPD_BLACK);
         }
 
         // Advance width of `text` in the currently selected font.
@@ -553,14 +608,33 @@ namespace Display {
         display.print(HEADER_TITLE);
     }
 
-    void EPaperDisplay::drawMeasurements(const char* tempStr, const char* humStr) {
+    void EPaperDisplay::drawMeasurements(const char* tempStr, const char* secondStr, const char* thirdStr,
+                                         bool secondDegreeRing, bool thirdDegreeRing) {
+        // The configured third slot selects the layout; a momentarily missing
+        // reading renders a placeholder in the same position rather than
+        // collapsing to the two-line layout.
+        const bool threeLine = thirdStr != nullptr && thirdStr[0] != '\0';
+        const int16_t tempBaselineY = threeLine ? TEMP_BASELINE_THREE_LINE_Y : TEMP_BASELINE_TWO_LINE_Y;
+
         display.setFont(&FreeSansBold24pt7b);
-        drawTemperatureWithDegree(tempStr, TEMP_BASELINE_Y);
+        drawTemperatureWithDegree(tempStr, tempBaselineY);
 
         display.setFont(&FreeSans12pt7b);
-        char humLine[24];
-        snprintf(humLine, sizeof(humLine), "%s %%rH", humStr);
-        drawCentered(humLine, HUMIDITY_BASELINE_Y);
+        if (secondStr != nullptr && secondStr[0] != '\0') {
+            const int16_t secondBaselineY = threeLine ? SECOND_BASELINE_THREE_LINE_Y : SECOND_BASELINE_TWO_LINE_Y;
+            if (secondDegreeRing) {
+                drawSecondaryWithDegree(secondStr, secondBaselineY);
+            } else {
+                drawCentered(secondStr, secondBaselineY);
+            }
+        }
+        if (threeLine) {
+            if (thirdDegreeRing) {
+                drawSecondaryWithDegree(thirdStr, THIRD_BASELINE_THREE_LINE_Y);
+            } else {
+                drawCentered(thirdStr, THIRD_BASELINE_THREE_LINE_Y);
+            }
+        }
     }
 
     void EPaperDisplay::drawFooter(const char* footerName, const char* footerDateTime,
@@ -621,31 +695,36 @@ namespace Display {
         }
     }
 
-    void EPaperDisplay::runPagedDraw(const char* tempStr, const char* humStr, const char* footerName,
+    void EPaperDisplay::runPagedDraw(const char* tempStr, const char* secondStr, const char* thirdStr,
+                                     bool secondDegreeRing, bool thirdDegreeRing, const char* footerName,
                                      const char* footerDateTime, Display::ControlState controlState,
                                      const char* setpointStr, uint8_t demandSegments, WarningToken warning) {
+        const bool threeLine = thirdStr != nullptr && thirdStr[0] != '\0';
+        const int16_t tempBaselineY = threeLine ? TEMP_BASELINE_THREE_LINE_Y : TEMP_BASELINE_TWO_LINE_Y;
+
         display.firstPage();
         do {
             display.fillScreen(GxEPD_WHITE);
 
             drawHeader();
 
-            drawMeasurements(tempStr, humStr);
+            drawMeasurements(tempStr, secondStr, thirdStr, secondDegreeRing, thirdDegreeRing);
 
             // Purely additive: when the slots are empty nothing else moves,
             // and a cleared warning simply leaves both margins white again.
             if (warning != WarningToken::NONE) {
-                drawWarningIcon(warning, WARN_CX);
-                drawWarningIcon(warning, WARN_CX_RIGHT);
+                drawWarningIcon(warning, WARN_CX, tempBaselineY);
+                drawWarningIcon(warning, WARN_CX_RIGHT, tempBaselineY);
             }
 
             drawFooter(footerName, footerDateTime, controlState, setpointStr, demandSegments);
         } while (display.nextPage());
     }
 
-    void EPaperDisplay::render(const char* tempStr, const char* humStr, const char* footerName,
-                               const char* footerDateTime, Display::ControlState controlState, const char* setpointStr,
-                               uint8_t demandSegments, WarningToken warning, RefreshKind kind) {
+    void EPaperDisplay::render(const char* tempStr, const char* secondStr, const char* thirdStr, bool secondDegreeRing,
+                               bool thirdDegreeRing, const char* footerName, const char* footerDateTime,
+                               Display::ControlState controlState, const char* setpointStr, uint8_t demandSegments,
+                               WarningToken warning, RefreshKind kind) {
         if (!initialised || faulted || kind == RefreshKind::None) {
             return;
         }
@@ -654,9 +733,9 @@ namespace Display {
         if (full) {
             display.setFullWindow();
         } else {
-            // Everything that changes between refreshes — the values, both
-            // footer lines and the warning slot — lives inside this window.
-            // Only the top margin is excluded, which is blank.
+            // Everything that changes between refreshes — all configured value
+            // lines, both footer lines and the warning slots — lives inside
+            // this window. Only the top margin is excluded, which is blank.
             display.setPartialWindow(0, REFRESH_WINDOW_Y, PANEL_W, REFRESH_WINDOW_H);
         }
 
@@ -666,12 +745,14 @@ namespace Display {
         // "blocking external call" requirement.
         const uint32_t start = millis();
         feedWatchdog();
-        runPagedDraw(tempStr, humStr, footerName, footerDateTime, controlState, setpointStr, demandSegments, warning);
+        runPagedDraw(tempStr, secondStr, thirdStr, secondDegreeRing, thirdDegreeRing, footerName, footerDateTime,
+                     controlState, setpointStr, demandSegments, warning);
         feedWatchdog();
         const uint32_t elapsed = millis() - start;
 
         noteDuration(elapsed, full ? "Full refresh" : "Partial refresh");
-        ESP_LOGD(TAG, "%s refresh: '%s' / '%s' in %u ms", full ? "Full" : "Partial", tempStr, humStr, elapsed);
+        ESP_LOGD(TAG, "%s refresh: '%s' / '%s' / '%s' in %u ms", full ? "Full" : "Partial", tempStr, secondStr,
+                 thirdStr, elapsed);
 
         hibernate();
     }

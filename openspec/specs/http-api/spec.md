@@ -238,17 +238,27 @@ and updating the e-paper display configuration, implemented in
 
 ```json
 {"enabled": false, "rotation": 0, "interval": 60,
- "warn_frost_c": null, "warn_humidity_pct": 0}
+ "warn_frost_c": null, "warn_humidity_pct": 0,
+ "second_field": "humidity", "third_field": "none"}
 ```
 
 A `null` `warn_frost_c` SHALL mean the frost warning is disabled; a
 `warn_humidity_pct` of `0` SHALL mean the humidity warning is disabled.
+
+`second_field` SHALL always report one of `humidity`, `dew_point`, `pressure`,
+`sea_level_pressure`, `co2`, `illuminance`, `voc_index` or `pm25`.
+`third_field` SHALL report one of those tokens or `none`.
 
 `POST /api/display` SHALL require the CSRF header
 `X-Requested-With: KlimaControl` via `verifyCsrfHeader()`, SHALL validate the
 body through `Config::validateDisplayConfig()`, SHALL persist the result, and
 SHALL then call `config.requestRestart(1000)` — matching the save-then-restart
 convention of the other settings routes.
+
+An absent `second_field` or `third_field` key SHALL leave the stored value
+unchanged. A present but unknown token SHALL fall back to the documented default
+during validation rather than reject the request. `third_field: null` SHALL be
+treated as `none`.
 
 When the request disables a display that was previously enabled, the handler
 SHALL blank the panel synchronously before saving and scheduling the restart.
@@ -258,7 +268,27 @@ a further refresh if the Network task is mid-repaint.
 #### Scenario: Reading the display configuration
 
 - **WHEN** a client GETs `/api/display` on a device that has never configured the display
-- **THEN** the response SHALL be `200` with `enabled: false`, `rotation: 0`, `interval: 60`, `warn_frost_c: null`, and `warn_humidity_pct: 0`
+- **THEN** the response SHALL be `200` with `enabled: false`, `rotation: 0`, `interval: 60`, `warn_frost_c: null`, `warn_humidity_pct: 0`, `second_field: "humidity"`, and `third_field: "none"`
+
+#### Scenario: Setting display value fields
+
+- **WHEN** a client POSTs `/api/display` with `{"second_field": "dew_point", "third_field": "pressure"}` and the CSRF header
+- **THEN** the configuration SHALL be persisted with dew point second and pressure third, and a restart SHALL be scheduled
+
+#### Scenario: Selecting no third field
+
+- **WHEN** a client POSTs `/api/display` with `{"third_field": "none"}` and the CSRF header
+- **THEN** the persisted third field SHALL be none and the device SHALL use the two-line display after restart
+
+#### Scenario: Unknown value token falls back
+
+- **WHEN** a client POSTs `/api/display` with an unknown `second_field` or `third_field` token and the CSRF header
+- **THEN** the persisted configuration SHALL use the documented default for that field rather than rejecting the request
+
+#### Scenario: Omitting a value field preserves it
+
+- **WHEN** a client POSTs `/api/display` with only `enabled` and `interval` while a second field is already stored
+- **THEN** the stored second field SHALL remain unchanged
 
 #### Scenario: Enabling the display
 
@@ -292,7 +322,7 @@ a further refresh if the Network task is mid-repaint.
 
 #### Scenario: Enabling or reconfiguring does not drive the panel
 
-- **WHEN** a `POST /api/display` request enables the display or changes only rotation, interval or warning thresholds
+- **WHEN** a `POST /api/display` request enables the display or changes only rotation, interval, value fields or warning thresholds
 - **THEN** the handler SHALL return without driving the panel; only the disable transition performs a blanking refresh
 
 ### Requirement: Timezone endpoints

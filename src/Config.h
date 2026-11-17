@@ -261,6 +261,49 @@ namespace Config {
     constexpr uint8_t MAX_WARN_HUMIDITY_PCT = 100;
 
     /**
+     * The fixed vocabulary of values the panel can show in its second and
+     * third value slots. Values are persisted, so they are explicit and
+     * stable: append new fields, never reorder existing ones. `None` selects
+     * the two-line layout and is valid only for the third slot.
+     */
+    enum class DisplayField : uint8_t {
+        Humidity = 0,
+        DewPoint = 1,
+        Pressure = 2,
+        SeaLevelPressure = 3,
+        CO2 = 4,
+        Illuminance = 5,
+        VocIndex = 6,
+        PM25 = 7,
+        None = 8,
+    };
+
+    constexpr DisplayField DEFAULT_SECOND_FIELD = DisplayField::Humidity;
+    constexpr DisplayField DEFAULT_THIRD_FIELD = DisplayField::None;
+
+    constexpr bool isValidSecondField(DisplayField field) {
+        return field >= DisplayField::Humidity && field <= DisplayField::PM25;
+    }
+
+    constexpr bool isValidThirdField(DisplayField field) {
+        return field >= DisplayField::Humidity && field <= DisplayField::None;
+    }
+
+    /**
+     * The API/UI token for `field` ("humidity", "dew_point", ...), or nullptr
+     * for a value outside the enum. Tokens are the stable wire vocabulary;
+     * enum numbers are never exposed.
+     */
+    const char* displayFieldToken(DisplayField field);
+
+    /**
+     * Parse a token into `field`. Returns false for null, empty or unknown
+     * tokens. `none` parses successfully; callers deciding whether it is
+     * valid for a slot use isValidSecondField() / isValidThirdField().
+     */
+    bool displayFieldFromToken(const char* token, DisplayField& field);
+
+    /**
      * E-paper display configuration structure
      */
     struct DisplayConfig {
@@ -274,6 +317,11 @@ namespace Config {
         // uncertain) are evaluated regardless of configuration.
         float warn_frost_c = NAN;      // Frost threshold in C; NAN = disabled
         uint8_t warn_humidity_pct = 0; // Humidity limit in %rH; 0 = disabled
+
+        // Configurable value slots. The second slot is always present; the
+        // third is optional and `None` selects the two-line layout.
+        DisplayField second_field = DEFAULT_SECOND_FIELD;
+        DisplayField third_field = DEFAULT_THIRD_FIELD;
 
         DisplayConfig() = default;
     };

@@ -15,19 +15,54 @@ namespace {
         const char* name;
         Display::WarningToken warning;
         const char* temp;
-        const char* hum;
+        const char* second;
+        const char* third;
+        bool secondRing;
+        bool thirdRing;
         Display::ControlState control;
         const char* setpoint;
         uint8_t demandSegments;
     };
 
     constexpr Sample SAMPLES[] = {
-        {"normal", Display::WarningToken::NONE, "21.4", "45", Display::ControlState::ACTIVE_ON, "22.0", 3},
-        {"frost", Display::WarningToken::FROST, "2.8", "52", Display::ControlState::ACTIVE_ON, "22.0", 3},
-        {"overheat", Display::WarningToken::OVERHEAT, "31.6", "40", Display::ControlState::ACTIVE_ON, "22.0", 3},
-        {"sensor", Display::WarningToken::SENSOR, "--.-", "--", Display::ControlState::ACTIVE_ON, "22.0", 3},
-        {"actuator", Display::WarningToken::ACTUATOR, "21.4", "45", Display::ControlState::UNCERTAIN, "22.0", 0},
-        {"humid", Display::WarningToken::HUMID, "21.4", "78", Display::ControlState::ACTIVE_ON, "22.0", 3},
+        // Default two-line layout: humidity, no third value.
+        {"normal", Display::WarningToken::NONE, "21.4", "45 %rH", "", false, false, Display::ControlState::ACTIVE_ON,
+         "22.0", 3},
+        {"frost", Display::WarningToken::FROST, "2.8", "52 %rH", "", false, false, Display::ControlState::ACTIVE_ON,
+         "22.0", 3},
+        {"overheat", Display::WarningToken::OVERHEAT, "31.6", "40 %rH", "", false, false,
+         Display::ControlState::ACTIVE_ON, "22.0", 3},
+        {"sensor", Display::WarningToken::SENSOR, "--.-", "-- %rH", "", false, false, Display::ControlState::ACTIVE_ON,
+         "22.0", 3},
+        {"actuator", Display::WarningToken::ACTUATOR, "21.4", "45 %rH", "", false, false,
+         Display::ControlState::UNCERTAIN, "22.0", 0},
+        {"humid", Display::WarningToken::HUMID, "21.4", "78 %rH", "", false, false, Display::ControlState::ACTIVE_ON,
+         "22.0", 3},
+
+        // Configurable second field: dew point with the drawn degree ring.
+        {"dew_point", Display::WarningToken::NONE, "21.4", "DP 12.4", "", true, false, Display::ControlState::ACTIVE_ON,
+         "22.0", 3},
+        {"dew_point_missing", Display::WarningToken::NONE, "21.4", "DP --", "", true, false,
+         Display::ControlState::ACTIVE_ON, "22.0", 3},
+
+        // Wide two-line values: pressure and sea-level pressure.
+        {"pressure", Display::WarningToken::NONE, "21.4", "P 1013 hPa", "", false, false,
+         Display::ControlState::ACTIVE_ON, "22.0", 3},
+        {"sea_level", Display::WarningToken::NONE, "21.4", "1016 hPa", "", false, false,
+         Display::ControlState::ACTIVE_ON, "22.0", 3},
+
+        // Three-line layouts: second plus third value.
+        {"three_line", Display::WarningToken::NONE, "21.4", "45 %rH", "P 1013 hPa", false, false,
+         Display::ControlState::ACTIVE_ON, "22.0", 3},
+        {"three_line_voc", Display::WarningToken::NONE, "21.4", "VOC 120", "P 1013 hPa", false, false,
+         Display::ControlState::ACTIVE_ON, "22.0", 3},
+        {"three_line_missing", Display::WarningToken::NONE, "21.4", "-- %rH", "-- hPa", false, false,
+         Display::ControlState::ACTIVE_ON, "22.0", 3},
+
+        // Active warning with a wide three-line second value: proves the label
+        // stays above the second line rather than colliding with it.
+        {"overheat_three_line", Display::WarningToken::OVERHEAT, "31.6", "PM2.5 8 ug/m3", "P 1002 hPa", false, false,
+         Display::ControlState::ACTIVE_ON, "22.0", 3},
     };
 
     std::string outDir;
@@ -76,8 +111,8 @@ int main(int argc, char** argv) {
 
     for (const auto& s : SAMPLES) {
         currentName = s.name;
-        panel.render(s.temp, s.hum, "klima-aabbcc", "26-10-05 14:07", s.control, s.setpoint, s.demandSegments,
-                     s.warning, Display::RefreshKind::Full);
+        panel.render(s.temp, s.second, s.third, s.secondRing, s.thirdRing, "klima-aabbcc", "26-10-05 14:07", s.control,
+                     s.setpoint, s.demandSegments, s.warning, Display::RefreshKind::Full);
     }
     return 0;
 }

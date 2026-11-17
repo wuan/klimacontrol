@@ -31,6 +31,8 @@ void WebServerManager::setupDisplayRoutes() {
             doc["warn_frost_c"] = displayConfig.warn_frost_c;
         }
         doc["warn_humidity_pct"] = displayConfig.warn_humidity_pct;
+        doc["second_field"] = Config::displayFieldToken(displayConfig.second_field);
+        doc["third_field"] = Config::displayFieldToken(displayConfig.third_field);
 
         sendJson(request, doc);
     });
@@ -67,13 +69,43 @@ void WebServerManager::setupDisplayRoutes() {
                 // clamped to disabled by validateDisplayConfig() inside
                 // saveDisplayConfig(), never rejected — the same
                 // clamp-don't-reject convention as rotation/interval.
-                if (doc["warn_frost_c"].is<float>()) {
-                    displayConfig.warn_frost_c = doc["warn_frost_c"].as<float>();
-                } else if (doc.containsKey("warn_frost_c")) {
+                const JsonVariantConst frostField = doc["warn_frost_c"];
+                if (frostField.is<float>()) {
+                    displayConfig.warn_frost_c = frostField.as<float>();
+                } else if (!frostField.isUnbound()) {
                     displayConfig.warn_frost_c = NAN; // explicit null
                 }
                 if (doc["warn_humidity_pct"].is<int>()) {
                     displayConfig.warn_humidity_pct = doc["warn_humidity_pct"].as<uint8_t>();
+                }
+
+                // Value fields use string tokens, never enum numbers. An absent
+                // key preserves the stored selection; a present but unknown
+                // token falls back to the documented default. `third_field:
+                // null` means none (two-line layout). A `none` second token is
+                // invalid for that slot and falls back to humidity during
+                // validation.
+                const JsonVariantConst secondField = doc["second_field"];
+                if (!secondField.isUnbound()) {
+                    Config::DisplayField parsed = Config::DEFAULT_SECOND_FIELD;
+                    const char* token = secondField.as<const char*>();
+                    if (token != nullptr && Config::displayFieldFromToken(token, parsed) &&
+                        Config::isValidSecondField(parsed)) {
+                        displayConfig.second_field = parsed;
+                    } else {
+                        displayConfig.second_field = Config::DEFAULT_SECOND_FIELD;
+                    }
+                }
+                const JsonVariantConst thirdField = doc["third_field"];
+                if (!thirdField.isUnbound()) {
+                    Config::DisplayField parsed = Config::DEFAULT_THIRD_FIELD;
+                    const char* token = thirdField.as<const char*>();
+                    if (token != nullptr && Config::displayFieldFromToken(token, parsed) &&
+                        Config::isValidThirdField(parsed)) {
+                        displayConfig.third_field = parsed;
+                    } else {
+                        displayConfig.third_field = Config::DEFAULT_THIRD_FIELD;
+                    }
                 }
 
                 // Turning the display off blanks the panel here and now,
@@ -97,9 +129,13 @@ void WebServerManager::setupDisplayRoutes() {
                 // interval 10..3600) before writing.
                 config.saveDisplayConfig(displayConfig);
 
-                ESP_LOGI(TAG, "Display config updated: enabled=%d rotation=%u interval=%u frost=%s hum=%u",
+                ESP_LOGI(TAG,
+                         "Display config updated: enabled=%d rotation=%u interval=%u frost=%s hum=%u second=%s "
+                         "third=%s",
                          displayConfig.enabled, displayConfig.rotation, displayConfig.interval,
-                         std::isnan(displayConfig.warn_frost_c) ? "off" : "on", displayConfig.warn_humidity_pct);
+                         std::isnan(displayConfig.warn_frost_c) ? "off" : "on", displayConfig.warn_humidity_pct,
+                         Config::displayFieldToken(displayConfig.second_field),
+                         Config::displayFieldToken(displayConfig.third_field));
 
                 // The display is brought up during setup() from the
                 // persisted config, so the change takes effect on restart

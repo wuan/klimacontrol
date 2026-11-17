@@ -32,7 +32,8 @@ namespace Display {
      */
     class DisplayManager {
     public:
-        DisplayManager(SensorController& controller, Control::TemperatureController& control);
+        DisplayManager(SensorController& controller, Config::ConfigManager& config,
+                       Control::TemperatureController& control);
 
         DisplayManager(const DisplayManager&) = delete;
         DisplayManager& operator=(const DisplayManager&) = delete;
@@ -140,11 +141,19 @@ namespace Display {
 
     private:
         SensorController& controller;
+        Config::ConfigManager& config;
         Control::TemperatureController& control;
         Net::Network* network = nullptr;
 
         EPaperDisplay panel;
         RefreshPolicy policy;
+
+        // Configured value slots, read once in begin() from the persisted
+        // DisplayConfig. The layout is configuration-driven, not inferred from
+        // which sensors happen to be present, so a transiently missing reading
+        // cannot make the panel jump between one and two secondary lines.
+        Config::DisplayField secondField = Config::DEFAULT_SECOND_FIELD;
+        Config::DisplayField thirdField = Config::DEFAULT_THIRD_FIELD;
 
         // Warning-icon decision state (threshold hysteresis, clear dwell).
         // Rebuilt from the persisted DisplayConfig in begin(); with both

@@ -101,13 +101,25 @@ namespace Display {
         /**
          * Paint the current values.
          *
+         * The panel shows the fixed temperature plus the configured second
+         * value and optional third value. Two layouts are selected by whether
+         * `thirdStr` is present (empty means the two-line layout):
+         * temperature/second at baselines 85/128, or
+         * temperature/second/third at baselines 77/111/135. Secondary lines
+         * arrive fully formatted (label, number and unit).
+         *
          * The footer is two lines in two columns: the device name over the
          * date/time on the left, the setpoint over the control symbol on the
          * right. Left-column fields are truncated to whatever the right column
          * leaves free, so a long device name cannot overrun the setpoint.
          *
          * @param tempStr     Preformatted temperature (no unit suffix)
-         * @param humStr      Preformatted humidity (no unit suffix)
+         * @param secondStr   Preformatted configured second value line, e.g.
+         *                    "47 %rH", "DP 12.4" or "P -- hPa"
+         * @param thirdStr    Preformatted configured third value line, or an
+         *                    empty string when the third slot is none
+         * @param secondDegreeRing Draw the dew-point degree ring after `secondStr`
+         * @param thirdDegreeRing  Draw the dew-point degree ring after `thirdStr`
          * @param footerName  Footer line 1, left column (device name)
          * @param footerDateTime Footer line 2, left column (date and time);
          *                    may be empty while NTP is unsynced
@@ -125,9 +137,9 @@ namespace Display {
          * @param kind        Partial repaints the value+footer window; Full also
          *                    clears ghosting
          */
-        void render(const char* tempStr, const char* humStr, const char* footerName, const char* footerDateTime,
-                    ControlState controlState, const char* setpointStr, uint8_t demandSegments, WarningToken warning,
-                    RefreshKind kind);
+        void render(const char* tempStr, const char* secondStr, const char* thirdStr, bool secondDegreeRing,
+                    bool thirdDegreeRing, const char* footerName, const char* footerDateTime, ControlState controlState,
+                    const char* setpointStr, uint8_t demandSegments, WarningToken warning, RefreshKind kind);
 
         /**
          * Blank the panel to white. Used on the disable path — e-paper retains
@@ -167,12 +179,14 @@ namespace Display {
         // callers must set the font they need next.
         void drawHeader();
 
-        void drawMeasurements(const char* tempStr, const char* humStr);
+        void drawMeasurements(const char* tempStr, const char* secondStr, const char* thirdStr, bool secondDegreeRing,
+                              bool thirdDegreeRing);
 
         void drawFooter(const char* footerName, const char* footerDateTime, Display::ControlState controlState,
                         const char* setpointStr, uint8_t demandSegments);
 
-        void runPagedDraw(const char* tempStr, const char* humStr, const char* footerName, const char* footerDateTime,
+        void runPagedDraw(const char* tempStr, const char* secondStr, const char* thirdStr, bool secondDegreeRing,
+                          bool thirdDegreeRing, const char* footerName, const char* footerDateTime,
                           ControlState controlState, const char* setpointStr, uint8_t demandSegments,
                           WarningToken warning);
 

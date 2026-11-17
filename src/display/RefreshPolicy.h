@@ -41,11 +41,23 @@ namespace Display {
         UNCERTAIN
     };
 
-    // A reading must move by at least this much before a refresh is considered.
-    // Sensor noise dithering the last displayed digit would otherwise refresh
-    // the panel forever with no visible difference.
+    /**
+     * One displayed value and its refresh threshold.
+     *
+     * The policy compares each slot independently: a missing secondary sensor
+     * must not suppress changes in another slot, and a slot transitioning
+     * between a reading and its placeholder is itself a change. An unavailable
+     * slot never compares its stale value.
+     */
+    struct ValueSlot {
+        float value = NAN;
+        bool available = false;
+        float hysteresis = 0.0f;
+    };
+
+    // The primary temperature slot's threshold. Secondary slots carry their
+    // own field-specific hysteresis from DisplayField.
     constexpr float TEMP_HYSTERESIS_C = 0.1f;
-    constexpr float HUMIDITY_HYSTERESIS_PCT = 1.0f;
 
     // Partial refreshes accumulate ghosting; every Nth one is promoted to a
     // full refresh to clear it.
@@ -92,9 +104,10 @@ namespace Display {
         /**
          * Evaluate a new set of values.
          *
-         * @param temperature Current temperature; NAN is treated as unavailable
-         * @param humidity    Current relative humidity; NAN is treated as unavailable
-         * @param valid       Whether the sensor snapshot itself is valid
+         * @param temperature Primary temperature slot (hysteresis 0.1 °C).
+         * @param second      Configured second value slot.
+         * @param third       Configured third value slot; unavailable when the
+         *                    third field is none.
          * @param nowMs       Monotonic millisecond clock (millis() on the firmware)
          * @param clockMinute Displayed wall-clock minute, i.e. epoch / 60; pass
          *                    0 when the clock is unknown (NTP unsynced). A
@@ -119,9 +132,10 @@ namespace Display {
          *                     other change.
          * @return What kind of refresh to perform, if any
          */
-        RefreshKind evaluate(float temperature, float humidity, bool valid, uint32_t nowMs, uint32_t clockMinute = 0,
-                             float setpoint = NAN, ControlState controlState = ControlState::INACTIVE,
-                             uint8_t demandBucket = 0, WarningToken warning = WarningToken::NONE);
+        RefreshKind evaluate(const ValueSlot& temperature, const ValueSlot& second, const ValueSlot& third,
+                             uint32_t nowMs, uint32_t clockMinute = 0, float setpoint = NAN,
+                             ControlState controlState = ControlState::INACTIVE, uint8_t demandBucket = 0,
+                             WarningToken warning = WarningToken::NONE);
 
         /**
          * Forget all history, as if the device had just booted. The next
@@ -144,9 +158,9 @@ namespace Display {
         uint16_t minIntervalSec;
 
         bool everPainted = false; // false until the first refresh is returned
-        bool lastValid = false;   // validity of the last *rendered* values
-        float lastTemperature = 0.0f;
-        float lastHumidity = 0.0f;
+        ValueSlot lastTemperature;
+        ValueSlot lastSecond;
+        ValueSlot lastThird;
         uint32_t lastRefreshMs = 0;
         uint32_t lastClockMinute = 0; // wall-clock minute at the last refresh
         float lastSetpoint = NAN;     // setpoint at the last refresh
@@ -158,9 +172,9 @@ namespace Display {
         // Records the values a refresh is about to render and returns `kind`.
         // Only called when a refresh actually happens, so a change suppressed
         // by the interval floor stays outstanding and fires on a later tick.
-        RefreshKind commit(RefreshKind kind, float temperature, float humidity, bool valid, uint32_t nowMs,
-                           uint32_t clockMinute, float setpoint, ControlState controlState, uint8_t demandBucket,
-                           WarningToken warning);
+        RefreshKind commit(RefreshKind kind, const ValueSlot& temperature, const ValueSlot& second,
+                           const ValueSlot& third, uint32_t nowMs, uint32_t clockMinute, float setpoint,
+                           ControlState controlState, uint8_t demandBucket, WarningToken warning);
     };
 
     /**

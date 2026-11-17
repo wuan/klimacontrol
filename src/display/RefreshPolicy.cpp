@@ -6,12 +6,17 @@
 namespace Display {
 
     namespace {
-        // A reading counts as available only if the snapshot is valid AND the
-        // value itself is a real number. SensorController's accessors return
-        // NAN for "no such measurement", which must render as a placeholder
-        // rather than as 0.0.
-        bool readingAvailable(float temperature, float humidity, bool valid) {
-            return valid && !std::isnan(temperature) && !std::isnan(humidity);
+        // A slot is a change when its availability flips in either direction,
+        // or when an available reading moves by at least its own threshold.
+        // An unavailable slot is never compared against a stale value.
+        bool slotChanged(const ValueSlot& current, const ValueSlot& previous) {
+            if (current.available != previous.available) {
+                return true;
+            }
+            if (!current.available) {
+                return false;
+            }
+            return std::fabs(current.value - previous.value) >= current.hysteresis;
         }
 
         // The setpoint is rendered with one decimal, so anything below half a
@@ -56,9 +61,9 @@ namespace Display {
 
     void RefreshPolicy::reset() {
         everPainted = false;
-        lastValid = false;
-        lastTemperature = 0.0f;
-        lastHumidity = 0.0f;
+        lastTemperature = ValueSlot{};
+        lastSecond = ValueSlot{};
+        lastThird = ValueSlot{};
         lastRefreshMs = 0;
         lastClockMinute = 0;
         lastSetpoint = NAN;
@@ -68,13 +73,13 @@ namespace Display {
         partialsSinceFull = 0;
     }
 
-    RefreshKind RefreshPolicy::commit(RefreshKind kind, float temperature, float humidity, bool valid, uint32_t nowMs,
-                                      uint32_t clockMinute, float setpoint, ControlState controlState,
-                                      uint8_t demandBucket, WarningToken warning) {
+    RefreshKind RefreshPolicy::commit(RefreshKind kind, const ValueSlot& temperature, const ValueSlot& second,
+                                      const ValueSlot& third, uint32_t nowMs, uint32_t clockMinute, float setpoint,
+                                      ControlState controlState, uint8_t demandBucket, WarningToken warning) {
         everPainted = true;
-        lastValid = valid;
         lastTemperature = temperature;
-        lastHumidity = humidity;
+        lastSecond = second;
+        lastThird = third;
         lastRefreshMs = nowMs;
         lastClockMinute = clockMinute;
         lastSetpoint = setpoint;
@@ -91,32 +96,24 @@ namespace Display {
         return kind;
     }
 
-    RefreshKind RefreshPolicy::evaluate(float temperature, float humidity, bool valid, uint32_t nowMs,
-                                        uint32_t clockMinute, float setpoint, ControlState controlState,
+    RefreshKind RefreshPolicy::evaluate(const ValueSlot& temperature, const ValueSlot& second, const ValueSlot& third,
+                                        uint32_t nowMs, uint32_t clockMinute, float setpoint, ControlState controlState,
                                         uint8_t demandBucket, WarningToken warning) {
-        const bool available = readingAvailable(temperature, humidity, valid);
-
         // 1. First paint after boot is always a full refresh: the panel may be
         //    holding an arbitrary image from a previous run, since e-paper
         //    retains its contents unpowered.
         if (!everPainted) {
-            return commit(RefreshKind::Full, temperature, humidity, available, nowMs, clockMinute, setpoint,
-                          controlState, demandBucket, warning);
+            return commit(RefreshKind::Full, temperature, second, third, nowMs, clockMinute, setpoint, controlState,
+                          demandBucket, warning);
         }
 
-        // 2. Hysteresis. A validity transition in either direction bypasses the
-        //    value check so the panel switches between the reading and the
-        //    placeholder promptly. When neither side has a reading there is
-        //    nothing to compare and nothing to show that isn't already shown.
-        bool changed;
-        if (available != lastValid) {
-            changed = true;
-        } else if (!available) {
-            changed = false;
-        } else {
-            changed = std::fabs(temperature - lastTemperature) >= TEMP_HYSTERESIS_C ||
-                      std::fabs(humidity - lastHumidity) >= HUMIDITY_HYSTERESIS_PCT;
-        }
+        // 2. Change detection, slot by slot. A validity transition in either
+        //    direction bypasses the value hysteresis so the panel switches
+        //    between a reading and its placeholder promptly. Slots are
+        //    independent: a pressure-only snapshot can repaint the pressure
+        //    line while the temperature slot stays a placeholder.
+        bool changed = slotChanged(temperature, lastTemperature) || slotChanged(second, lastSecond) ||
+                       slotChanged(third, lastThird);
 
         // The footer timestamp is part of what the panel shows, so the minute
         // rolling over is a change in its own right — the display keeps a live
@@ -164,6 +161,8 @@ namespace Display {
 
         // 3. Minimum-interval floor. Unsigned subtraction so the comparison
         //    stays correct across the millis() rollover at ~49.7 days.
+        //    Availability transitions are changes like any other and do not
+        //    bypass this floor; warning onset is the sole exception.
         const uint32_t elapsedMs = nowMs - lastRefreshMs;
         const uint32_t minIntervalMs = static_cast<uint32_t>(minIntervalSec) * 1000u;
         if (!warningOnset && elapsedMs < minIntervalMs) {
@@ -176,7 +175,7 @@ namespace Display {
         const RefreshKind kind =
             (partialsSinceFull >= FULL_REFRESH_EVERY_N_PARTIALS) ? RefreshKind::Full : RefreshKind::Partial;
 
-        return commit(kind, temperature, humidity, available, nowMs, clockMinute, setpoint, controlState, demandBucket,
+        return commit(kind, temperature, second, third, nowMs, clockMinute, setpoint, controlState, demandBucket,
                       warning);
     }
 
