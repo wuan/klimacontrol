@@ -16,6 +16,12 @@
 #include "display/DisplayManager.h"
 #endif
 
+#if defined(KLIMA_IDF_BUILD) && defined(CONFIG_PM_PROFILING)
+#include <cstdio>
+#include <cstring>
+#include <esp_pm.h>
+#endif
+
 static constexpr auto TAG = "net";
 
 namespace Net {
@@ -107,6 +113,20 @@ namespace Net {
             ESP_LOGI(TAG, "Network task stack HWM: %u bytes",
                      uxTaskGetStackHighWaterMark(taskHandle) * sizeof(StackType_t));
         }
+#if defined(KLIMA_IDF_BUILD) && defined(CONFIG_PM_PROFILING)
+        // Mode statistics are the evidence that DFS actually left CPU_MAX:
+        // APB_MAX is what WiFi/display/I2C transactions hold, APB_MIN is the
+        // idle frequency, and LIGHT_SLEEP appears only when tickless idle is on.
+        char pmStats[1024];
+        if (FILE* stream = fmemopen(pmStats, sizeof(pmStats), "w")) {
+            esp_pm_dump_locks(stream);
+            fclose(stream);
+            ESP_LOGI(TAG, "Power management stats:");
+            for (char* line = strtok(pmStats, "\n"); line != nullptr; line = strtok(nullptr, "\n")) {
+                ESP_LOGI(TAG, "  %s", line);
+            }
+        }
+#endif
 #else
         (void)now;
 #endif
@@ -267,20 +287,16 @@ namespace Net {
 #ifdef ARDUINO
         // Stack size is measured, not guessed. Like SensorMonitor's, this stack is
         // carved out of *internal* SRAM, the pool that OTA downloads, lwIP and
-        // AsyncTCP contend for; 20480 B was reserved on a "for stability" hunch while
-        // 17.3% of it was ever touched.
-        //
-        // Measured peak: 3544 B used (HWM reported 16936 B free of 20480) after a run
-        // covering the deepest paths this task takes — station bring-up with WiFi
-        // init and association, NTP sync, MQTT connect + publish, and the syslog
-        // formatting buffer inside the logging macro. 8192 keeps ~2.3x headroom
-        // rather than the 3x used for SensorMonitor, because two paths had not been
-        // exercised when the mark was taken: the AP/captive-portal fallback and the
-        // mDNS re-advertisement on reconnect. The periodic "Network task stack HWM"
-        // diagnostic re-measures this; raise it if the number ever approaches 0.
+        // AsyncTCP contend for. Measured peak: 5060 B used on Arduino 2.0.17
+        // (HWM 3132 B free of 8192) and 4856 B used on the IDF parity build
+        // (HWM 3336 B free of 8192). 8192 gives ~1.6x headroom against the larger
+        // peak. The deepest paths are station bring-up with WiFi init and
+        // association, NTP sync, MQTT connect + publish, and the syslog formatting
+        // buffer inside the logging macro; the periodic "Network task stack HWM"
+        // diagnostic re-measures this, so raise it if the number ever approaches 0.
         xTaskCreate(taskWrapper, // Task Function
                     "Network",   // Task Name
-                    8192,        // Stack Size (measured peak 3544 B, ~2.3x headroom)
+                    8192,        // Stack Size (measured peak 5060 B, ~1.6x headroom)
                     this,        // Parameters
                     1,           // Priority
                     &taskHandle  // Task Handle

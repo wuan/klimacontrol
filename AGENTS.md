@@ -6,7 +6,9 @@ from defaults. Layouts, commands, endpoints and APIs are derivable from the
 repo — read the source instead of duplicating it here.
 
 Klima-Control is ESP32-S2 (Adafruit QT Py) firmware built with PlatformIO
-(`pio run -e adafruit_qtpy_esp32s2`, tests via `pio test -e native`).
+(`pio run -e adafruit_qtpy_esp32s2` for the Arduino-framework release build,
+`pio run -e adafruit_qtpy_esp32s2_idf` for the ESP-IDF parity build, tests via
+`pio test -e native`).
 
 ## Spec-Driven Development (OpenSpec)
 

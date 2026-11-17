@@ -18,14 +18,14 @@ The firmware SHALL run on the Adafruit QT Py ESP32-S2 board, using the ESP32-S2 
 
 ### Requirement: Memory budget
 
-The firmware SHALL keep flash usage under 2 MB (the partition allocation) and SHALL maintain at least 64 KB of free heap to allow OTA updates. The system SHALL restart cleanly if free heap drops below 16 KB during runtime outside of an OTA flow. The firmware SHALL additionally publish `heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)` (in bytes) via the `/api/status` endpoint under the field `largest_free_block` so that heap *shape* regressions — fragmentation with healthy total free heap — are observable without serial-log access.
+The firmware SHALL keep the flash image within the 1856 KB app partition and SHALL maintain at least 64 KB of free heap to allow OTA updates. The system SHALL restart cleanly if free heap drops below 16 KB during runtime outside of an OTA flow. The firmware SHALL additionally publish `heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)` (in bytes) via the `/api/status` endpoint under the field `largest_free_block` so that heap *shape* regressions — fragmentation with healthy total free heap — are observable without serial-log access.
 
 OTA memory accounting SHALL use `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` rather than `ESP.getFreeHeap()` / `esp_get_free_heap_size()`. The two calls report different things on this board: the latter sums PSRAM and internal SRAM (`CONFIG_SPIRAM_USE_MALLOC=y`, `CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0`), and would pass an OTA memory gate unconditionally when PSRAM is healthy. The allocations that fail under pressure (task stacks, lwIP / WiFi structures, DMA buffers, the mbedTLS working set) are internal-only, which is what the gate is actually protecting against.
 
 #### Scenario: Build size check
 
 - **WHEN** the build completes
-- **THEN** the reported flash usage SHALL be less than 1900 KB (the partition cap) and the build SHALL fail otherwise
+- **THEN** the image size SHALL NOT exceed 1856 KB (the `app0`/`app1` partition size in `partitions.csv`) and the build SHALL fail otherwise
 
 #### Scenario: Low heap during runtime
 
@@ -37,11 +37,17 @@ OTA memory accounting SHALL use `heap_caps_get_free_size(MALLOC_CAP_INTERNAL)` r
 - **WHEN** a client GETs `/api/status` while the firmware is running normally (free heap > 64 KB)
 - **THEN** the response JSON contains a `largest_free_block` key whose value is the size in bytes of the largest contiguous free block in the 8-bit-capable heap, so an operator can detect fragmentation regressions from the web UI
 
+#### Scenario: Heap thresholds are revalidated after a toolchain generation change
+
+- **WHEN** the Arduino core or ESP-IDF generation changes — for example the move from core 2.0.17 / IDF 4.4.7 to core 3.3.12 / IDF 5.5.5
+- **THEN** the idle internal free heap SHALL be measured on the target board and the 16 KB restart threshold and the 64 KB OTA headroom SHALL be confirmed to hold against that measurement
+- **AND** the measured values SHALL be recorded in the change that performs the bump, so a later reader can tell a verified threshold from an inherited one
+
 ### Requirement: FreeRTOS task structure
 
 The firmware SHALL use FreeRTOS with two long-running tasks: a Network task running `Network::task()` and a Sensor Monitor task running `Task::SensorMonitor::task()`. Both tasks SHALL be registered with the ESP-IDF task watchdog using a 30-second timeout, and watchdog timeout SHALL trigger a panic. Each task body SHALL call `esp_task_wdt_reset()` at least once per iteration AND, in addition, SHALL feed the watchdog before and after any blocking external call that may exceed the per-iteration budget (see the *Network task blocking-call safety* requirement in `networking` for the Network task's specific obligations).
 
-The Network task stack SHALL be at least 6 KB (in-tree: 8192 B in `Network::startTask()`, justified against a measured peak of 3544 B in its adjacent comment). The Sensor Monitor task stack SHALL be at least 4 KB (in-tree: 6144 B at `src/task/SensorMonitor.cpp:33`, justified against a measured peak of 2056 B in the comment at `src/task/SensorMonitor.cpp:22-29`). Both tasks SHALL emit a periodic "stack HWM" diagnostic line so a future review can verify the threshold against measured use rather than guesswork.
+The Network task stack SHALL be at least 6 KB (in-tree: 8192 B in `Network::startTask()`, justified against measured peaks of 5060 B (Arduino 2.0.17) and 4856 B (IDF build) in its adjacent comment). The Sensor Monitor task stack SHALL be at least 4 KB (in-tree: 6144 B at `src/task/SensorMonitor.cpp:33`, justified against measured peaks of 2032 B (Arduino 2.0.17) and 2796 B (IDF build) in the comment at `src/task/SensorMonitor.cpp:24-32`). Both tasks SHALL emit a periodic "stack HWM" diagnostic line so a future review can verify the threshold against measured use rather than guesswork.
 
 #### Scenario: Tasks register with watchdog
 
@@ -51,12 +57,12 @@ The Network task stack SHALL be at least 6 KB (in-tree: 8192 B in `Network::star
 #### Scenario: Network task stack size
 
 - **WHEN** the Network task is created via `xTaskCreate`
-- **THEN** its stack is at least 6 KB; the in-tree value is 8192 B at `src/Network.cpp:361`, chosen against a measured peak of 3544 B (~2.3x headroom) per the comment at `src/Network.cpp:345-357`
+- **THEN** its stack is at least 6 KB; the in-tree value is 8192 B at `src/network/Network.cpp:270-285`, chosen against measured peaks of 5060 B (Arduino 2.0.17) and 4856 B (IDF build) (~1.6x headroom) per the comment at `src/network/Network.cpp:264-276`
 
 #### Scenario: Sensor Monitor task stack size
 
 - **WHEN** the Sensor Monitor task is created
-- **THEN** its stack is at least 4 KB; the in-tree value is 6144 B at `src/task/SensorMonitor.cpp:33`, chosen against a measured peak of 2056 B (~3x headroom) per the comment at `src/task/SensorMonitor.cpp:22-29`
+- **THEN** its stack is at least 4 KB; the in-tree value is 6144 B at `src/task/SensorMonitor.cpp:24-39`, chosen against measured peaks of 2032 B (Arduino 2.0.17) and 2796 B (IDF build) (~2.2x headroom) per the comment at `src/task/SensorMonitor.cpp:24-32`
 
 #### Scenario: Blocking external call feeds the watchdog
 
