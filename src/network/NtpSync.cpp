@@ -49,8 +49,9 @@ namespace Net {
 #endif
         if (isNtpEpochPlausible(epoch)) return Result::Ok;
         bogusCount++;
-        ESP_LOGE(TAG, "NTP %s returned implausible epoch: %u (expected between %u and %u)", what, epoch,
-                 NtpEpoch::MIN_VALID, NtpEpoch::MAX_VALID);
+        ESP_LOGE(TAG, "NTP %s returned implausible epoch: %u (expected between %u and %u)", what,
+                 static_cast<unsigned>(epoch), static_cast<unsigned>(NtpEpoch::MIN_VALID),
+                 static_cast<unsigned>(NtpEpoch::MAX_VALID));
         return Result::Implausible;
     }
 

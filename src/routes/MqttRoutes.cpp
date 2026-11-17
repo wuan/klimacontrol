@@ -2,7 +2,7 @@
 #include "routes/RouteHelpers.h"
 
 #include "Config.h"
-#include "Network.h"
+#include "network/Network.h"
 #include "MqttClient.h"
 
 #ifdef ARDUINO

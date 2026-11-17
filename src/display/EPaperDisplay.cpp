@@ -356,8 +356,8 @@ namespace Display {
     void EPaperDisplay::noteDuration(uint32_t elapsedMs, const char* what) {
         if (elapsedMs > REFRESH_TIMEOUT_MS) {
             consecutiveTimeouts++;
-            ESP_LOGW(TAG, "%s took %u ms (> %u ms timeout), %u/%u consecutive", what, elapsedMs, REFRESH_TIMEOUT_MS,
-                     consecutiveTimeouts, MAX_CONSECUTIVE_TIMEOUTS);
+            ESP_LOGW(TAG, "%s took %u ms (> %u ms timeout), %u/%u consecutive", what, static_cast<unsigned>(elapsedMs),
+                     static_cast<unsigned>(REFRESH_TIMEOUT_MS), consecutiveTimeouts, MAX_CONSECUTIVE_TIMEOUTS);
             if (consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS && !faulted) {
                 faulted = true;
                 // Logged once. The persisted DisplayConfig is deliberately NOT

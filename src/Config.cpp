@@ -20,7 +20,7 @@ namespace Config {
         lockRestart();
         restartState = packRestartState(true, deadline);
         unlockRestart();
-        ESP_LOGI(TAG, "Restart requested in %u ms", delayMs);
+        ESP_LOGI(TAG, "Restart requested in %u ms", static_cast<unsigned>(delayMs));
 #endif
     }
 

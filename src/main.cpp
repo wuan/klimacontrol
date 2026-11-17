@@ -8,7 +8,7 @@
 #include <Wire.h>
 #endif
 
-#include "Network.h"
+#include "network/Network.h"
 #include "Config.h"
 #include "WebServerManager.h"
 #include "sensor/SHT4x.h"
@@ -106,12 +106,13 @@ static void logCoreDumpSummary() {
     }
 
     ESP_LOGE(TAG, "Core dump from previous crash: task='%s' PC=0x%08x cause=%u vaddr=0x%08x", summary.exc_task,
-             summary.exc_pc, summary.ex_info.exc_cause, summary.ex_info.exc_vaddr);
+             static_cast<unsigned>(summary.exc_pc), static_cast<unsigned>(summary.ex_info.exc_cause),
+             static_cast<unsigned>(summary.ex_info.exc_vaddr));
 
     // One line per frame keeps each Serial.printf small; the USB CDC TX
     // buffer is only 64 bytes and a long line would just stall the boot.
     for (uint32_t i = 0; i < summary.exc_bt_info.depth && i < 16; i++) {
-        ESP_LOGE(TAG, "  bt[%u] 0x%08x", i, summary.exc_bt_info.bt[i]);
+        ESP_LOGE(TAG, "  bt[%u] 0x%08x", static_cast<unsigned>(i), static_cast<unsigned>(summary.exc_bt_info.bt[i]));
     }
     if (summary.exc_bt_info.corrupted) {
         ESP_LOGW(TAG, "  (backtrace marked corrupted)");
@@ -147,7 +148,7 @@ Task::SensorMonitor sensorMonitor(sensorController, temperatureController);
 // and wired in via setWebServer. This breaks the circular reference while
 // keeping both objects as long-lived singletons — see spec `memory-management`
 // → "Long-lived singletons are constructed once".
-Network network(config, sensorController, temperatureController, sensorMonitor, statusLed, std::nullopt);
+Net::Network network(config, sensorController, temperatureController, sensorMonitor, statusLed, std::nullopt);
 WebServerManager webServer(config, network, sensorController, temperatureController, sensorMonitor);
 #ifdef ARDUINO
 // E-paper display. Constructed unconditionally (its 625 B page buffer is in BSS

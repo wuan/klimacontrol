@@ -10,7 +10,7 @@
 #include <variant>
 
 #include "Log.h"
-#include "Network.h"
+#include "network/Network.h"
 #include "SensorController.h"
 #include "control/TemperatureController.h"
 #include "support/LocalTime.h"

@@ -7,7 +7,7 @@ set(srcs
     DarkModeStatusLed.cpp
     I2CScanner.cpp
     MqttClient.cpp
-    Network.cpp
+    network/Network.cpp
     SensorController.cpp
     StatusLed.cpp
     SyslogOutput.cpp

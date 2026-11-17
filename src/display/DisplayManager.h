@@ -12,7 +12,9 @@
 #include "display/WarningPolicy.h"
 
 class SensorController;
-class Network;
+namespace Net {
+    class Network;
+}
 
 namespace Control {
     class TemperatureController;
@@ -131,7 +133,7 @@ namespace Display {
          * Supplies the footer clock. Set by main.cpp once Network exists;
          * nullptr simply means no clock is drawn.
          */
-        void setNetwork(Network* net) { network = net; }
+        void setNetwork(Net::Network* net) { network = net; }
 
         bool isEnabled() const { return enabled; }
         bool hasFaulted() const { return panel.hasFaulted(); }
@@ -139,7 +141,7 @@ namespace Display {
     private:
         SensorController& controller;
         Control::TemperatureController& control;
-        Network* network = nullptr;
+        Net::Network* network = nullptr;
 
         EPaperDisplay panel;
         RefreshPolicy policy;

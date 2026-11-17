@@ -260,7 +260,8 @@ bool OTAUpdater::performUpdate(const String& downloadUrl, size_t expectedSize,
             const uint32_t heapLargest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
             const int httpErrno = esp_http_client_get_errno(client.raw());
             ESP_LOGE(TAG, "Download failed at %zu/%zu bytes (read=%d, errno=%d, heap free=%u largest=%u)", totalRead,
-                     expectedSize, bytesRead, httpErrno, heapFree, heapLargest);
+                     expectedSize, bytesRead, httpErrno, static_cast<unsigned>(heapFree),
+                     static_cast<unsigned>(heapLargest));
             Update.abort();
             setUpdateState(UpdateState::Failed, (int)((totalRead * 100) / expectedSize), totalRead,
                            "Connection lost during download");
@@ -631,8 +632,9 @@ bool OTAUpdater::hasEnoughMemory() {
     uint32_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
 
     if (internalFree < MIN_FREE_INTERNAL || largestBlock < MIN_LARGEST_INTERNAL_BLOCK) {
-        ESP_LOGW(TAG, "Insufficient internal heap: free=%u (need %u), largest block=%u (need %u)", internalFree,
-                 MIN_FREE_INTERNAL, largestBlock, MIN_LARGEST_INTERNAL_BLOCK);
+        ESP_LOGW(TAG, "Insufficient internal heap: free=%u (need %u), largest block=%u (need %u)",
+                 static_cast<unsigned>(internalFree), static_cast<unsigned>(MIN_FREE_INTERNAL),
+                 static_cast<unsigned>(largestBlock), static_cast<unsigned>(MIN_LARGEST_INTERNAL_BLOCK));
         return false;
     }
     return true;

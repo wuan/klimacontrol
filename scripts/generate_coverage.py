@@ -58,7 +58,10 @@ def build_lcov_capture_cmd(output_file, lcov_version):
         "--output-file", output_file,
     ]
     if lcov_version >= 2:
-        cmd += ["--ignore-errors", "mismatch,inconsistent,negative"]
+        # gcov 14+ and clang emit data that lcov considers inconsistent
+        # (inline functions in headers, functions whose end line cannot be
+        # derived). These are data-format quirks, not coverage gaps.
+        cmd += ["--ignore-errors", "mismatch,inconsistent,negative,format"]
     return cmd
 
 
@@ -74,7 +77,9 @@ def build_lcov_filter_cmd(input_file, output_file, lcov_version):
         "--output-file", output_file,
     ]
     if lcov_version >= 2:
-        cmd += ["--ignore-errors", "unused"]
+        # --remove re-checks data consistency (see lcov --capture above), so
+        # the same quirks must be tolerated here or the report is discarded.
+        cmd += ["--ignore-errors", "inconsistent,unused,format"]
     return cmd
 
 

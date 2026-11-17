@@ -149,7 +149,8 @@ namespace Net {
         mqtt->recordPublishResult(succeeded, failed);
 
         if (failed > 0) {
-            ESP_LOGW(TAG, "MQTT: Published %u/%u measurements (%u failed)", succeeded, succeeded + failed, failed);
+            ESP_LOGW(TAG, "MQTT: Published %u/%u measurements (%u failed)", static_cast<unsigned>(succeeded),
+                     static_cast<unsigned>(succeeded + failed), static_cast<unsigned>(failed));
         }
     }
 

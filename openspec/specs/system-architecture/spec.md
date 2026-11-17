@@ -51,7 +51,7 @@ The Network task stack SHALL be at least 6 KB (in-tree: 8192 B in `Network::star
 #### Scenario: Network task stack size
 
 - **WHEN** the Network task is created via `xTaskCreate`
-- **THEN** its stack is at least 6 KB; the in-tree value is 8192 B at `src/Network.cpp:270-285`, chosen against measured peaks of 5060 B (Arduino 2.0.17) and 4856 B (IDF build) (~1.6x headroom) per the comment at `src/Network.cpp:264-276`
+- **THEN** its stack is at least 6 KB; the in-tree value is 8192 B at `src/network/Network.cpp:270-285`, chosen against measured peaks of 5060 B (Arduino 2.0.17) and 4856 B (IDF build) (~1.6x headroom) per the comment at `src/network/Network.cpp:264-276`
 
 #### Scenario: Sensor Monitor task stack size
 

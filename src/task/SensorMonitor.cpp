@@ -63,7 +63,7 @@ namespace Task {
         uint32_t tickMs = controller.minReadIntervalMs();
         if (tickMs > MAX_TICK_MS) tickMs = MAX_TICK_MS;
         if (tickMs < MIN_TICK_MS) tickMs = MIN_TICK_MS;
-        ESP_LOGI(TAG, "SensorMonitor tick: %u ms", tickMs);
+        ESP_LOGI(TAG, "SensorMonitor tick: %u ms", static_cast<unsigned>(tickMs));
 
         unsigned long lastDiagnostics = millis();
         static constexpr unsigned long DIAGNOSTICS_INTERVAL_MS = 900000; // 15 minutes
