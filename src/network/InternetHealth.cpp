@@ -12,7 +12,7 @@ namespace Net {
 
     void InternetHealth::reportFailure() {
         [[maybe_unused]] const uint32_t count = failureCount.fetch_add(1) + 1;
-        ESP_LOGW(TAG, "Internet connectivity failure #%u", count);
+        ESP_LOGW(TAG, "Internet connectivity failure #%u", static_cast<unsigned>(count));
     }
 
     void InternetHealth::reportSuccess() {

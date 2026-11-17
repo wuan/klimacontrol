@@ -2,7 +2,7 @@
 #include "routes/RouteHelpers.h"
 
 #include "Config.h"
-#include "Network.h"
+#include "network/Network.h"
 #include "SensorController.h"
 #include "task/SensorMonitor.h"
 #include "DeviceId.h"
@@ -48,11 +48,11 @@ void AccessLogger::run(AsyncWebServerRequest* request, ArMiddlewareNext next) {
     char remoteIp[16];
     formatIpv4(request->client()->remoteIP(), remoteIp, sizeof(remoteIp));
     if (response) {
-        ESP_LOGI(TAG, "%s %s %s (%u ms) %u", remoteIp, request->url().c_str(), request->methodToString(), elapsed,
-                 response->code());
+        ESP_LOGI(TAG, "%s %s %s (%u ms) %u", remoteIp, request->url().c_str(), request->methodToString(),
+                 static_cast<unsigned>(elapsed), response->code());
     } else {
         ESP_LOGI(TAG, "%s %s %s (%u ms) (no response)", remoteIp, request->url().c_str(), request->methodToString(),
-                 elapsed);
+                 static_cast<unsigned>(elapsed));
     }
 }
 
@@ -112,7 +112,8 @@ void WebServerManager::setupAPIRoutes() {
 #endif
 }
 
-WebServerManager::WebServerManager(Config::ConfigManager& config, Network& network, SensorController& sensor_controller,
+WebServerManager::WebServerManager(Config::ConfigManager& config, Net::Network& network,
+                                   SensorController& sensor_controller,
                                    Control::TemperatureController& temperature_controller,
                                    Task::SensorMonitor& sensor_monitor)
     : config(config), network(network), sensorController(sensor_controller),

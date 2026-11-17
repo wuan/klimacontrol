@@ -22,7 +22,9 @@ namespace Control {
     class TemperatureController;
 }
 
-class Network;
+namespace Net {
+    class Network;
+}
 class SensorController;
 
 class AccessLogger : public AsyncMiddleware {
@@ -58,7 +60,7 @@ enum class WebServerMode {
 class WebServerManager {
 protected:
     Config::ConfigManager& config;
-    Network& network;
+    Net::Network& network;
     SensorController& sensorController;
     Control::TemperatureController& temperatureController;
     Task::SensorMonitor& sensorMonitor;
@@ -129,7 +131,7 @@ public:
      * @param sensorController SensorController reference
      * @param temperatureController Control loop, for the control/autotune routes
      */
-    WebServerManager(Config::ConfigManager& config, Network& network, SensorController& sensorController,
+    WebServerManager(Config::ConfigManager& config, Net::Network& network, SensorController& sensorController,
                      Control::TemperatureController& temperatureController, Task::SensorMonitor& sensorMonitor);
 
     /**
