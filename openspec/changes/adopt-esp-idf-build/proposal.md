@@ -22,6 +22,9 @@ rewriting the application.
   static libraries.
 - Add a project-owned `sdkconfig.defaults`, a root `CMakeLists.txt`, and a
   `src/CMakeLists.txt`.
+- Vendor a CDC-only `arduino_tinyusb` IDF component: PlatformIO's Arduino
+  2.0.17 package ships only the precompiled library, and Arduino core needs the
+  source component for its ESP32-S2 USB CDC `Serial` under the mixed build.
 - Transcribe the settings the precompiled SDK supplied implicitly into explicit
   configuration: target, 4 MB flash, 80 MHz CPU, PSRAM malloc policy, custom
   partition table, rollback enable, flash core dump, Arduino variant/autostart,
@@ -48,7 +51,8 @@ when the build command actually changes, not a new capability requirement.
 ## Impact
 
 - **Build**: `platformio.ini` environments, `CMakeLists.txt`,
-  `src/CMakeLists.txt`, `sdkconfig.defaults`; CI build and release jobs.
+  `src/CMakeLists.txt`, `sdkconfig.defaults`, `components/arduino_tinyusb`;
+  CI build and release jobs.
 - **Source**: none required for the parity step. `src/main.cpp` gains optional
   power-management initialisation only in the capability phase.
 - **Diagnostics**: USB CDC console, reset reason, and the flash core-dump path

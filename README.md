@@ -114,8 +114,11 @@ a restart).
 ### Build & Upload
 
 ```bash
-# Build for ESP32-S2
+# Build for ESP32-S2 (Arduino framework / release path)
 pio run -e adafruit_qtpy_esp32s2
+
+# Build the ESP-IDF parity environment (Arduino core compiled as an IDF component)
+pio run -e adafruit_qtpy_esp32s2_idf
 
 # Upload to device
 pio run -e adafruit_qtpy_esp32s2 -t upload

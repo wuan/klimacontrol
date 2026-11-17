@@ -24,15 +24,15 @@ namespace Task {
 #ifdef ARDUINO
         // Stack size is measured, not guessed. This stack comes out of *internal*
         // SRAM (xTaskCreate can never place it in PSRAM), which is the pool OTA
-        // downloads, lwIP and AsyncTCP compete for — at 16000 B it was the single
-        // largest consumer after the Network task while using 12.9% of it.
-        // Measured peak after a full read cycle over all I2C sensors: 2056 B used
-        // (HWM reported 13944 B free of 16000). 6144 gives ~3x headroom; the
-        // periodic "SensorMonitor stack HWM" line below re-measures it, so raise
-        // this if that number ever approaches 0.
+        // downloads, lwIP and AsyncTCP compete for. Measured peak after a full
+        // read cycle: 2032 B used on Arduino 2.0.17 (HWM 4112 B free of 6144)
+        // and 2796 B used on the IDF parity build (HWM 3348 B free of 6144).
+        // 6144 gives ~2.2x headroom against the larger IDF peak; the periodic
+        // "SensorMonitor stack HWM" line below re-measures it, so raise this if
+        // that number ever approaches 0.
         xTaskCreate(taskWrapper,     // Task Function
                     "SensorMonitor", // Task Name
-                    6144,            // Stack Size (measured peak 2056 B, ~3x headroom)
+                    6144,            // Stack Size (measured peak 2796 B, ~2.2x headroom)
                     this,            // Parameters
                     1,               // Priority (same as Network task)
                     &taskHandle      // Task Handle

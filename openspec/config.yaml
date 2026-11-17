@@ -20,7 +20,8 @@ context: |
     (also a PlatformIO pre-build hook).
 
   Conventions:
-  - Build/test: `pio run -e adafruit_qtpy_esp32s2` (firmware),
+  - Build/test: `pio run -e adafruit_qtpy_esp32s2` (Arduino release firmware),
+    `pio run -e adafruit_qtpy_esp32s2_idf` (ESP-IDF parity firmware),
     `pio test -e native` (tests). Route handlers only compile under `ARDUINO`.
   - State-changing HTTP endpoints require the CSRF header
     `X-Requested-With: KlimaControl` (see `verifyCsrfHeader()` in

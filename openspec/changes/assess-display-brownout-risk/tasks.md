@@ -1,3 +1,8 @@
+> **Coordination (2026-11-17):** This observation is consciously deferred until
+> after `adopt-esp-idf-build` Phase 2 (hardware parity). Re-run it on the IDF
+> build before the Phase 4 power-management experiments; do not start it on the
+> Arduino build. See `docs/BUILD_PARITY_BASELINE.md` §1.6.
+
 ## 1. Observe
 
 - [ ] 1.1 Confirm the unit is running the current firmware with the display enabled, WiFi associated and MQTT publishing, so refreshes and TX bursts both occur at their normal rates

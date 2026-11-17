@@ -53,6 +53,13 @@ Arduino core 2.0.17 is compiled from source under IDF 4.4.7 with a project-owned
 `sdkconfig`. This changes no application code, and it isolates build-system risk
 from API-migration risk.
 
+Arduino's ESP32-S2 USB CDC `Serial` additionally needs the `arduino_tinyusb`
+IDF component. PlatformIO's Arduino 2.0.17 package only ships a precompiled
+`libarduino_tinyusb.a`, not the component source, and Arduino's `CMakeLists.txt`
+links the component only if it exists. A CDC-only copy is therefore vendored in
+`components/arduino_tinyusb`; the other USB classes are not enabled because the
+firmware uses only the CDC console.
+
 Alternatives considered:
 
 - **Pure `framework = espidf`** — requires replacing every Arduino library now.
@@ -134,6 +141,10 @@ configuration to prove it rather than assume it.
 - **Silent Arduino config traps** (autostart, variant, USB CDC) → make each one
   an explicit verification item; compare boot log and pin behaviour against the
   Arduino build.
+- **Missing USB CDC component source** → PlatformIO's Arduino 2.0.17 package does
+  not ship `arduino_tinyusb` as a component, so a CDC-only copy is vendored; the
+  first IDF build verifies that `Serial` is USBCDC and that enumeration reaches
+  the host.
 - **Build time and CI cost** → Arduino core compiles from source; accept it for
   the migration, measure it, and keep the precompiled path available during
   parity.
